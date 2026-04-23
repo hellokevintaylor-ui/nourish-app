@@ -215,6 +215,52 @@ function categoryOptions(selected) {
   }).join('')
 }
 
+function renderRecipeCard(r) {
+  const isExpanded = state.expandedRecipe === r.id
+  const header = '<div class="recipe-card" data-rid="' + r.id + '">' +
+    '<div class="recipe-card-header">' +
+      '<div>' +
+        '<div class="recipe-name">' + esc(r.name) + '</div>' +
+        (r.category ? '<div class="recipe-category-tag">' + esc(r.category) + '</div>' : '') +
+        (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta">📎 ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
+      '</div>' +
+      '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
+    '</div>'
+
+  if (!isExpanded) return header + '</div>'
+
+  const notesSection = state.editingNotes === r.id
+    ? '<textarea class="notes-textarea" id="notes-ta-' + r.id + '" placeholder="What worked, what to change, substitutions...">' + esc(r.cookingNotes||'') + '</textarea>' +
+      '<button class="notes-save-btn" data-notes-save="' + r.id + '">Save Notes</button>'
+    : '<div class="notes-display ' + (!r.cookingNotes ? 'notes-empty' : '') + '">' + (r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!') + '</div>'
+
+  const body = '<div class="recipe-body">' +
+    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">🔗 View original</a></div>' : '') +
+    (r.ingredients ? '<div class="recipe-section-label">Ingredients</div><div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '') +
+    (r.instructions ? '<div class="recipe-section-label">Instructions</div><div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : '') +
+    '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
+      '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
+    '</div>' +
+    notesSection +
+    '<div class="recipe-category-row">' +
+      '<span class="recipe-category-label">Category:</span>' +
+      '<select class="category-select-inline" data-cat-recipe="' + r.id + '">' +
+        '<option value="">None</option>' +
+        categoryOptions(r.category) +
+      '</select>' +
+    '</div>' +
+    '<div class="recipe-actions">' +
+      '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
+      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">🍽 Log meal</button>' +
+      '<button class="ra-btn ra-ask" data-ask="' + r.id + '">💬 Ask AI</button>' +
+      '<button class="ra-btn ra-del" data-del="' + r.id + '">🗑</button>' +
+    '</div>' +
+  '</div>'
+
+  return header + body + '</div>'
+}
+
 function renderRecipes() {
   const categories = ['All', ...new Set(state.recipes.map(r => r.category).filter(Boolean))]
   const filtered = state.activeCategory === 'All' ? state.recipes : state.recipes.filter(r => r.category === state.activeCategory)
@@ -250,49 +296,7 @@ function renderRecipes() {
       ` : ''}
       ${filtered.length === 0 && !state.addRecipeModal ? `
         <div class="empty-state">${state.activeCategory !== 'All' ? `No ${state.activeCategory} recipes yet.` : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!'} 🥗</div>
-      ` : filtered.map(r => `
-        <div class="recipe-card" data-rid="${r.id}">
-          <div class="recipe-card-header">
-            <div>
-              <div class="recipe-name">${esc(r.name)}</div>
-              ${r.category ? `<div class="recipe-category-tag">${esc(r.category)}</div>` : ''}
-              ${r.notes ? `<div class="recipe-meta">${esc(r.notes)}</div>` : ''}
-              ${r.clippedFrom ? `<div class="recipe-meta">📎 ${esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })())}</div>` : ''}
-            </div>
-            <div class="chevron ${state.expandedRecipe===r.id?'open':''}">▼</div>
-          </div>
-          ${state.expandedRecipe === r.id ? `
-            <div class="recipe-body">
-              ${r.clippedFrom ? `<div class="recipe-link"><a href="${esc(r.clippedFrom)}" target="_blank">🔗 View original</a></div>` : ''}
-              ${r.ingredients ? `<div class="recipe-section-label">Ingredients</div><div class="recipe-text">${formatRecipeText(r.ingredients)}</div>` : ''}
-              ${r.instructions ? `<div class="recipe-section-label">Instructions</div><div class="recipe-text">${formatRecipeText(r.instructions)}</div>` : ''}
-              <div class="recipe-section-label cooking-notes-label">
-                My Cooking Notes
-                <button class="notes-edit-btn" data-notes-edit="${r.id}">${state.editingNotes===r.id?'Done':'Edit'}</button>
-              </div>
-              ${state.editingNotes === r.id ? `
-                <textarea class="notes-textarea" id="notes-ta-${r.id}" placeholder="What worked, what to change, substitutions...">${esc(r.cookingNotes||'')}</textarea>
-                <button class="notes-save-btn" data-notes-save="${r.id}">Save Notes</button>
-              ` : `
-                <div class="notes-display ${!r.cookingNotes?'notes-empty':''}">${r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!'}</div>
-              `}
-              <div class="recipe-category-row">
-                <span class="recipe-category-label">Category:</span>
-                <select class="category-select-inline" data-cat-recipe="${r.id}">
-                  <option value="">None</option>
-                  ${categoryOptions(r.category)}
-                </select>
-              </div>
-              <div class="recipe-actions">
-                <button class="ra-btn ra-shop" data-shop="${r.id}">🛒 Add to list</button>
-                <button class="ra-btn ra-log" data-log-recipe="${r.id}">🍽 Log meal</button>
-                <button class="ra-btn ra-ask" data-ask="${r.id}">💬 Ask AI</button>
-                <button class="ra-btn ra-del" data-del="${r.id}">🗑</button>
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      `).join('')}
+      ` : filtered.map(r => renderRecipeCard(r)).join('')}
     </div>`
 }
 
