@@ -60,7 +60,7 @@ function buildClaudeContext() {
   const recipeList = state.recipes.length === 0 ? 'No recipes saved yet.'
     : state.recipes.map((r,i) => `${i+1}. ${r.name}\nINGREDIENTS:\n${r.ingredients||''}\nINSTRUCTIONS:\n${r.instructions||r.text||''}${r.cookingNotes?`\nMY NOTES: ${r.cookingNotes}`:''}`).join('\n\n')
   const pantryList = state.pantry.length === 0 ? 'Empty.'
-    : state.pantry.map(p => `${p.name}${p.qty ? ` (${p.qty})` : ''}`).join(', ')
+    : state.pantry.map(p => p.name + (p.qty ? ' (' + p.qty + ')' : '')).join(', ')
   const logList = state.log.length === 0 ? 'Nothing logged.' : state.log.map(e => `- ${e.food}: ${e.calories} cal`).join('\n')
   return `My Nourish Data:
 
@@ -163,9 +163,9 @@ function render() {
 
       <!-- TABS -->
       <div class="tabs">
-        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">🍽 Recipes${state.recipes.length>0?`<span class="tab-badge">${state.recipes.length}</span>`:''}</div>
-        <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?`<span class="tab-badge">${state.pantry.length}</span>`:''}</div>
-        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?`<span class="tab-badge">${needCount}</span>`:''}</div>
+        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">🍽 Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
         <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">📋 Log</div>
         <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
       </div>
@@ -272,7 +272,7 @@ function renderRecipes() {
       </div>
       ${state.recipes.length > 0 ? `
         <div class="category-chips">
-          ${categories.map(c => `<button class="category-chip ${state.activeCategory===c?'active':''}" data-category="${esc(c)}">${esc(c)}</button>`).join('')}
+          ${categories.map(c => '<button class="category-chip ' + (state.activeCategory===c?'active':'') + '" data-category="' + esc(c) + '">' + esc(c) + '</button>').join('')}
         </div>
       ` : ''}
       ${state.addRecipeModal ? `
@@ -393,7 +393,7 @@ function renderLog() {
       <div class="log-total">
         <div>
           <div class="log-total-label">Calories today</div>
-          <div class="log-total-sub">${rem > 0 ? `${rem} remaining` : `${Math.abs(rem)} over goal`}</div>
+          <div class="log-total-sub">${rem > 0 ? rem + ' remaining' : Math.abs(rem) + ' over goal'}</div>
         </div>
         <div><span class="log-total-val">${cals}</span><span class="log-total-goal"> / ${state.goals.calories}</span></div>
       </div>
@@ -402,7 +402,7 @@ function renderLog() {
         <input id="log-cals" type="number" placeholder="Cal" style="max-width:70px" />
         <button class="add-btn" id="log-add-btn">+ Add</button>
       </div>
-      ${state.log.length === 0 ? `<div class="empty-state">Nothing logged yet today!</div>` :
+      ${state.log.length === 0 ? '<div class="empty-state">Nothing logged yet today!</div>' :
         state.log.map(e => `
           <div class="log-entry">
             <div><div class="log-food">${esc(e.food)}</div><div class="log-cal">${e.calories} kcal</div></div>
@@ -430,7 +430,7 @@ function renderChat() {
         <button class="claude-open-btn" id="open-claude-btn">Open Claude ↗</button>
       </div>
       <div class="quick-prompts-grid">
-        ${prompts.map((p,i) => `<button class="prompt-card" data-prompt="${i}" data-text="${esc(p.text)}">${p.icon}<span>${p.label}</span></button>`).join('')}
+        ${prompts.map((p,i) => '<button class="prompt-card" data-prompt="' + i + '" data-text="' + esc(p.text) + '">' + p.icon + '<span>' + p.label + '</span></button>').join('')}
       </div>
       <div class="claude-input-row">
         <input id="claude-input" placeholder="Or type your own question..." />
@@ -475,7 +475,7 @@ function renderShopReview() {
               <input type="checkbox" class="shop-review-check" data-idx="${idx}" ${item.checked?'checked':''} />
               <div class="shop-review-info">
                 <div class="shop-review-name">${esc(item.name)}</div>
-                ${item.pantryQty ? `<div class="shop-review-have">You have: ${esc(item.pantryQty)}</div>` : '<div class="shop-review-none">Not in pantry</div>'}
+                ${item.pantryQty ? '<div class="shop-review-have">You have: ' + esc(item.pantryQty) + '</div>' : '<div class="shop-review-none">Not in pantry</div>'}
               </div>
             </label>
           `).join('')}
@@ -597,7 +597,7 @@ function bindEvents() {
       e.stopPropagation()
       const rid = el.dataset.notesEdit
       state.editingNotes = state.editingNotes === rid ? null : rid
-      render(); setTimeout(() => document.getElementById(`notes-ta-${rid}`)?.focus(), 50)
+      render(); setTimeout(() => document.getElementById('notes-ta-' + rid)?.focus(), 50)
     })
   })
 
@@ -605,7 +605,7 @@ function bindEvents() {
     el.addEventListener('click', async e => {
       e.stopPropagation()
       const rid = el.dataset.notesSave
-      const val = document.getElementById(`notes-ta-${rid}`)?.value?.trim()
+      const val = document.getElementById('notes-ta-' + rid)?.value?.trim()
       const recipe = state.recipes.find(r => r.id === rid)
       if (recipe) { recipe.cookingNotes = val; await db.updateRecipe(rid, { cookingNotes: val }) }
       state.editingNotes = null; render()
@@ -726,7 +726,7 @@ function bindEvents() {
   document.getElementById('shop-copy-btn')?.addEventListener('click', () => {
     const need = state.shopList.filter(i => !i.have)
     const text = Object.entries(need.reduce((g,i) => { const k=i.fromRecipe||'Other'; if(!g[k])g[k]=[]; g[k].push(i.name); return g }, {}))
-      .map(([r,items]) => `${r}:\n${items.map(n=>`• ${n}`).join('\n')}`).join('\n\n')
+      .map(([r,items]) => r + ':\n' + items.map(n => '• ' + n).join('\n')).join('\n\n')
     navigator.clipboard.writeText(text).then(() => alert('Shopping list copied!'))
   })
   document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
