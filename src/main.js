@@ -269,9 +269,9 @@ function renderRecipes() {
               `}
               <div class="recipe-category-row">
                 <span class="recipe-category-label">Category:</span>
-                <select class="category-select-inline" data-cat-recipe="\${r.id}">
+                <select class="category-select-inline" data-cat-recipe="${r.id}">
                   <option value="">None</option>
-                  \${ ['🍗 Mains','🥗 Dressings & Sauces','🥦 Sides','🍳 Breakfast','🍲 Soups & Stews','🫙 Meal Prep','🍰 Desserts','🥪 Snacks'].map(c => `<option value="\${c}" \${r.category===c?'selected':''}>\${esc(c)}</option>`).join('') }
+                  ${ ['🍗 Mains','🥗 Dressings & Sauces','🥦 Sides','🍳 Breakfast','🍲 Soups & Stews','🫙 Meal Prep','🍰 Desserts','🥪 Snacks'].map(c => `<option value="${c}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('') }
                 </select>
               </div>
               <div class="recipe-actions">
