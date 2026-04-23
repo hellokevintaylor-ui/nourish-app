@@ -230,7 +230,7 @@ function renderRecipes() {
           <div class="clip-field-label">Category</div>
           <select id="r-category" class="category-select">
             <option value="">No category</option>
-            ${['🍗 Mains','🥗 Dressings & Sauces','🥦 Sides','🍳 Breakfast','🍲 Soups & Stews','🫙 Meal Prep','🍰 Desserts','🥪 Snacks'].map(c => `<option value="${c}">${c}</option>`).join('')}
+            ${['Mains','Dressings & Sauces','Sides','Breakfast','Soups & Stews','Meal Prep','Desserts','Snacks'].map(c => `<option value="${c}">${c}</option>`).join('')}
           </select>
           <div class="add-row" style="margin-top:8px">
             <input id="r-notes" placeholder="Note (optional)" style="flex:1" />
@@ -271,7 +271,7 @@ function renderRecipes() {
                 <span class="recipe-category-label">Category:</span>
                 <select class="category-select-inline" data-cat-recipe="${r.id}">
                   <option value="">None</option>
-                  ${ ['🍗 Mains','🥗 Dressings & Sauces','🥦 Sides','🍳 Breakfast','🍲 Soups & Stews','🫙 Meal Prep','🍰 Desserts','🥪 Snacks'].map(c => `<option value="${c}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('') }
+                  ${ ['Mains','Dressings & Sauces','Sides','Breakfast','Soups & Stews','Meal Prep','Desserts','Snacks'].map(c => `<option value="${c}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('') }
                 </select>
               </div>
               <div class="recipe-actions">
