@@ -10,6 +10,7 @@ const state = {
   showGoals: false,
   showSync: false,
   expandedRecipe: null,
+  activeCategory: 'All',
   editingNotes: null,
   shopReview: null,
   pasteModal: false,
@@ -39,12 +40,21 @@ async function init() {
 }
 
 function normalizeRecipe(r) {
-  return { ...r, cookingNotes: r.cooking_notes || '', clippedFrom: r.clipped_from || '', text: [r.ingredients, r.instructions].filter(Boolean).join('\n\n') }
+  return { ...r, cookingNotes: r.cooking_notes || '', clippedFrom: r.clipped_from || '', category: r.category || '', text: [r.ingredients, r.instructions].filter(Boolean).join('\n\n') }
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function todayCalories() { return state.log.reduce((s,e) => s + (e.calories||0), 0) }
+
+
+// Strip measurements from ingredient lines for pantry matching
+function stripMeasurements(line) {
+  return line.toLowerCase()
+    .replace(/[\d¼½¾⅓⅔⅛⅜⅝⅞]+\/?\ d*\s*/g, '')
+    .replace(/\b(cups?|tbsp|tsp|tablespoons?|teaspoons?|oz|ounces?|lbs?|pounds?|grams?|kg|ml|liters?|pints?|quarts?|cans?|jars?|packages?|bunches?|heads?|cloves?|slices?|pieces?|large|medium|small|fresh|dried|chopped|minced|diced|sliced|about|to\s+\d+)\b/gi, '')
+    .replace(/[,.\-–()]/g, ' ').replace(/\s+/g, ' ').trim()
+}
 
 function buildClaudeContext() {
   const recipeList = state.recipes.length === 0 ? 'No recipes saved yet.'
@@ -197,12 +207,19 @@ function render() {
 
 // ── TAB RENDERS ───────────────────────────────────────────────────────────────
 function renderRecipes() {
+  const categories = ['All', ...new Set(state.recipes.map(r => r.category).filter(Boolean))]
+  const filtered = state.activeCategory === 'All' ? state.recipes : state.recipes.filter(r => r.category === state.activeCategory)
   return `
     <div class="tab-content">
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <button class="add-btn" id="add-recipe-btn">+ Add Recipe</button>
       </div>
+      ${state.recipes.length > 0 ? `
+        <div class="category-chips">
+          ${categories.map(c => `<button class="category-chip ${state.activeCategory===c?'active':''}" data-category="${esc(c)}">${esc(c)}</button>`).join('')}
+        </div>
+      ` : ''}
       ${state.addRecipeModal ? `
         <div class="recipe-add-box">
           <input id="r-name" placeholder="Recipe name" />
@@ -210,6 +227,11 @@ function renderRecipes() {
           <textarea id="r-ingredients" placeholder="One ingredient per line..."></textarea>
           <div class="clip-field-label">Instructions</div>
           <textarea id="r-instructions" placeholder="Step by step..."></textarea>
+          <div class="clip-field-label">Category</div>
+          <select id="r-category" class="category-select">
+            <option value="">No category</option>
+            ${['🍗 Mains','🥗 Dressings & Sauces','🥦 Sides','🍳 Breakfast','🍲 Soups & Stews','🫙 Meal Prep','🍰 Desserts','🥪 Snacks'].map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
           <div class="add-row" style="margin-top:8px">
             <input id="r-notes" placeholder="Note (optional)" style="flex:1" />
             <button class="add-btn" id="r-save-btn">Save</button>
@@ -217,13 +239,14 @@ function renderRecipes() {
           </div>
         </div>
       ` : ''}
-      ${state.recipes.length === 0 && !state.addRecipeModal ? `
-        <div class="empty-state">No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website! 🥗</div>
-      ` : state.recipes.map(r => `
+      ${filtered.length === 0 && !state.addRecipeModal ? `
+        <div class="empty-state">${state.activeCategory !== 'All' ? `No ${state.activeCategory} recipes yet.` : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!'} 🥗</div>
+      ` : filtered.map(r => `
         <div class="recipe-card" data-rid="${r.id}">
           <div class="recipe-card-header">
             <div>
               <div class="recipe-name">${esc(r.name)}</div>
+              ${r.category ? `<div class="recipe-category-tag">${esc(r.category)}</div>` : ''}
               ${r.notes ? `<div class="recipe-meta">${esc(r.notes)}</div>` : ''}
               ${r.clippedFrom ? `<div class="recipe-meta">📎 ${esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })())}</div>` : ''}
             </div>
@@ -244,6 +267,13 @@ function renderRecipes() {
               ` : `
                 <div class="notes-display ${!r.cookingNotes?'notes-empty':''}">${r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!'}</div>
               `}
+              <div class="recipe-category-row">
+                <span class="recipe-category-label">Category:</span>
+                <select class="category-select-inline" data-cat-recipe="\${r.id}">
+                  <option value="">None</option>
+                  \${ ['🍗 Mains','🥗 Dressings & Sauces','🥦 Sides','🍳 Breakfast','🍲 Soups & Stews','🫙 Meal Prep','🍰 Desserts','🥪 Snacks'].map(c => `<option value="\${c}" \${r.category===c?'selected':''}>\${esc(c)}</option>`).join('') }
+                </select>
+              </div>
               <div class="recipe-actions">
                 <button class="ra-btn ra-shop" data-shop="${r.id}">🛒 Add to list</button>
                 <button class="ra-btn ra-log" data-log-recipe="${r.id}">🍽 Log meal</button>
@@ -513,6 +543,20 @@ function bindEvents() {
   })
 
   // Recipes
+  // Category filter chips
+  document.querySelectorAll('.category-chip[data-category]').forEach(el => {
+    el.addEventListener('click', () => { state.activeCategory = el.dataset.category; state.expandedRecipe = null; render() })
+  })
+
+  // Inline category change
+  document.querySelectorAll('[data-cat-recipe]').forEach(el => {
+    el.addEventListener('change', async e => {
+      e.stopPropagation()
+      const r = state.recipes.find(x => String(x.id) === String(el.dataset.catRecipe))
+      if (r) { r.category = el.value; await db.updateRecipe(r.id, { category: el.value }); render() }
+    })
+  })
+
   document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
   document.getElementById('r-cancel-btn')?.addEventListener('click', () => { state.addRecipeModal = false; render() })
   document.getElementById('r-save-btn')?.addEventListener('click', async () => {
@@ -520,8 +564,9 @@ function bindEvents() {
     const ingredients = document.getElementById('r-ingredients')?.value?.trim()
     const instructions = document.getElementById('r-instructions')?.value?.trim()
     const notes = document.getElementById('r-notes')?.value?.trim()
+    const category = document.getElementById('r-category')?.value || ''
     if (!name) return
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes })
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, category })
     if (saved) state.recipes.unshift(normalizeRecipe(saved))
     state.addRecipeModal = false; render()
   })
@@ -609,7 +654,11 @@ function bindEvents() {
       const ingLines = (r.ingredients || r.text || '').split('\n')
         .map(l => l.replace(/^[•\-\d\.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
       const items = ingLines.map(name => {
-        const match = state.pantry.find(p => name.toLowerCase().includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(name.toLowerCase().split(' ')[0]))
+        const stripped = stripMeasurements(name)
+        const match = state.pantry.find(p => {
+          const pl = p.name.toLowerCase()
+          return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
+        })
         return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
       })
       state.shopReview = { recipeId: r.id, recipeName: r.name, items }; render()
