@@ -206,6 +206,15 @@ function render() {
 }
 
 // ── TAB RENDERS ───────────────────────────────────────────────────────────────
+const CATEGORIES = ['Mains','Dressings & Sauces','Sides','Breakfast','Soups & Stews','Meal Prep','Desserts','Snacks']
+
+function categoryOptions(selected) {
+  return CATEGORIES.map(c => {
+    const sel = c === selected ? ' selected' : ''
+    return '<option value="' + esc(c) + '"' + sel + '>' + esc(c) + '</option>'
+  }).join('')
+}
+
 function renderRecipes() {
   const categories = ['All', ...new Set(state.recipes.map(r => r.category).filter(Boolean))]
   const filtered = state.activeCategory === 'All' ? state.recipes : state.recipes.filter(r => r.category === state.activeCategory)
@@ -230,7 +239,7 @@ function renderRecipes() {
           <div class="clip-field-label">Category</div>
           <select id="r-category" class="category-select">
             <option value="">No category</option>
-            ${['Mains','Dressings & Sauces','Sides','Breakfast','Soups & Stews','Meal Prep','Desserts','Snacks'].map(c => `<option value="${c}">${c}</option>`).join('')}
+            ${categoryOptions('')}
           </select>
           <div class="add-row" style="margin-top:8px">
             <input id="r-notes" placeholder="Note (optional)" style="flex:1" />
@@ -271,7 +280,7 @@ function renderRecipes() {
                 <span class="recipe-category-label">Category:</span>
                 <select class="category-select-inline" data-cat-recipe="${r.id}">
                   <option value="">None</option>
-                  ${ ['Mains','Dressings & Sauces','Sides','Breakfast','Soups & Stews','Meal Prep','Desserts','Snacks'].map(c => `<option value="${c}" ${r.category===c?'selected':''}>${esc(c)}</option>`).join('') }
+                  ${categoryOptions(r.category)}
                 </select>
               </div>
               <div class="recipe-actions">
