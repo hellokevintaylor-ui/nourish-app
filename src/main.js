@@ -397,13 +397,19 @@ function renderPantry() {
         <div class="empty-state">Your pantry is empty.<br>Add staples you keep on hand! 🧺</div>
       ` : `
         <div class="pantry-list">
-          ${state.pantry.map(item => `
-            <div class="pantry-row">
-              <div class="pantry-row-name">${esc(item.name)}</div>
-              <input class="pantry-qty-input" data-qty-id="${item.id}" value="${esc(item.qty||'')}" placeholder="qty" />
-              <button class="remove-btn" data-pantry-del="${item.id}">×</button>
-            </div>
-          `).join('')}
+          ${state.pantry.map(item =>
+            '<div class="pantry-row pantry-row-wrap">' +
+              '<div class="pantry-row-main">' +
+                '<div class="pantry-row-name">' + esc(item.name) + '</div>' +
+                '<input class="pantry-qty-input" data-qty-id="' + item.id + '" value="' + esc(item.qty||'') + '" placeholder="qty" />' +
+                '<button class="remove-btn" data-pantry-del="' + item.id + '">×</button>' +
+              '</div>' +
+              '<div class="pantry-row-tags">' +
+                renderTagChips(item.tags||[], item.id, 'pantry') +
+                renderTagInput(item.id, 'pantry', item.tags||[]) +
+              '</div>' +
+            '</div>'
+          ).join('')}
         </div>
         <button class="clear-pantry-btn" id="clear-pantry">Clear all</button>
       `}
@@ -438,13 +444,16 @@ function renderShop() {
         ${Object.entries(byRecipe).map(([recipe, items]) => `
           <div class="shop-recipe-group">
             <div class="shop-recipe-name">📄 ${esc(recipe)}</div>
-            ${items.map(i => `
-              <div class="shop-row">
-                <div class="shop-check" data-check="${i.id}"></div>
-                <div class="shop-item-name">${esc(i.name)}</div>
-                <button class="remove-btn" data-shop-del="${i.id}">×</button>
-              </div>
-            `).join('')}
+            ${items.map(i =>
+              '<div class="shop-row">' +
+                '<div class="shop-check" data-check="' + i.id + '"></div>' +
+                '<div class="shop-item-main">' +
+                  '<div class="shop-item-name">' + esc(i.name) + '</div>' +
+                  '<div class="shop-item-tags">' + renderTagChips(i.tags||[], i.id, 'store') + renderTagInput(i.id, 'store', i.tags||[]) + '</div>' +
+                '</div>' +
+                '<button class="remove-btn" data-shop-del="' + i.id + '">×</button>' +
+              '</div>'
+            ).join('')}
           </div>
         `).join('')}
       ` : ''}
