@@ -620,7 +620,7 @@ function renderCalendar() {
   if (state.weekOffset === 0) {
     const todayEntries = state.mealPlan.filter(e => e.date === new Date().toISOString().slice(0,10))
     if (todayEntries.length > 0) {
-      html += '<button class="cal-log-today-btn" id="log-today-btn">Log today's meals</button>'
+      html += "<button class='cal-log-today-btn' id='log-today-btn'>Log Today Meals</button>"
     }
   }
 
