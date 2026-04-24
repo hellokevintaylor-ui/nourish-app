@@ -1135,14 +1135,19 @@ function bindEvents() {
   })
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
   document.getElementById('lm-save')?.addEventListener('click', async () => {
-    const portion = document.getElementById('lm-portion')?.value?.trim()
-    const cals = parseInt(document.getElementById('lm-cals')?.value) || 0
-    if (!portion) return
-    const food = state.logModal.recipeName + ' (' + portion + ')'
+    const portionEl = document.getElementById('lm-portion')
+    const calsEl = document.getElementById('lm-cals')
+    const portion = portionEl?.value?.trim()
+    const cals = parseInt(calsEl?.value) || 0
+    if (!portion) {
+      if (portionEl) portionEl.placeholder = 'Please enter portion!'
+      portionEl?.focus()
+      return
+    }
+    const food = (state.logModal?.recipeName || 'Food') + ' (' + portion + ')'
     const saved = await db.addLogEntry(food, cals)
     if (saved) {
-      // Attach recipe_id for back-linking
-      if (state.logModal.recipeId) saved.recipe_id = state.logModal.recipeId
+      if (state.logModal?.recipeId) saved.recipe_id = state.logModal.recipeId
       state.log.push(saved)
     }
     state.logModal = null; state.tab = 'log'; render()
