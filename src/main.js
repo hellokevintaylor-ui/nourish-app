@@ -179,7 +179,7 @@ function render() {
       <div class="header">
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
-          <div class="header-cal">${cals > 0 ? cals + " cal" : ""}</div>
+          ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
         <button class="icon-btn" id="paste-btn">&#128203; Paste Recipe</button>
           <button class="icon-btn" id="sync-toggle">&#128279; Sync</button>
           <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">&#9881; Goals</button>
