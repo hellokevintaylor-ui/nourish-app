@@ -102,12 +102,12 @@ async function addTagToItem(name, namespace, itemId) {
       await db.updateRecipeTags(r.id, r.tags)
     }
   } else if (namespace === 'location') {
+    // Search both pantry and shop list — both use 'location' namespace
     const p = state.pantry.find(x => String(x.id) === String(itemId))
     if (p && !(p.tags||[]).includes(name)) {
       p.tags = [...(p.tags||[]), name]
       await db.updatePantryTags(p.id, p.tags)
     }
-  } else if (namespace === 'location') {
     const s = state.shopList.find(x => String(x.id) === String(itemId))
     if (s && !(s.tags||[]).includes(name)) {
       s.tags = [...(s.tags||[]), name]
@@ -122,9 +122,9 @@ async function removeTagFromItem(name, namespace, itemId) {
     const r = state.recipes.find(x => String(x.id) === String(itemId))
     if (r) { r.tags = (r.tags||[]).filter(t => t !== name); await db.updateRecipeTags(r.id, r.tags) }
   } else if (namespace === 'location') {
+    // Search both pantry and shop list — both use 'location' namespace
     const p = state.pantry.find(x => String(x.id) === String(itemId))
     if (p) { p.tags = (p.tags||[]).filter(t => t !== name); await db.updatePantryTags(p.id, p.tags) }
-  } else if (namespace === 'location') {
     const s = state.shopList.find(x => String(x.id) === String(itemId))
     if (s) { s.tags = (s.tags||[]).filter(t => t !== name); await db.updateShopItemTags(s.id, s.tags) }
   }
@@ -189,8 +189,9 @@ ${recipeList}`
 }
 
 function openClaude(prompt) {
-  const url = `https://claude.ai/new?q=${encodeURIComponent(buildClaudeContext() + '\n\n---\n\n' + (prompt || 'Help me with my meal planning this week.'))}`
-  window.open(url, '_blank')
+  state.tab = 'chat'
+  sendChatMessage(prompt || 'Help me with my meal planning this week.')
+  render()
 }
 
 function formatRecipeText(text) {
@@ -1349,7 +1350,7 @@ function bindEvents() {
   })
   document.getElementById('lm-cancel')?.addEventListener('click', () => { state.logModal = null; render() })
 
-  // Ask Claude for calorie estimate
+  // Ask Claude for calorie estimate (in-app chat)
   document.getElementById('lm-estimate')?.addEventListener('click', () => {
     const portion = document.getElementById('lm-portion')?.value?.trim()
     const recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
@@ -1357,10 +1358,10 @@ function bindEvents() {
     const q = portion
       ? "How many calories in " + portion + " of this recipe? Just give me a single number.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
       : "How many calories per serving of this recipe?\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
-    window.open("https://claude.ai/new?q=" + encodeURIComponent(q), "_blank")
-    // Update note without full re-render to preserve event listeners
-    const noteEl = document.querySelector('.modal-note')
-    if (noteEl) noteEl.textContent = "Claude opened - come back and enter the number here!"
+    state.logModal = null
+    state.tab = 'chat'
+    sendChatMessage(q)
+    render()
   })
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
   document.getElementById('lm-save')?.addEventListener('click', async () => {
