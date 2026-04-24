@@ -214,7 +214,7 @@ function render() {
       <!-- TABS -->
       <div class="tabs">
         <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">🍽 Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
-        <div class="tab ${state.tab==='location'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
         <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
         <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">📋 Log</div>
         <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
@@ -241,7 +241,7 @@ function render() {
       <div class="content">
         ${state.loading ? '<div class="loading"><div class="spinner"></div><div>Loading your data…</div></div>' : ''}
         ${!state.loading && state.tab === 'recipes' ? renderRecipes() : ''}
-        ${!state.loading && state.tab === 'location'  ? renderPantry()  : ''}
+        ${!state.loading && state.tab === 'pantry'  ? renderPantry()  : ''}
         ${!state.loading && state.tab === 'shop'    ? renderShop()    : ''}
         ${!state.loading && state.tab === 'log'     ? renderLog()     : ''}
         ${!state.loading && state.tab === 'tags'    ? renderTags()    : ''}
