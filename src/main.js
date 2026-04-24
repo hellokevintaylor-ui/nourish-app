@@ -71,13 +71,16 @@ async function sendChatMessage(userMessage) {
       body: JSON.stringify({ messages, system: systemPrompt })
     })
 
-    if (!resp.ok) throw new Error('API error ' + resp.status)
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}))
+      throw new Error('API ' + resp.status + ': ' + (errData.error || resp.statusText))
+    }
     const data = await resp.json()
     const reply = data.content?.[0]?.text || 'Sorry, I could not get a response.'
 
     state.chatMessages.push({ role: 'assistant', content: reply })
   } catch(e) {
-    state.chatMessages.push({ role: 'assistant', content: 'Sorry, something went wrong. Please try again.' })
+    state.chatMessages.push({ role: 'assistant', content: '⚠️ ' + (e.message || 'Something went wrong. Please try again.') })
   }
 
   state.chatLoading = false
