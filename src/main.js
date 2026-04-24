@@ -879,7 +879,7 @@ function bindEvents() {
   document.getElementById('sync-switch-btn')?.addEventListener('click', async () => {
     const newId = document.getElementById('sync-input')?.value?.trim();
     if (!newId || !newId.startsWith('user_')) { alert('Please enter a valid Account ID (starts with user_)'); return; }
-    if (!confirm('Switch to this account? Your current local data will be replaced with that account\'s data.')) return;
+    if (!confirm("Switch to this account? Your current local data will be replaced with that accounts data.")) return;
     localStorage.setItem('nourish_uid', newId);
     state.showSync = false;
     state.loading = true;
