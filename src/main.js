@@ -38,19 +38,19 @@ async function addTagToItem(name, namespace, itemId) {
     state.allTags.push(savedTag)
   }
 
-  if (namespace === 'meal') {
+  if (namespace === 'recipe') {
     const r = state.recipes.find(x => String(x.id) === String(itemId))
     if (r && !(r.tags||[]).includes(name)) {
       r.tags = [...(r.tags||[]), name]
       await db.updateRecipeTags(r.id, r.tags)
     }
-  } else if (namespace === 'pantry') {
+  } else if (namespace === 'location') {
     const p = state.pantry.find(x => String(x.id) === String(itemId))
     if (p && !(p.tags||[]).includes(name)) {
       p.tags = [...(p.tags||[]), name]
       await db.updatePantryTags(p.id, p.tags)
     }
-  } else if (namespace === 'store') {
+  } else if (namespace === 'location') {
     const s = state.shopList.find(x => String(x.id) === String(itemId))
     if (s && !(s.tags||[]).includes(name)) {
       s.tags = [...(s.tags||[]), name]
@@ -61,13 +61,13 @@ async function addTagToItem(name, namespace, itemId) {
 }
 
 async function removeTagFromItem(name, namespace, itemId) {
-  if (namespace === 'meal') {
+  if (namespace === 'recipe') {
     const r = state.recipes.find(x => String(x.id) === String(itemId))
     if (r) { r.tags = (r.tags||[]).filter(t => t !== name); await db.updateRecipeTags(r.id, r.tags) }
-  } else if (namespace === 'pantry') {
+  } else if (namespace === 'location') {
     const p = state.pantry.find(x => String(x.id) === String(itemId))
     if (p) { p.tags = (p.tags||[]).filter(t => t !== name); await db.updatePantryTags(p.id, p.tags) }
-  } else if (namespace === 'store') {
+  } else if (namespace === 'location') {
     const s = state.shopList.find(x => String(x.id) === String(itemId))
     if (s) { s.tags = (s.tags||[]).filter(t => t !== name); await db.updateShopItemTags(s.id, s.tags) }
   }
@@ -214,7 +214,7 @@ function render() {
       <!-- TABS -->
       <div class="tabs">
         <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">🍽 Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
-        <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='location'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
         <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
         <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">📋 Log</div>
         <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
@@ -241,7 +241,7 @@ function render() {
       <div class="content">
         ${state.loading ? '<div class="loading"><div class="spinner"></div><div>Loading your data…</div></div>' : ''}
         ${!state.loading && state.tab === 'recipes' ? renderRecipes() : ''}
-        ${!state.loading && state.tab === 'pantry'  ? renderPantry()  : ''}
+        ${!state.loading && state.tab === 'location'  ? renderPantry()  : ''}
         ${!state.loading && state.tab === 'shop'    ? renderShop()    : ''}
         ${!state.loading && state.tab === 'log'     ? renderLog()     : ''}
         ${!state.loading && state.tab === 'tags'    ? renderTags()    : ''}
@@ -335,18 +335,18 @@ function renderRecipeCard(r) {
 
   const tagChips = (r.tags||[]).map(t =>
     '<span class="tag-chip">' + esc(t) +
-    '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + r.id + '" data-tag-ns="meal">×</button>' +
+    '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe">×</button>' +
     '</span>'
   ).join('')
-  const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="meal">+ Tag</button>'
-  const isPickerOpen = state.tagPickerOpen === r.id + '-meal'
-  const mealTags = getTagsForNamespace('meal')
+  const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe">+ Tag</button>'
+  const isPickerOpen = state.tagPickerOpen === r.id + '-recipe'
+  const mealTags = getTagsForNamespace('recipe')
   const tagPicker = isPickerOpen ? (
     '<div class="tag-picker-popover">' +
     mealTags.map(t => {
       const checked = (r.tags||[]).includes(t.name)
       return '<label class="tag-picker-option">' +
-        '<input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="meal" ' + (checked?'checked':'') + ' />' +
+        '<input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' +
         esc(t.name) + '</label>'
     }).join('') +
     '<div class="tag-picker-new">' +
@@ -378,14 +378,14 @@ function renderRecipeCard(r) {
 }
 
 function renderRecipes() {
-  const filtered = (state.activeTagFilter && state.activeTagFilterNs === 'meal') ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
+  const filtered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe') ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
   return `
     <div class="tab-content">
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <button class="add-btn" id="add-recipe-btn">+ Add Recipe</button>
       </div>
-      ${state.allTags.some(t => t.namespace === 'meal') ? renderTagFilterChips('meal', 'Meal') : ''}
+      ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
       ${state.addRecipeModal ? `
         <div class="recipe-add-box">
           <input id="r-name" placeholder="Recipe name" />
@@ -415,7 +415,7 @@ function renderPantry() {
   return `
     <div class="tab-content">
       <div class="section-title">My Pantry</div>
-      ${state.allTags.some(t => t.namespace === 'pantry') ? renderTagFilterChips('pantry', 'Pantry') : ''}
+      ${state.allTags.some(t => t.namespace === 'location') ? renderTagFilterChips('location', 'Pantry') : ''}
       <div class="pantry-hint">Add items with quantities — tap the qty field to update anytime.</div>
       <div class="pantry-add-box">
         <div class="pantry-add-row">
@@ -429,18 +429,18 @@ function renderPantry() {
       ` : `
         <div class="pantry-list">
           ${state.pantry.map(item => {
-            const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="pantry">×</button></span>').join('')
-            const pickerId = item.id + '-pantry'
+            const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="location">×</button></span>').join('')
+            const pickerId = item.id + '-location'
             const isOpen = state.tagPickerOpen === pickerId
-            const pantryTags = getTagsForNamespace('pantry')
-            const picker = isOpen ? ('<div class="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="pantry" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-pantry" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="pantry">Add</button></div></div>') : ''
+            const pantryTags = getTagsForNamespace('location')
+            const picker = isOpen ? ('<div class="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-pantry" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="pantry">Add</button></div></div>') : ''
             return '<div class="pantry-row pantry-row-wrap">' +
               '<div class="pantry-row-main">' +
                 '<div class="pantry-row-name">' + esc(item.name) + '</div>' +
                 '<input class="pantry-qty-input" data-qty-id="' + item.id + '" value="' + esc(item.qty||'') + '" placeholder="qty" />' +
                 '<button class="remove-btn" data-pantry-del="' + item.id + '">×</button>' +
               '</div>' +
-              '<div class="pantry-row-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + item.id + '" data-picker-ns="pantry">+ Tag</button>' + picker + '</div>' +
+              '<div class="pantry-row-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + item.id + '" data-picker-ns="location">+ Tag</button>' + picker + '</div>' +
             '</div>'
           }).join('')}
         </div>
@@ -468,7 +468,7 @@ function renderShop() {
       ${state.shopList.length === 0 ? `
         <div class="empty-state">Your list is empty.<br>Open a recipe and tap <strong>Add to list</strong>! 🛒</div>
       ` : ''}
-      ${state.allTags.some(t => t.namespace === 'store') ? renderTagFilterChips('store', 'Store') : ''}
+      ${state.allTags.some(t => t.namespace === 'location') ? renderTagFilterChips('location', 'Store') : ''}
       ${need.length > 0 ? `
         <div class="shop-got-it-bar">
           <div class="shop-got-it-text">${need.length} item${need.length!==1?'s':''} to buy</div>
@@ -478,16 +478,16 @@ function renderShop() {
           <div class="shop-recipe-group">
             <div class="shop-recipe-name">📄 ${esc(recipe)}</div>
             ${items.map(i => {
-                const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="store">×</button></span>').join('')
-                const pickerId = i.id + '-store'
+                const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">×</button></span>').join('')
+                const pickerId = i.id + '-location'
                 const isOpen = state.tagPickerOpen === pickerId
-                const storeTags = getTagsForNamespace('store')
-                const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="store" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-store" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="store">Add</button></div></div>') : ''
+                const storeTags = getTagsForNamespace('location')
+                const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-store" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="store">Add</button></div></div>') : ''
                 return '<div class="shop-row">' +
                   '<div class="shop-check" data-check="' + i.id + '"></div>' +
                   '<div class="shop-item-main">' +
                     '<div class="shop-item-name">' + esc(i.name) + '</div>' +
-                    '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="store">+ Tag</button>' + picker + '</div>' +
+                    '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' + picker + '</div>' +
                   '</div>' +
                   '<button class="remove-btn" data-shop-del="' + i.id + '">×</button>' +
                 '</div>'
@@ -544,9 +544,8 @@ function renderLog() {
 
 function renderTags() {
   const namespaces = [
-    { key: 'meal', label: 'Meal Tags', hint: 'Used on recipes — meal type, occasion, method, ingredient' },
-    { key: 'store', label: 'Store Tags', hint: 'Used on shopping list — aisle/section of the store' },
-    { key: 'pantry', label: 'Pantry Tags', hint: 'Used on pantry items — fridge, freezer, shelf location' },
+    { key: 'recipe', label: 'Recipe Tags', hint: 'For recipes — meal type, occasion, cooking method, main ingredient' },
+    { key: 'location', label: 'Pantry/Store Tags', hint: 'For pantry items and shopping list — store aisle or home storage location' },
   ]
   return '<div class="tab-content">' +
     '<div class="section-title">Tag Library</div>' +
