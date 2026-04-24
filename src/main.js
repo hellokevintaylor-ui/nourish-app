@@ -5,7 +5,7 @@ import { getUserId } from './supabase.js'
 const state = {
   tab: 'recipes',
   recipes: [], pantry: [], shopList: [], log: [],
-  goals: { calories: 2000, protein: 150, carbs: 200, fat: 65, goal: 'maintain' },
+  goals: { calories: 2000, goal: 'maintain' },
   loading: true,
   showGoals: false,
   showSync: false,
@@ -32,9 +32,9 @@ const state = {
 }
 
 const GOAL_PRESETS = {
-  lose:     { calories: 1600, protein: 160, carbs: 150, fat: 55,  label: 'Lose Weight' },
-  maintain: { calories: 2000, protein: 150, carbs: 200, fat: 65,  label: 'Maintain' },
-  gain:     { calories: 2500, protein: 180, carbs: 280, fat: 80,  label: 'Build Muscle' },
+  lose:     { calories: 1600, label: 'Lose Weight' },
+  maintain: { calories: 2000, label: 'Maintain' },
+  gain:     { calories: 2500, label: 'Build Muscle' },
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ async function init() {
   state.pantry   = pantry
   state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }))
   state.log      = log
-  if (goals) state.goals = { calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat, goal: goals.goal_type }
+  if (goals) state.goals = { calories: goals.calories, goal: goals.goal_type }
   state.loading  = false
   render()
 }
@@ -1078,14 +1078,14 @@ function bindEvents() {
     state.pantry   = pantry;
     state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }));
     state.log      = log;
-    if (goals) state.goals = { calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat, goal: goals.goal_type };
+    if (goals) state.goals = { calories: goals.calories, goal: goals.goal_type };
     state.loading  = false;
     render();
   })
   document.querySelectorAll('.preset-btn[data-preset]').forEach(el => {
     el.addEventListener('click', async () => {
       const p = GOAL_PRESETS[el.dataset.preset]
-      state.goals = { ...p, goal: el.dataset.preset }
+      state.goals = { calories: p.calories, goal: el.dataset.preset }
       render(); await db.saveGoals(state.goals)
     })
   })
