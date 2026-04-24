@@ -138,7 +138,7 @@ html, body {
 .cal-bar-nums span { color:var(--ink4); font-weight:400; }
 
 /* ── CONTENT ── */
-.content { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; min-height:0; padding-bottom:var(--safe-bot); }
+.content { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; min-height:0; height:0; padding-bottom:var(--safe-bot); }
 .tab-content { padding:16px 18px; }
 
 /* ── LOADING ── */
