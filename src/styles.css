@@ -39,7 +39,7 @@ html, body {
   font-size: 14px;
 }
 
-#app { height: 100vh; display: flex; flex-direction: column; max-width: 600px; margin: 0 auto; overflow: hidden; position: relative; }
+#app { height: 100vh; overflow: hidden; }
 
 /* ── HEADER ── */
 .header {
