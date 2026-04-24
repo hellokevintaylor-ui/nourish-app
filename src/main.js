@@ -20,6 +20,8 @@ const state = {
   historyLog: [],       // full log history
   historyOffset: 0,     // week offset for history view
   agentProfile: null,   // computed behavioral profile
+  chatMessages: [],     // in-app chat history
+  chatLoading: false,   // waiting for AI response
   mealPlan: [],         // loaded meal plan entries
   calendarSlot: null,   // { date, slot } when picker is open
   logSearch: '',        // search query in log tab
@@ -38,6 +40,53 @@ const GOAL_PRESETS = {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+
+
+async function sendChatMessage(userMessage) {
+  if (!userMessage.trim() || state.chatLoading) return
+
+  // Add user message
+  state.chatMessages.push({ role: 'user', content: userMessage })
+  state.chatLoading = true
+  render()
+
+  // Scroll to bottom
+  setTimeout(() => {
+    const el = document.getElementById('chat-messages')
+    if (el) el.scrollTop = el.scrollHeight
+  }, 50)
+
+  try {
+    // Build system context
+    const context = buildClaudeContext()
+    const agentCtx = buildAgentContext(state.agentProfile)
+    const systemPrompt = 'You are a personal food and meal planning coach for this user. You know their recipes, pantry, eating habits and goals intimately. Be warm, specific, and actionable. Reference their actual recipes and patterns by name when relevant. Keep responses concise and practical.' + context + agentCtx
+
+    // Build message history for API
+    const messages = state.chatMessages.map(m => ({ role: m.role, content: m.content }))
+
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, system: systemPrompt })
+    })
+
+    if (!resp.ok) throw new Error('API error ' + resp.status)
+    const data = await resp.json()
+    const reply = data.content?.[0]?.text || 'Sorry, I could not get a response.'
+
+    state.chatMessages.push({ role: 'assistant', content: reply })
+  } catch(e) {
+    state.chatMessages.push({ role: 'assistant', content: 'Sorry, something went wrong. Please try again.' })
+  }
+
+  state.chatLoading = false
+  render()
+  setTimeout(() => {
+    const el = document.getElementById('chat-messages')
+    if (el) el.scrollTop = el.scrollHeight
+  }, 50)
+}
 
 async function addTagToItem(name, namespace, itemId) {
   // Save tag to tag library
@@ -353,8 +402,8 @@ function renderRecipeCard(r) {
         esc(t.name) + '</label>'
     }).join('') +
     '<div class="tag-picker-new">' +
-      '<input class="tag-picker-input" id="new-tag-' + r.id + '-meal" placeholder="New tag..." />' +
-      '<button class="tag-picker-add" data-new-tag-item="' + r.id + '" data-new-tag-ns="meal">Add</button>' +
+      '<input class="tag-picker-input" id="new-tag-' + r.id + '-recipe" placeholder="New tag..." />' +
+      '<button class="tag-picker-add" data-new-tag-item="' + r.id + '" data-new-tag-ns="recipe">Add</button>' +
     '</div>' +
     '</div>'
   ) : ''
@@ -884,38 +933,32 @@ function renderTags() {
 }
 
 function renderChat() {
-  const prompts = [
-    { icon: '&#128203;', label: 'Weekly meal plan', text: 'Plan my meals for the week using my saved recipes' },
-    { icon: '🔄', label: 'Use my recipes',   text: 'What can I make with my saved recipes this week?' },
-    { icon: '🎯', label: "Today's plan",     text: "What should I eat today to hit my goals?" },
-    { icon: '🛒', label: 'Meal prep list',   text: 'Give me a meal prep plan and shopping list for the week' },
-    { icon: '🍳', label: 'Breakfast ideas',  text: 'Give me 5 high-protein breakfasts under 400 calories' },
-  ]
-  return `
-    <div class="tab-content">
-      <div class="claude-banner">
-        <div class="claude-banner-text">
-          <div class="claude-banner-title">AI Chat via Claude.ai</div>
-          <div class="claude-banner-sub">Opens with your recipes, pantry & goals pre-loaded</div>
-        </div>
-        <button class="claude-open-btn" id="open-claude-btn">Open Claude ↗</button>
-      </div>
-      <div class="quick-prompts-grid">
-        ${prompts.map((p,i) => '<button class="prompt-card" data-prompt="' + i + '" data-text="' + esc(p.text) + '">' + p.icon + '<span>' + p.label + '</span></button>').join('')}
-      </div>
-      <div class="claude-input-row">
-        <input id="claude-input" placeholder="Or type your own question..." />
-        <button class="add-btn" id="claude-send-btn">↗</button>
-      </div>
-      <div class="claude-how">
-        <div class="claude-how-step">1. Pick a prompt or type your own</div>
-        <div class="claude-how-step">2. Claude opens with ALL your data already loaded</div>
-        <div class="claude-how-step">3. Ask for meal plans, recipe edits, ingredient ideas - anything</div>
-      </div>
-    </div>`
+  const messages = state.chatMessages
+
+  const chatHtml = messages.length === 0
+    ? '<div class="chat-empty"><div class="chat-empty-title">Your AI Food Coach</div><div class="chat-empty-sub">Ask about meal planning, recipes, calories, shopping — anything food related. I know your recipes, pantry and eating patterns.</div><div class="chat-empty-prompts">' +
+      ['Plan my week', 'What should I eat today?', 'What can I make with my pantry?', 'How am I doing with my goals?'].map(p =>
+        '<button class="chat-starter" data-prompt-text="' + esc(p) + '">' + esc(p) + '</button>'
+      ).join('') +
+      '</div></div>'
+    : messages.map(m =>
+        '<div class="chat-msg chat-msg-' + m.role + '">' +
+          '<div class="chat-bubble">' + esc(m.content) + '</div>' +
+        '</div>'
+      ).join('')
+
+  return '<div class="chat-fullpage">' +
+    '<div class="chat-messages" id="chat-messages">' + chatHtml + '</div>' +
+    (state.chatLoading ? '<div class="chat-loading"><div class="chat-dots"><span></span><span></span><span></span></div></div>' : '') +
+    (messages.length > 0 ? '<button class="chat-clear-btn" id="chat-clear">Clear conversation</button>' : '') +
+    '<div class="chat-input-row">' +
+      '<input id="chat-input" class="chat-input" placeholder="Message your food coach..." />' +
+      '<button class="chat-send-btn" id="chat-send" ' + (state.chatLoading ? 'disabled' : '') + '>&#9654;</button>' +
+    '</div>' +
+  '</div>'
 }
 
-// ── MODALS ────────────────────────────────────────────────────────────────────
+
 function renderPasteModal() {
   return `
     <div class="modal-bg" id="paste-modal-bg">
@@ -1170,7 +1213,7 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       const r = state.recipes.find(x => x.id === el.dataset.ask)
-      if (r) openClaude(`Tell me ways I can use this recipe throughout the week:\n\n${r.name}\n${r.text}`)
+      if (r) { state.tab = 'chat'; sendChatMessage('Tell me ways I can use this recipe this week: ' + r.name + '. Ingredients: ' + (r.ingredients||'')); render() }
     })
   })
 
@@ -1356,18 +1399,8 @@ function bindEvents() {
     state.pasteModal = false; state.tab = 'recipes'; render()
   })
 
-  // Chat / Claude launcher
-  document.getElementById('open-claude-btn')?.addEventListener('click', () => openClaude(''))
-  document.querySelectorAll('[data-prompt]').forEach(el => {
-    el.addEventListener('click', () => openClaude(el.dataset.text))
-  })
-  document.getElementById('claude-send-btn')?.addEventListener('click', () => {
-    const val = document.getElementById('claude-input')?.value?.trim()
-    openClaude(val || '')
-  })
-  document.getElementById('claude-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('claude-send-btn')?.click()
-  })
+  // Chat handled by chat handlers below
+
 
 
   // ── TAG LIBRARY HANDLERS ──
@@ -1431,7 +1464,8 @@ function bindEvents() {
   document.querySelectorAll('.tag-picker-add[data-new-tag-item]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const input = document.getElementById('new-tag-' + el.dataset.newTagItem + '-' + el.dataset.newTagNs)
+      // Find input by proximity rather than ID (UUIDs contain hyphens which confuse ID lookup)
+      const input = el.closest('.tag-picker-new')?.querySelector('.tag-picker-input')
       const name = input?.value?.trim()
       if (!name) return
       await addTagToItem(name, el.dataset.newTagNs, el.dataset.newTagItem)
@@ -1443,7 +1477,8 @@ function bindEvents() {
     el.addEventListener('keydown', async e => {
       if (e.key === 'Enter') {
         e.preventDefault()
-        el.closest('.tag-picker-popover')?.querySelector('.tag-picker-add')?.click()
+        const addBtn = el.closest('.tag-picker-new')?.querySelector('.tag-picker-add')
+        if (addBtn) addBtn.click()
       }
     })
   })
@@ -1579,6 +1614,28 @@ function bindEvents() {
       if (state.historyOffset > 0) state.historyOffset = 0
       render()
     })
+  })
+
+
+  // ── CHAT HANDLERS ──
+  document.getElementById('chat-send')?.addEventListener('click', () => {
+    const input = document.getElementById('chat-input')
+    const msg = input?.value?.trim()
+    if (msg) { input.value = ''; sendChatMessage(msg) }
+  })
+  document.getElementById('chat-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      const msg = e.target.value?.trim()
+      if (msg) { e.target.value = ''; sendChatMessage(msg) }
+    }
+  })
+  document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
+    el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
+  })
+  document.getElementById('chat-clear')?.addEventListener('click', () => {
+    state.chatMessages = []
+    render()
   })
 }
 
