@@ -331,7 +331,7 @@ function renderRecipeCard(r) {
         '<div class="recipe-name">' + esc(r.name) + '</div>' +
         ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
-        (r.clippedFrom ? '<div class="recipe-meta">📎 ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
       '</div>' +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
@@ -611,16 +611,16 @@ function renderCalendar() {
 
   let html = '<div class="tab-content">'
   html += '<div class="cal-header">'
-  html += '<button class="cal-nav" data-week-nav="-1">‹</button>'
+  html += '<button class="cal-nav" data-week-nav="-1">&lsaquo;</button>'
   html += '<div class="cal-week-label">' + weekLabel + '</div>'
-  html += '<button class="cal-nav" data-week-nav="1">›</button>'
+  html += '<button class="cal-nav" data-week-nav="1">&rsaquo;</button>'
   html += '</div>'
 
   // Log today button if viewing current week
   if (state.weekOffset === 0) {
     const todayEntries = state.mealPlan.filter(e => e.date === new Date().toISOString().slice(0,10))
     if (todayEntries.length > 0) {
-      html += '<button class="cal-log-today-btn" id="log-today-btn">📋 Log today's meals</button>'
+      html += '<button class="cal-log-today-btn" id="log-today-btn">Log today's meals</button>'
     }
   }
 
@@ -643,7 +643,7 @@ function renderCalendar() {
         html += '<span class="cal-entry-name">' + esc(entry.recipe_name || 'Unnamed') + '</span>'
         html += '<div class="cal-entry-actions">'
         html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
-        html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">×</button>'
+        html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">&times;</button>'
         html += '</div>'
         html += '</div>'
       })
