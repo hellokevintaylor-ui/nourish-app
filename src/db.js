@@ -169,3 +169,27 @@ export async function deleteMealPlanEntry(id) {
 export async function updateLogEntry(id, calories) {
   await supabase.from('food_log').update({ calories }).eq('id', id)
 }
+
+// ── HISTORY ───────────────────────────────────────────────────────────────────
+export async function fetchFullLog(days) {
+  const since = new Date()
+  since.setDate(since.getDate() - (days || 90))
+  const { data } = await supabase.from('food_log')
+    .select('*')
+    .eq('user_id', uid())
+    .gte('logged_at', since.toISOString())
+    .order('logged_at', { ascending: false })
+  return data || []
+}
+
+export async function fetchFullMealPlan(days) {
+  const since = new Date()
+  since.setDate(since.getDate() - (days || 90))
+  const sinceDate = since.toISOString().slice(0,10)
+  const { data } = await supabase.from('meal_plan')
+    .select('*')
+    .eq('user_id', uid())
+    .gte('date', sinceDate)
+    .order('date', { ascending: false })
+  return data || []
+}

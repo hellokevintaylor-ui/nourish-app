@@ -17,6 +17,9 @@ const state = {
   showTagFilter: false,
   tagPickerOpen: null,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
+  historyLog: [],       // full log history
+  historyOffset: 0,     // week offset for history view
+  agentProfile: null,   // computed behavioral profile
   mealPlan: [],         // loaded meal plan entries
   calendarSlot: null,   // { date, slot } when picker is open
   logSearch: '',        // search query in log tab
@@ -82,12 +85,14 @@ async function removeTagFromItem(name, namespace, itemId) {
 async function init() {
   render()
   const weekDates = getWeekDates(0)
-  const [recipes, pantry, shopList, log, goals, allTags, mealPlan] = await Promise.all([
+  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog] = await Promise.all([
     db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags(),
-    db.fetchMealPlan(weekDates[0], weekDates[6])
+    db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90)
   ])
   state.allTags = allTags || []
   state.mealPlan = mealPlan || []
+  state.historyLog = historyLog || []
+  state.agentProfile = buildAgentProfile(state.historyLog, [])
   state.recipes  = recipes.map(normalizeRecipe)
   state.pantry   = pantry
   state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }))
@@ -254,6 +259,7 @@ function render() {
         ${!state.loading && state.tab === 'shop'    ? renderShop()    : ''}
         ${!state.loading && state.tab === 'log'     ? renderLog()     : ''}
         ${!state.loading && state.tab === 'calendar' ? renderCalendar() : ''}
+        ${!state.loading && state.tab === 'history'  ? renderHistory()  : ''}
         ${!state.loading && state.tab === 'tags'    ? renderTags()    : ''}
         ${!state.loading && state.tab === 'chat'    ? renderChat()    : ''}
       </div>
@@ -605,6 +611,96 @@ const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 
+
+// ── ANALYTICS & AGENT PROFILE ────────────────────────────────────────────────
+function buildAgentProfile(fullLog, fullMealPlan) {
+  if (!fullLog.length) return null
+
+  // Group log by date
+  const byDate = {}
+  fullLog.forEach(e => {
+    const date = e.logged_at?.slice(0,10)
+    if (!date) return
+    if (!byDate[date]) byDate[date] = []
+    byDate[date].push(e)
+  })
+
+  const dates = Object.keys(byDate).sort()
+  const totalDays = dates.length
+  if (!totalDays) return null
+
+  // Daily calorie averages
+  const dailyCals = dates.map(d => byDate[d].reduce((s,e) => s + (e.calories||0), 0))
+  const avgCals = Math.round(dailyCals.reduce((a,b) => a+b, 0) / totalDays)
+  const daysOnTarget = dailyCals.filter(c => Math.abs(c - state.goals.calories) < 200).length
+  const daysOver = dailyCals.filter(c => c > state.goals.calories + 200).length
+  const daysUnder = dailyCals.filter(c => c < state.goals.calories - 300).length
+
+  // Most logged foods
+  const foodCount = {}
+  fullLog.forEach(e => {
+    const name = e.food?.split(' (')[0]?.toLowerCase() || ''
+    if (name) foodCount[name] = (foodCount[name] || 0) + 1
+  })
+  const topFoods = Object.entries(foodCount)
+    .sort((a,b) => b[1]-a[1])
+    .slice(0,8)
+    .map(([name, count]) => name + ' (' + count + 'x)')
+
+  // Recipe frequency from log
+  const recipeCount = {}
+  fullLog.forEach(e => {
+    if (e.food) {
+      const name = e.food.split(' (')[0]
+      recipeCount[name] = (recipeCount[name] || 0) + 1
+    }
+  })
+  const topRecipes = Object.entries(recipeCount)
+    .sort((a,b) => b[1]-a[1])
+    .slice(0,5)
+    .map(([name, count]) => name + ' (' + count + 'x)')
+
+  // Recipes not cooked recently
+  const recentFoods = new Set(fullLog.slice(0, 30).map(e => e.food?.split(' (')[0]?.toLowerCase()))
+  const staleRecipes = state.recipes
+    .filter(r => !recentFoods.has(r.name.toLowerCase()))
+    .slice(0, 5)
+    .map(r => r.name)
+
+  // Day of week patterns
+  const dayCalories = {0:[], 1:[], 2:[], 3:[], 4:[], 5:[], 6:[]}
+  Object.entries(byDate).forEach(([date, entries]) => {
+    const dow = new Date(date + 'T12:00:00').getDay()
+    const total = entries.reduce((s,e) => s + (e.calories||0), 0)
+    if (total > 0) dayCalories[dow].push(total)
+  })
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  const weakDays = Object.entries(dayCalories)
+    .filter(([,cals]) => cals.length >= 2)
+    .map(([dow, cals]) => ({ day: dayNames[dow], avg: Math.round(cals.reduce((a,b)=>a+b,0)/cals.length) }))
+    .filter(d => d.avg < state.goals.calories - 400)
+    .map(d => d.day + ' (avg ' + d.avg + ' cal)')
+
+  return {
+    totalDays, avgCals, daysOnTarget, daysOver, daysUnder,
+    topFoods, topRecipes, staleRecipes, weakDays,
+    goalCalories: state.goals.calories
+  }
+}
+
+function buildAgentContext(profile) {
+  if (!profile) return ''
+  return '\n\nMY EATING PATTERNS (last ' + profile.totalDays + ' days):\n' +
+    '- Average daily calories: ' + profile.avgCals + ' (goal: ' + profile.goalCalories + ')\n' +
+    '- Days on target: ' + profile.daysOnTarget + '/' + profile.totalDays + '\n' +
+    (profile.daysOver ? '- Days over goal: ' + profile.daysOver + '\n' : '') +
+    (profile.daysUnder ? '- Days significantly under: ' + profile.daysUnder + '\n' : '') +
+    (profile.weakDays.length ? '- Low calorie days: ' + profile.weakDays.join(', ') + '\n' : '') +
+    (profile.topRecipes.length ? '- Most cooked: ' + profile.topRecipes.join(', ') + '\n' : '') +
+    (profile.staleRecipes.length ? '- Not cooked recently: ' + profile.staleRecipes.join(', ') + '\n' : '') +
+    (profile.topFoods.length ? '- Most logged foods: ' + profile.topFoods.join(', ') + '\n' : '')
+}
+
 function renderCalendar() {
   const dates = getWeekDates(state.weekOffset)
   const weekLabel = state.weekOffset === 0 ? 'This Week' : state.weekOffset === 1 ? 'Next Week' : state.weekOffset === -1 ? 'Last Week' : formatDate(dates[0]) + ' - ' + formatDate(dates[6])
@@ -679,6 +775,93 @@ function renderCalendar() {
     html += '</div>'
     html += '<div class="modal-btns"><button class="modal-cancel" id="cal-picker-cancel">Cancel</button></div>'
     html += '</div></div>'
+  }
+
+  html += '</div>'
+  return html
+}
+
+
+function renderHistory() {
+  const fullLog = state.historyLog
+  if (!fullLog.length) {
+    return '<div class="tab-content"><div class="section-title">History</div><div class="empty-state">No history yet. Start logging meals and it will show up here!</div></div>'
+  }
+
+  // Group by date
+  const byDate = {}
+  fullLog.forEach(e => {
+    const date = e.logged_at?.slice(0,10)
+    if (!date) return
+    if (!byDate[date]) byDate[date] = []
+    byDate[date].push(e)
+  })
+
+  // Get week dates for current history offset
+  const weekDates = getWeekDates(state.historyOffset)
+  const weekLabel = state.historyOffset === 0 ? 'This Week' : state.historyOffset === -1 ? 'Last Week' : formatDate(weekDates[0]) + ' - ' + formatDate(weekDates[6])
+
+  // Build profile
+  const profile = buildAgentProfile(fullLog, [])
+  const avgCals = profile?.avgCals || 0
+  const daysOnTarget = profile?.daysOnTarget || 0
+  const totalDays = profile?.totalDays || 0
+
+  let html = '<div class="tab-content">'
+
+  // Summary card
+  if (profile) {
+    html += '<div class="history-summary">'
+    html += '<div class="history-summary-title">Last ' + totalDays + ' days</div>'
+    html += '<div class="history-stats">'
+    html += '<div class="history-stat"><div class="history-stat-val">' + avgCals + '</div><div class="history-stat-label">Avg cal/day</div></div>'
+    html += '<div class="history-stat"><div class="history-stat-val">' + daysOnTarget + '</div><div class="history-stat-label">On target</div></div>'
+    html += '<div class="history-stat"><div class="history-stat-val">' + (profile.daysOver||0) + '</div><div class="history-stat-label">Over goal</div></div>'
+    html += '<div class="history-stat"><div class="history-stat-val">' + (profile.daysUnder||0) + '</div><div class="history-stat-label">Under goal</div></div>'
+    html += '</div>'
+    if (profile.topRecipes.length) {
+      html += '<div class="history-insight">Most cooked: ' + profile.topRecipes.slice(0,3).join(', ') + '</div>'
+    }
+    if (profile.staleRecipes.length) {
+      html += '<div class="history-insight">Not cooked recently: ' + profile.staleRecipes.slice(0,3).join(', ') + '</div>'
+    }
+    if (profile.weakDays.length) {
+      html += '<div class="history-insight">Low calorie days: ' + profile.weakDays.join(', ') + '</div>'
+    }
+    html += '</div>'
+  }
+
+  // Week navigation
+  html += '<div class="cal-header" style="margin-bottom:10px">'
+  html += '<button class="cal-nav" data-history-nav="-1">&lsaquo;</button>'
+  html += '<div class="cal-week-label">' + weekLabel + '</div>'
+  html += '<button class="cal-nav" data-history-nav="1">&rsaquo;</button>'
+  html += '</div>'
+
+  // Day entries for selected week
+  const weekDays = weekDates.filter(d => byDate[d])
+  if (!weekDays.length) {
+    html += '<div class="empty-state" style="padding:20px">No entries this week</div>'
+  } else {
+    weekDates.forEach(date => {
+      const entries = byDate[date]
+      if (!entries) return
+      const dayTotal = entries.reduce((s,e) => s + (e.calories||0), 0)
+      const onTarget = Math.abs(dayTotal - state.goals.calories) < 200
+      const over = dayTotal > state.goals.calories + 200
+      html += '<div class="history-day">'
+      html += '<div class="history-day-header">'
+      html += '<span class="history-day-name">' + formatDate(date) + '</span>'
+      html += '<span class="history-day-total ' + (over ? 'over' : onTarget ? 'on-target' : '') + '">' + dayTotal + ' cal</span>'
+      html += '</div>'
+      entries.forEach(e => {
+        html += '<div class="history-entry">'
+        html += '<span class="history-entry-food">' + esc(e.food) + '</span>'
+        html += '<span class="history-entry-cal">' + (e.calories||0) + ' cal</span>'
+        html += '</div>'
+      })
+      html += '</div>'
+    })
   }
 
   html += '</div>'
@@ -1381,6 +1564,16 @@ function bindEvents() {
     el.addEventListener('click', () => {
       state.tab = 'recipes'
       state.expandedRecipe = el.dataset.goRecipe
+      render()
+    })
+  })
+
+
+  // History tab navigation
+  document.querySelectorAll('.cal-nav[data-history-nav]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.historyOffset += parseInt(el.dataset.historyNav)
+      if (state.historyOffset > 0) state.historyOffset = 0
       render()
     })
   })

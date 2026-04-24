@@ -355,3 +355,28 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Sans', sans-s
 .lm-estimate-btn { flex:1; padding:9px 14px; background:var(--accent3); color:#2a5a10; border:1.5px solid var(--accent2); border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; transition:all 0.15s; }
 .lm-estimate-btn:hover { background:var(--accent); }
 .lm-estimate-btn:disabled { opacity:0.6; cursor:not-allowed; }
+
+/* ── HISTORY TAB ── */
+.history-summary { background:var(--ink); color:var(--bg); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+.history-summary-title { font-family:'Fraunces',serif; font-size:14px; color:var(--accent); margin-bottom:10px; }
+.history-stats { display:flex; gap:0; margin-bottom:10px; }
+.history-stat { flex:1; text-align:center; border-right:1px solid rgba(255,255,255,0.1); }
+.history-stat:last-child { border-right:none; }
+.history-stat-val { font-family:'Fraunces',serif; font-size:20px; font-weight:500; }
+.history-stat-label { font-size:10px; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+.history-insight { font-size:11px; color:rgba(255,255,255,0.6); padding:3px 0; border-top:1px solid rgba(255,255,255,0.1); margin-top:4px; padding-top:6px; }
+.history-day { background:var(--surface); border:1px solid var(--border); border-radius:10px; margin-bottom:8px; overflow:hidden; }
+.history-day-header { display:flex; justify-content:space-between; align-items:center; padding:9px 12px; background:var(--surface2); border-bottom:1px solid var(--border); }
+.history-day-name { font-size:12px; font-weight:600; color:var(--ink); }
+.history-day-total { font-size:12px; font-weight:600; color:var(--ink2); }
+.history-day-total.on-target { color:#2a7a10; }
+.history-day-total.over { color:#8a2020; }
+.history-entry { display:flex; justify-content:space-between; align-items:center; padding:7px 12px; border-bottom:1px solid #f5f1ea; }
+.history-entry:last-child { border-bottom:none; }
+.history-entry-food { font-size:12px; color:var(--ink); flex:1; }
+.history-entry-cal { font-size:12px; color:var(--ink3); }
+
+/* ── AGENT INSIGHTS ── */
+.agent-insights { background:var(--accent3); border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+.agent-insight-title { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:#2a5a10; font-weight:600; margin-bottom:6px; }
+.agent-insight-item { font-size:12px; color:#2a5a10; padding:2px 0; line-height:1.5; }
