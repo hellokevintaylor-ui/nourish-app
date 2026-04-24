@@ -418,3 +418,14 @@ html, body {
 .fmt-li { display:flex; gap:5px; margin:2px 0; }
 .fmt-li::before { content:'·'; color:var(--sage); font-weight:700; flex-shrink:0; }
 .fmt-bold { font-weight:600; }
+
+/* ── HEADER CAL TALLY ── */
+.header-cal {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sage2);
+  letter-spacing: 0.3px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
