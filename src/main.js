@@ -1129,8 +1129,9 @@ function bindEvents() {
       ? "How many calories in " + portion + " of this recipe? Just give me a single number.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
       : "How many calories per serving of this recipe?\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
     window.open("https://claude.ai/new?q=" + encodeURIComponent(q), "_blank")
-    state.logModal.estimateMsg = "Claude opened in a new tab - come back and enter the number!"
-    render()
+    // Update note without full re-render to preserve event listeners
+    const noteEl = document.querySelector('.modal-note')
+    if (noteEl) noteEl.textContent = "Claude opened - come back and enter the number here!"
   })
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
   document.getElementById('lm-save')?.addEventListener('click', async () => {
