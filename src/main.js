@@ -1013,6 +1013,81 @@ function bindEvents() {
   document.getElementById('claude-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('claude-send-btn')?.click()
   })
+
+
+  // ── TAG LIBRARY HANDLERS ──
+
+  // Add tag from library tab
+  document.querySelectorAll('[data-add-lib-tag]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const ns = el.dataset.addLibTag
+      const input = document.getElementById('new-lib-tag-' + ns)
+      const name = input?.value?.trim()
+      if (!name) return
+      const saved = await db.saveTag(name, ns)
+      if (saved && !state.allTags.find(t => t.name === name && t.namespace === ns)) state.allTags.push(saved)
+      if (input) input.value = ''
+      render()
+    })
+  })
+  document.querySelectorAll('.tag-lib-input').forEach(el => {
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const ns = el.id.replace('new-lib-tag-', '')
+        document.querySelector('[data-add-lib-tag="' + ns + '"]')?.click()
+      }
+    })
+  })
+  document.querySelectorAll('.tag-lib-del[data-del-tag-id]').forEach(el => {
+    el.addEventListener('click', async () => {
+      await db.deleteTag(el.dataset.delTagId)
+      state.allTags = state.allTags.filter(t => t.id !== el.dataset.delTagId)
+      render()
+    })
+  })
+
+  // Tag picker open/close
+  document.querySelectorAll('.tag-picker-btn[data-picker-id]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const key = el.dataset.pickerId + '-' + el.dataset.pickerNs
+      state.tagPickerOpen = state.tagPickerOpen === key ? null : key
+      render()
+    })
+  })
+
+  // Tag picker checkbox toggle
+  document.querySelectorAll('.tag-picker-check[data-pick-tag]').forEach(el => {
+    el.addEventListener('change', async e => {
+      e.stopPropagation()
+      if (el.checked) await addTagToItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
+      else await removeTagFromItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
+    })
+  })
+
+  // Tag picker new inline tag
+  document.querySelectorAll('.tag-picker-add[data-new-tag-item]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const input = document.getElementById('new-tag-' + el.dataset.newTagItem + '-' + el.dataset.newTagNs)
+      const name = input?.value?.trim()
+      if (!name) return
+      await addTagToItem(name, el.dataset.newTagNs, el.dataset.newTagItem)
+      if (input) input.value = ''
+    })
+  })
+  document.querySelectorAll('.tag-picker-input').forEach(el => {
+    el.addEventListener('click', e => e.stopPropagation())
+    el.addEventListener('keydown', async e => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        el.closest('.tag-picker-popover')?.querySelector('.tag-picker-add')?.click()
+      }
+    })
+  })
+  document.querySelectorAll('.tag-picker-popover').forEach(el => {
+    el.addEventListener('click', e => e.stopPropagation())
+  })
 }
 
 // ── START ─────────────────────────────────────────────────────────────────────
