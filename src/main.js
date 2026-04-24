@@ -1448,30 +1448,26 @@ function bindEvents() {
     })
   })
 
-  // Tag picker checkbox toggle
+  // Tag picker checkbox toggle — close picker after applying
   document.querySelectorAll('.tag-picker-check[data-pick-tag]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      // Use setTimeout to let checkbox state update before reading it
       setTimeout(async () => {
+        state.tagPickerOpen = null
         if (el.checked) await addTagToItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
         else await removeTagFromItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
       }, 0)
     })
   })
-  // Prevent label clicks from closing picker
-  document.querySelectorAll('.tag-picker-option').forEach(el => {
-    el.addEventListener('click', e => e.stopPropagation())
-  })
 
-  // Tag picker new inline tag
+  // Tag picker new inline tag — close picker after adding
   document.querySelectorAll('.tag-picker-add[data-new-tag-item]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      // Find input by proximity rather than ID (UUIDs contain hyphens which confuse ID lookup)
       const input = el.closest('.tag-picker-new')?.querySelector('.tag-picker-input')
       const name = input?.value?.trim()
       if (!name) return
+      state.tagPickerOpen = null
       await addTagToItem(name, el.dataset.newTagNs, el.dataset.newTagItem)
       if (input) input.value = ''
     })
@@ -1486,9 +1482,14 @@ function bindEvents() {
       }
     })
   })
-  document.querySelectorAll('.tag-picker-popover').forEach(el => {
-    el.addEventListener('click', e => e.stopPropagation())
-  })
+
+  // Close picker when clicking anywhere outside it
+  document.addEventListener('click', () => {
+    if (state.tagPickerOpen) {
+      state.tagPickerOpen = null
+      render()
+    }
+  }, { once: true })
 
 
   // ── CALENDAR HANDLERS ──
