@@ -1585,10 +1585,3 @@ function bindEvents() {
 // ── START ─────────────────────────────────────────────────────────────────────
 init()
 
-// Ensure wheel events reach the content scroller
-document.addEventListener('wheel', (e) => {
-  const contentEl = document.querySelector('.content')
-  if (contentEl && contentEl.contains(e.target)) {
-    contentEl.scrollTop += e.deltaY
-  }
-}, { passive: true })

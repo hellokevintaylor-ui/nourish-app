@@ -34,11 +34,10 @@ html, body {
   background: var(--cream);
   font-family: 'DM Sans', sans-serif;
   color: var(--ink);
-  overflow: hidden;
   font-size: 14px;
 }
 
-#app { height: 100vh; display: flex; justify-content: center; }
+#app { min-height: 100vh; display: flex; justify-content: center; }
 
 /* ── HEADER ── */
 .header {
@@ -48,7 +47,7 @@ html, body {
   padding-top: calc(14px + var(--safe-top));
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   flex-shrink: 0;
-  position: relative;
+  position: sticky; top: 0; z-index: 20;
 }
 .header::after {
   content: '';
@@ -109,6 +108,7 @@ html, body {
   display:flex; background:var(--cream2);
   border-bottom:1px solid var(--border);
   flex-shrink:0; overflow-x:auto; scrollbar-width:none;
+  position:sticky; top:0; z-index:10;
 }
 .tabs::-webkit-scrollbar { display:none; }
 .tab {
@@ -138,7 +138,7 @@ html, body {
 .cal-bar-nums span { color:var(--ink4); font-weight:400; }
 
 /* ── CONTENT ── */
-.content { flex:1; flex-shrink:1; overflow-y:auto; -webkit-overflow-scrolling:touch; min-height:0; overscroll-behavior:contain; padding-bottom:calc(var(--safe-bot) + 20px); position:relative; }
+.content { flex:1; padding-bottom:40px; }
 .tab-content { padding:16px 18px; }
 
 /* ── LOADING ── */
