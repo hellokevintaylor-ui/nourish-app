@@ -433,7 +433,7 @@ function renderPantry() {
             const pickerId = item.id + '-location'
             const isOpen = state.tagPickerOpen === pickerId
             const pantryTags = getTagsForNamespace('location')
-            const picker = isOpen ? ('<div class="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-pantry" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="pantry">Add</button></div></div>') : ''
+            const picker = isOpen ? ('<div class="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
             return '<div class="pantry-row pantry-row-wrap">' +
               '<div class="pantry-row-main">' +
                 '<div class="pantry-row-name">' + esc(item.name) + '</div>' +
@@ -482,7 +482,7 @@ function renderShop() {
                 const pickerId = i.id + '-location'
                 const isOpen = state.tagPickerOpen === pickerId
                 const storeTags = getTagsForNamespace('location')
-                const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-store" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="store">Add</button></div></div>') : ''
+                const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
                 return '<div class="shop-row">' +
                   '<div class="shop-check" data-check="' + i.id + '"></div>' +
                   '<div class="shop-item-main">' +
@@ -1057,11 +1057,18 @@ function bindEvents() {
 
   // Tag picker checkbox toggle
   document.querySelectorAll('.tag-picker-check[data-pick-tag]').forEach(el => {
-    el.addEventListener('change', async e => {
+    el.addEventListener('click', async e => {
       e.stopPropagation()
-      if (el.checked) await addTagToItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
-      else await removeTagFromItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
+      // Use setTimeout to let checkbox state update before reading it
+      setTimeout(async () => {
+        if (el.checked) await addTagToItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
+        else await removeTagFromItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
+      }, 0)
     })
+  })
+  // Prevent label clicks from closing picker
+  document.querySelectorAll('.tag-picker-option').forEach(el => {
+    el.addEventListener('click', e => e.stopPropagation())
   })
 
   // Tag picker new inline tag
