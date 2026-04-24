@@ -1646,3 +1646,12 @@ function bindEvents() {
 // ── START ─────────────────────────────────────────────────────────────────────
 init()
 
+// Re-fetch from Supabase when user switches back to this tab (e.g. after using Chrome extension)
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
+    state.recipes = recipes.map(normalizeRecipe)
+    state.allTags = allTags || []
+    render()
+  }
+})
