@@ -249,3 +249,28 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Sans', sans-s
 .recipe-category-label { font-size:11px; color:var(--ink3); white-space:nowrap; }
 .category-select-inline { flex:1; padding:5px 8px; border:1.5px solid var(--border2); border-radius:7px; font-size:12px; font-family:'DM Sans',sans-serif; background:var(--surface2); color:var(--ink); outline:none; }
 .category-select-inline:focus { border-color:var(--accent2); }
+
+/* ── TAGS ── */
+.tag-filter-row { display:flex; gap:6px; overflow-x:auto; margin-bottom:12px; scrollbar-width:none; flex-wrap:wrap; }
+.tag-filter-row::-webkit-scrollbar { display:none; }
+.tag-filter-chip { padding:4px 10px; background:var(--surface); border:1.5px solid var(--border2); border-radius:20px; font-size:11px; white-space:nowrap; cursor:pointer; font-family:'DM Sans',sans-serif; color:var(--ink2); transition:all 0.15s; }
+.tag-filter-chip.active { background:var(--accent); border-color:var(--accent2); color:var(--ink); font-weight:600; }
+.tag-filter-chip:hover { background:var(--accent3); border-color:var(--accent2); }
+.tag-chips-row { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px; min-height:8px; }
+.tag-chip { display:inline-flex; align-items:center; gap:3px; background:var(--accent3); border:1px solid var(--accent2); border-radius:12px; padding:2px 6px 2px 8px; font-size:11px; color:#2a5a10; }
+.tag-chip-remove { background:none; border:none; cursor:pointer; color:#2a7a10; font-size:13px; padding:0; line-height:1; }
+.tag-chip-remove:hover { color:#8a2020; }
+.tag-chip-small { display:inline-block; background:var(--accent3); border-radius:10px; padding:1px 6px; font-size:10px; color:#2a5a10; margin-right:2px; }
+.recipe-tags-preview { margin-bottom:2px; }
+.tag-input-wrap { position:relative; margin-bottom:8px; }
+.tag-input { width:100%; padding:6px 10px; border:1.5px solid var(--border2); border-radius:8px; font-size:12px; font-family:'DM Sans',sans-serif; background:var(--surface2); color:var(--ink); outline:none; }
+.tag-input:focus { border-color:var(--accent2); }
+.tag-input::placeholder { color:var(--ink4); }
+.tag-suggestions { position:absolute; top:100%; left:0; right:0; background:var(--surface); border:1.5px solid var(--accent2); border-radius:8px; z-index:50; max-height:120px; overflow-y:auto; display:none; flex-wrap:wrap; gap:4px; padding:6px; }
+.tag-suggestion { padding:3px 9px; background:var(--accent3); border:1px solid var(--accent2); border-radius:12px; font-size:11px; cursor:pointer; font-family:'DM Sans',sans-serif; color:#2a5a10; }
+.tag-suggestion:hover { background:var(--accent); }
+.pantry-row-wrap { flex-direction:column; align-items:flex-start; padding:8px 2px; }
+.pantry-row-main { display:flex; align-items:center; gap:8px; width:100%; }
+.pantry-row-tags { width:100%; margin-top:5px; }
+.shop-item-main { flex:1; min-width:0; }
+.shop-item-tags { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; align-items:center; }

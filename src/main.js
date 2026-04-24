@@ -11,6 +11,9 @@ const state = {
   showSync: false,
   expandedRecipe: null,
   activeCategory: 'All',
+  allTags: [],
+  activeTagFilter: null,
+  tagInput: { recipes: '', pantry: '', shop: '' },
   editingNotes: null,
   shopReview: null,
   pasteModal: false,
@@ -25,11 +28,56 @@ const GOAL_PRESETS = {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
+
+async function addTagToItem(name, namespace, itemId) {
+  // Save tag to tag library
+  const savedTag = await db.saveTag(name, namespace)
+  if (savedTag && !state.allTags.find(t => t.name === name && t.namespace === namespace)) {
+    state.allTags.push(savedTag)
+  }
+
+  if (namespace === 'meal') {
+    const r = state.recipes.find(x => String(x.id) === String(itemId))
+    if (r && !(r.tags||[]).includes(name)) {
+      r.tags = [...(r.tags||[]), name]
+      await db.updateRecipeTags(r.id, r.tags)
+    }
+  } else if (namespace === 'pantry') {
+    const p = state.pantry.find(x => String(x.id) === String(itemId))
+    if (p && !(p.tags||[]).includes(name)) {
+      p.tags = [...(p.tags||[]), name]
+      await db.updatePantryTags(p.id, p.tags)
+    }
+  } else if (namespace === 'store') {
+    const s = state.shopList.find(x => String(x.id) === String(itemId))
+    if (s && !(s.tags||[]).includes(name)) {
+      s.tags = [...(s.tags||[]), name]
+      await db.updateShopItemTags(s.id, s.tags)
+    }
+  }
+  render()
+}
+
+async function removeTagFromItem(name, namespace, itemId) {
+  if (namespace === 'meal') {
+    const r = state.recipes.find(x => String(x.id) === String(itemId))
+    if (r) { r.tags = (r.tags||[]).filter(t => t !== name); await db.updateRecipeTags(r.id, r.tags) }
+  } else if (namespace === 'pantry') {
+    const p = state.pantry.find(x => String(x.id) === String(itemId))
+    if (p) { p.tags = (p.tags||[]).filter(t => t !== name); await db.updatePantryTags(p.id, p.tags) }
+  } else if (namespace === 'store') {
+    const s = state.shopList.find(x => String(x.id) === String(itemId))
+    if (s) { s.tags = (s.tags||[]).filter(t => t !== name); await db.updateShopItemTags(s.id, s.tags) }
+  }
+  render()
+}
+
 async function init() {
   render()
-  const [recipes, pantry, shopList, log, goals] = await Promise.all([
-    db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals()
+  const [recipes, pantry, shopList, log, goals, allTags] = await Promise.all([
+    db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags()
   ])
+  state.allTags = allTags || []
   state.recipes  = recipes.map(normalizeRecipe)
   state.pantry   = pantry
   state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }))
@@ -40,7 +88,7 @@ async function init() {
 }
 
 function normalizeRecipe(r) {
-  return { ...r, cookingNotes: r.cooking_notes || '', clippedFrom: r.clipped_from || '', category: r.category || '', text: [r.ingredients, r.instructions].filter(Boolean).join('\n\n') }
+  return { ...r, cookingNotes: r.cooking_notes || '', clippedFrom: r.clipped_from || '', category: r.category || '', tags: r.tags || [], text: [r.ingredients, r.instructions].filter(Boolean).join('\n\n') }
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -215,13 +263,51 @@ function categoryOptions(selected) {
   }).join('')
 }
 
+
+// Tag helpers
+function getTagsForNamespace(namespace) {
+  return state.allTags.filter(t => t.namespace === namespace)
+}
+function tagsForRecipe(r) { return r.tags || [] }
+function tagsForPantry(p) { return p.tags || [] }
+function tagsForShop(s) { return s.tags || [] }
+
+function renderTagChips(tags, itemId, namespace, removeEvent) {
+  if (!tags || !tags.length) return ''
+  return tags.map(tag =>
+    '<span class="tag-chip">' + esc(tag) +
+    '<button class="tag-chip-remove" data-remove-tag="' + esc(tag) + '" data-tag-item="' + itemId + '" data-tag-ns="' + namespace + '">×</button>' +
+    '</span>'
+  ).join('')
+}
+
+function renderTagInput(itemId, namespace, currentTags) {
+  const existing = getTagsForNamespace(namespace)
+  const suggestions = existing.filter(t => !(currentTags||[]).includes(t.name))
+  return '<div class="tag-input-wrap">' +
+    '<input class="tag-input" id="tag-input-' + itemId + '" data-tag-item="' + itemId + '" data-tag-ns="' + namespace + '" placeholder="Add tag..." autocomplete="off" />' +
+    (suggestions.length ? '<div class="tag-suggestions" id="tag-sugg-' + itemId + '">' +
+      suggestions.map(t => '<button class="tag-suggestion" data-sugg-tag="' + esc(t.name) + '" data-tag-item="' + itemId + '" data-tag-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
+    '</div>' : '') +
+  '</div>'
+}
+
+function renderTagFilterChips(namespace, label) {
+  const tags = getTagsForNamespace(namespace)
+  if (!tags.length) return ''
+  return '<div class="tag-filter-row">' +
+    '<button class="tag-filter-chip ' + (!state.activeTagFilter ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
+    tags.map(t => '<button class="tag-filter-chip ' + (state.activeTagFilter === t.name ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
+  '</div>'
+}
+
 function renderRecipeCard(r) {
   const isExpanded = state.expandedRecipe === r.id
   const header = '<div class="recipe-card" data-rid="' + r.id + '">' +
     '<div class="recipe-card-header">' +
       '<div>' +
         '<div class="recipe-name">' + esc(r.name) + '</div>' +
-        (r.category ? '<div class="recipe-category-tag">' + esc(r.category) + '</div>' : '') +
+        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
         (r.clippedFrom ? '<div class="recipe-meta">📎 ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
       '</div>' +
@@ -235,6 +321,9 @@ function renderRecipeCard(r) {
       '<button class="notes-save-btn" data-notes-save="' + r.id + '">Save Notes</button>'
     : '<div class="notes-display ' + (!r.cookingNotes ? 'notes-empty' : '') + '">' + (r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!') + '</div>'
 
+  const tagChips = renderTagChips(r.tags, r.id, 'meal')
+  const tagInput = renderTagInput(r.id, 'meal', r.tags)
+
   const body = '<div class="recipe-body">' +
     (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">🔗 View original</a></div>' : '') +
     (r.ingredients ? '<div class="recipe-section-label">Ingredients</div><div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '') +
@@ -243,13 +332,9 @@ function renderRecipeCard(r) {
       '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
     '</div>' +
     notesSection +
-    '<div class="recipe-category-row">' +
-      '<span class="recipe-category-label">Category:</span>' +
-      '<select class="category-select-inline" data-cat-recipe="' + r.id + '">' +
-        '<option value="">None</option>' +
-        categoryOptions(r.category) +
-      '</select>' +
-    '</div>' +
+    '<div class="recipe-section-label">Meal Tags</div>' +
+    '<div class="tag-chips-row">' + tagChips + '</div>' +
+    tagInput +
     '<div class="recipe-actions">' +
       '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
       '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">🍽 Log meal</button>' +
@@ -262,19 +347,14 @@ function renderRecipeCard(r) {
 }
 
 function renderRecipes() {
-  const categories = ['All', ...new Set(state.recipes.map(r => r.category).filter(Boolean))]
-  const filtered = state.activeCategory === 'All' ? state.recipes : state.recipes.filter(r => r.category === state.activeCategory)
+  const filtered = state.activeTagFilter ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
   return `
     <div class="tab-content">
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <button class="add-btn" id="add-recipe-btn">+ Add Recipe</button>
       </div>
-      ${state.recipes.length > 0 ? `
-        <div class="category-chips">
-          ${categories.map(c => '<button class="category-chip ' + (state.activeCategory===c?'active':'') + '" data-category="' + esc(c) + '">' + esc(c) + '</button>').join('')}
-        </div>
-      ` : ''}
+      ${state.allTags.some(t => t.namespace === 'meal') ? renderTagFilterChips('meal', 'Meal') : ''}
       ${state.addRecipeModal ? `
         <div class="recipe-add-box">
           <input id="r-name" placeholder="Recipe name" />
@@ -304,6 +384,7 @@ function renderPantry() {
   return `
     <div class="tab-content">
       <div class="section-title">My Pantry</div>
+      ${state.allTags.some(t => t.namespace === 'pantry') ? renderTagFilterChips('pantry', 'Pantry') : ''}
       <div class="pantry-hint">Add items with quantities — tap the qty field to update anytime.</div>
       <div class="pantry-add-box">
         <div class="pantry-add-row">
@@ -348,6 +429,7 @@ function renderShop() {
       ${state.shopList.length === 0 ? `
         <div class="empty-state">Your list is empty.<br>Open a recipe and tap <strong>Add to list</strong>! 🛒</div>
       ` : ''}
+      ${state.allTags.some(t => t.namespace === 'store') ? renderTagFilterChips('store', 'Store') : ''}
       ${need.length > 0 ? `
         <div class="shop-got-it-bar">
           <div class="shop-got-it-text">${need.length} item${need.length!==1?'s':''} to buy</div>
@@ -515,6 +597,59 @@ function bindEvents() {
 
   // Goals
   document.getElementById('goals-toggle')?.addEventListener('click', () => { state.showGoals = !state.showGoals; state.showSync = false; render() })
+
+  // ── TAG EVENTS ──
+
+  // Filter chips
+  document.querySelectorAll('.tag-filter-chip[data-filter-tag]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.activeTagFilter = el.dataset.filterTag || null
+      render()
+    })
+  })
+
+  // Tag input - show/hide suggestions on focus
+  document.querySelectorAll('.tag-input[data-tag-item]').forEach(el => {
+    el.addEventListener('focus', () => {
+      const sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
+      if (sugg) sugg.style.display = 'flex'
+    })
+    el.addEventListener('keydown', async e => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const name = el.value.trim()
+        if (!name) return
+        const ns = el.dataset.tagNs
+        const itemId = el.dataset.tagItem
+        await addTagToItem(name, ns, itemId)
+      }
+    })
+    el.addEventListener('input', () => {
+      const val = el.value.toLowerCase()
+      const sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
+      if (!sugg) return
+      sugg.querySelectorAll('.tag-suggestion').forEach(btn => {
+        btn.style.display = btn.dataset.suggTag.toLowerCase().includes(val) ? 'block' : 'none'
+      })
+      sugg.style.display = 'flex'
+    })
+  })
+
+  // Click suggestion
+  document.querySelectorAll('.tag-suggestion[data-sugg-tag]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.preventDefault()
+      await addTagToItem(el.dataset.suggTag, el.dataset.tagNs, el.dataset.tagItem)
+    })
+  })
+
+  // Remove tag
+  document.querySelectorAll('.tag-chip-remove[data-remove-tag]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      await removeTagFromItem(el.dataset.removeTag, el.dataset.tagNs, el.dataset.tagItem)
+    })
+  })
   document.getElementById('sync-toggle')?.addEventListener('click', () => { state.showSync = !state.showSync; state.showGoals = false; render() })
   document.getElementById('sync-copy-btn')?.addEventListener('click', () => {
     navigator.clipboard.writeText(getUserId()).then(() => {

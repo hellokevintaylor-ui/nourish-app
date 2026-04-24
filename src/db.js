@@ -115,3 +115,31 @@ export async function saveGoals(goals) {
     await supabase.from('goals').insert(row)
   }
 }
+
+// ── TAGS ─────────────────────────────────────────────────────────────────────
+export async function fetchTags(namespace) {
+  const q = namespace ? `?user_id=eq.${uid()}&namespace=eq.${namespace}&order=name` : `?user_id=eq.${uid()}&order=name`
+  const { data } = await supabase.from('tags').select('*').eq('user_id', uid())
+  if (namespace) return (data || []).filter(t => t.namespace === namespace)
+  return data || []
+}
+export async function saveTag(name, namespace) {
+  const { data } = await supabase.from('tags').upsert({ user_id: uid(), name, namespace }, { onConflict: 'user_id,name,namespace' }).select()
+  return data?.[0]
+}
+export async function deleteTag(id) {
+  await supabase.from('tags').delete().eq('id', id)
+}
+
+// Update recipe tags
+export async function updateRecipeTags(id, tags) {
+  await supabase.from('recipes').update({ tags }).eq('id', id)
+}
+// Update pantry tags
+export async function updatePantryTags(id, tags) {
+  await supabase.from('pantry').update({ tags }).eq('id', id)
+}
+// Update shop item tags
+export async function updateShopItemTags(id, tags) {
+  await supabase.from('shop_list').update({ tags }).eq('id', id)
+}
