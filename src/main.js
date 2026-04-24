@@ -1111,10 +1111,10 @@ function bindEvents() {
       await db.deleteLogEntry(el.dataset.logDel); render()
     })
   })
-  document.querySelectorAll('[data-log-recipe]').forEach(el => {
+  document.querySelectorAll('.ra-log[data-log-recipe]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const r = state.recipes.find(x => x.id === el.dataset.logRecipe)
+      const r = state.recipes.find(x => String(x.id) === String(el.dataset.logRecipe))
       if (r) { state.logModal = { recipeId: r.id, recipeName: r.name }; render() }
     })
   })
