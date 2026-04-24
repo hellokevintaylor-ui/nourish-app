@@ -171,6 +171,62 @@ function stripMeasurements(line) {
     .replace(/[,.\-–()]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+// Convert a full recipe ingredient line into a clean shopping list name
+// e.g. "3 ounces (85g) crustless white bread, cut into 1/2-inch cubes (about 2 cups)" → "White Bread, 3oz"
+function parseIngredientLine(line) {
+  // Unicode fractions map
+  const fracs = { '¼':'1/4','½':'1/2','¾':'3/4','⅓':'1/3','⅔':'2/3','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8' }
+  let s = line
+  Object.entries(fracs).forEach(([u, r]) => { s = s.replace(new RegExp(u, 'g'), r) })
+
+  // Strip everything after a comma or prep verb — "cut into", "divided", "at room temp" etc.
+  s = s.replace(/,.*$/, '')
+  s = s.replace(/\s+(cut|sliced|diced|chopped|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|room temperature|at room|packed|unpacked|heaping|about|such as|or more|to taste).*/i, '')
+
+  // Remove parenthetical metric/imperial equivalents like (85g) or (about 2 cups)
+  s = s.replace(/\([^)]*\)/g, ' ')
+
+  // Extract leading quantity + unit  e.g. "3 ounces", "1/2 cup", "2 tablespoons"
+  const unitMap = {
+    'tablespoons?':'tbsp', 'tbsp':'tbsp',
+    'teaspoons?':'tsp', 'tsp':'tsp',
+    'cups?':'cup',
+    'ounces?':'oz', 'oz':'oz',
+    'pounds?':'lb', 'lbs?':'lb',
+    'grams?':'g', 'g':'g',
+    'kilograms?':'kg', 'kg':'kg',
+    'ml':'ml', 'milliliters?':'ml',
+    'liters?':'L', 'l':'L',
+    'pints?':'pt', 'quarts?':'qt',
+    'cans?':'can', 'jars?':'jar',
+    'packages?':'pkg', 'pkgs?':'pkg',
+    'bunches?':'bunch', 'heads?':'head',
+    'cloves?':'clove', 'slices?':'slice',
+    'pieces?':'piece', 'strips?':'strip',
+    'sprigs?':'sprig', 'stalks?':'stalk',
+  }
+  const unitPattern = Object.keys(unitMap).join('|')
+  const qtyRe = new RegExp(`^\\s*(\\d+(?:[\\./]\\d+)?)\\s*(?:(${unitPattern})\\s+)?`, 'i')
+  let qty = ''
+  const qtyMatch = s.match(qtyRe)
+  if (qtyMatch) {
+    const num = qtyMatch[1]
+    const rawUnit = qtyMatch[2]
+    const unit = rawUnit ? (unitMap[Object.keys(unitMap).find(k => new RegExp('^'+k+'$','i').test(rawUnit))] || rawUnit) : ''
+    qty = unit ? `${num}${unit}` : num
+    s = s.replace(qtyRe, '')
+  }
+
+  // Strip leftover size/state adjectives
+  s = s.replace(/\b(large|medium|small|fresh|dried|frozen|raw|cooked|whole|boneless|skinless|canned|unsalted|salted|extra[-\s]virgin|pure|plain)\b/gi, '')
+
+  // Clean up and title-case
+  s = s.replace(/\s+/g, ' ').trim()
+  const name = s.replace(/\b\w/g, c => c.toUpperCase())
+
+  return qty ? `${name}, ${qty}` : name
+}
+
 function buildClaudeContext() {
   const recipeList = state.recipes.length === 0 ? 'No recipes saved yet.'
     : state.recipes.map((r,i) => `${i+1}. ${r.name}\nINGREDIENTS:\n${r.ingredients||''}\nINSTRUCTIONS:\n${r.instructions||r.text||''}${r.cookingNotes?`\nMY NOTES: ${r.cookingNotes}`:''}`).join('\n\n')
@@ -1257,8 +1313,9 @@ function bindEvents() {
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
         .map(l => l.replace(/^[•\-\d\.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
-      const items = ingLines.map(name => {
-        const stripped = stripMeasurements(name)
+      const items = ingLines.map(raw => {
+        const name = parseIngredientLine(raw)
+        const stripped = stripMeasurements(raw)
         const match = state.pantry.find(p => {
           const pl = p.name.toLowerCase()
           return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
