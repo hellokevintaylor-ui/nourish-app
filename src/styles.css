@@ -350,8 +350,8 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Sans', sans-s
 
 /* ── LOG MODAL ESTIMATE ── */
 .lm-cal-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-.lm-cal-row input { flex:1; padding:9px 12px; border:1.5px solid var(--border2); border-radius:8px; font-size:14px; font-family:'DM Sans',sans-serif; background:var(--surface2); color:var(--ink); outline:none; }
+.lm-cal-row input { width:90px; flex:none; padding:9px 12px; border:1.5px solid var(--border2); border-radius:8px; font-size:14px; font-family:'DM Sans',sans-serif; background:var(--surface2); color:var(--ink); outline:none; text-align:center; }
 .lm-cal-row input:focus { border-color:var(--accent2); }
-.lm-estimate-btn { padding:9px 14px; background:var(--accent3); color:#2a5a10; border:1.5px solid var(--accent2); border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; transition:all 0.15s; }
+.lm-estimate-btn { flex:1; padding:9px 14px; background:var(--accent3); color:#2a5a10; border:1.5px solid var(--accent2); border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; transition:all 0.15s; }
 .lm-estimate-btn:hover { background:var(--accent); }
 .lm-estimate-btn:disabled { opacity:0.6; cursor:not-allowed; }
