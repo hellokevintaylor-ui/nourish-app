@@ -791,20 +791,25 @@ function renderShopReview() {
 
 function renderLogModal() {
   const m = state.logModal
-  return `
-    <div class="modal-bg" id="log-modal-bg">
-      <div class="modal-sheet">
-        <div class="modal-title">🍽 Log a serving</div>
-        <div class="modal-sub">${esc(m.recipeName)}</div>
-        <input id="lm-portion" placeholder='How much? (e.g. "1 cup", "2 servings")' />
-        <input id="lm-cals" type="number" placeholder="Calories (leave blank to estimate)" />
-        <div class="modal-note">💡 Not sure? Leave calories blank and ask AI to estimate!</div>
-        <div class="modal-btns">
-          <button class="modal-cancel" id="lm-cancel">Cancel</button>
-          <button class="modal-save" id="lm-save">Add to Log</button>
-        </div>
-      </div>
-    </div>`
+  const recipe = m.recipeId ? state.recipes.find(r => String(r.id) === String(m.recipeId)) : null
+  const estimating = m.estimating || false
+  return '<div class="modal-bg" id="log-modal-bg">' +
+    '<div class="modal-sheet">' +
+      '<div class="modal-title">Log a serving</div>' +
+      '<div class="modal-sub">' + esc(m.recipeName) + '</div>' +
+      '<input id="lm-portion" placeholder="How much? (e.g. 1 cup, 2 servings)" />' +
+      '<div class="lm-cal-row">' +
+        '<input id="lm-cals" type="number" placeholder="Calories" style="flex:1" />' +
+        (recipe ? '<button class="lm-estimate-btn" id="lm-estimate"' + (estimating ? ' disabled' : '') + '>' +
+          (estimating ? 'Estimating...' : 'Estimate') + '</button>' : '') +
+      '</div>' +
+      (m.estimateMsg ? '<div class="modal-note">' + esc(m.estimateMsg) + '</div>' : '<div class="modal-note">Type a portion and tap Estimate for a calorie guess, or enter manually.</div>') +
+      '<div class="modal-btns">' +
+        '<button class="modal-cancel" id="lm-cancel">Cancel</button>' +
+        '<button class="modal-save" id="lm-save">Add to Log</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
 }
 
 // ── EVENTS ────────────────────────────────────────────────────────────────────
@@ -1115,6 +1120,47 @@ function bindEvents() {
     })
   })
   document.getElementById('lm-cancel')?.addEventListener('click', () => { state.logModal = null; render() })
+
+  // Estimate calories button
+  document.getElementById('lm-estimate')?.addEventListener('click', async () => {
+    const portion = document.getElementById('lm-portion')?.value?.trim()
+    if (!portion) { alert('Enter a portion size first (e.g. "1 cup" or "1 serving")'); return; }
+    const recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
+    if (!recipe) return
+
+    state.logModal.estimating = true
+    render()
+
+    try {
+      const prompt = 'Estimate the calories for this portion of this recipe. Reply with ONLY a single number — the estimated calories. No text, no ranges, just one integer.
+
+Recipe: ' + recipe.name + '
+Ingredients: ' + (recipe.ingredients || '') + '
+Portion: ' + portion
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 20, messages: [{ role: 'user', content: prompt }] })
+      })
+      const data = await resp.json()
+      const text = data.content?.[0]?.text?.trim() || ''
+      const cals = parseInt(text.replace(/[^0-9]/g, ''))
+      if (cals && cals > 0) {
+        document.getElementById('lm-cals').value = cals
+        state.logModal.estimating = false
+        state.logModal.estimateMsg = 'Estimated ~' + cals + ' calories for ' + portion + '. Adjust if needed!'
+        render()
+      } else {
+        state.logModal.estimating = false
+        state.logModal.estimateMsg = 'Could not estimate — please enter calories manually.'
+        render()
+      }
+    } catch(e) {
+      state.logModal.estimating = false
+      state.logModal.estimateMsg = 'Estimate failed — please enter calories manually.'
+      render()
+    }
+  })
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
   document.getElementById('lm-save')?.addEventListener('click', async () => {
     const portion = document.getElementById('lm-portion')?.value?.trim()
