@@ -174,9 +174,9 @@ function render() {
       <div class="header">
         <div class="header-title">Nourish<span>.</span></div>
         <div class="header-right">
-          <button class="icon-btn" id="paste-btn">📋 Paste Recipe</button>
-          <button class="icon-btn" id="sync-toggle">🔗 Sync</button>
-          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">⚙ Goals</button>
+          <button class="icon-btn" id="paste-btn">&#128203; Paste Recipe</button>
+          <button class="icon-btn" id="sync-toggle">&#128279; Sync</button>
+          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">&#9881; Goals</button>
         </div>
       </div>
 
@@ -202,7 +202,7 @@ function render() {
       <!-- SYNC PANEL -->
       ${state.showSync ? `
       <div class="sync-panel">
-        <div class="sync-title">🔗 Sync Devices</div>
+        <div class="sync-title">&#128279; Sync Devices</div>
         <div class="sync-hint">Use the same Account ID on all your devices and browsers to share recipes, pantry and lists.</div>
         <div class="sync-id-box">
           <div class="sync-id-label">Your Account ID</div>
@@ -215,16 +215,16 @@ function render() {
             <input id="sync-input" placeholder="Paste Account ID here..." />
             <button class="add-btn" id="sync-switch-btn">Switch</button>
           </div>
-          <div class="sync-warning">⚠️ This will replace your current data with that account's data.</div>
+          <div class="sync-warning">&#9888; This will replace your current data with that account's data.</div>
         </div>
       </div>` : ""}
 
       <!-- TABS -->
       <div class="tabs">
-        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">🍽 Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">&#127373; Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
         <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
         <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
-        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">📋 Log</div>
+        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">&#128203; Log</div>
         <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">📅 Week</div>
         <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
         <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
@@ -367,7 +367,7 @@ function renderRecipeCard(r) {
   ) : ''
 
   const body = '<div class="recipe-body">' +
-    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">🔗 View original</a></div>' : '') +
+    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">&#128279; View original</a></div>' : '') +
     (r.ingredients ? '<div class="recipe-section-label">Ingredients</div><div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '') +
     (r.instructions ? '<div class="recipe-section-label">Instructions</div><div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : '') +
     '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
@@ -378,7 +378,7 @@ function renderRecipeCard(r) {
     tagPicker +
     '<div class="recipe-actions">' +
       '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">🍽 Log meal</button>' +
+      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">&#127373; Log meal</button>' +
       '<button class="ra-btn ra-ask" data-ask="' + r.id + '">💬 Ask AI</button>' +
       '<button class="ra-btn ra-del" data-del="' + r.id + '">🗑</button>' +
     '</div>' +
@@ -426,7 +426,7 @@ function renderPantry() {
     <div class="tab-content">
       <div class="section-title">My Pantry</div>
       ${state.allTags.some(t => t.namespace === 'location') ? renderTagFilterChips('location', 'Pantry') : ''}
-      <div class="pantry-hint">Add items with quantities — tap the qty field to update anytime.</div>
+      <div class="pantry-hint">Add items with quantities - tap the qty field to update anytime.</div>
       <div class="pantry-add-box">
         <div class="pantry-add-row">
           <input id="pantry-name" placeholder="Item name" style="flex:2" />
@@ -471,7 +471,7 @@ function renderShop() {
         <div class="section-title">Shopping List</div>
         ${state.shopList.length > 0 ? `
           <div style="display:flex;gap:6px">
-            <button class="icon-btn" id="shop-copy-btn">📋 Copy</button>
+            <button class="icon-btn" id="shop-copy-btn">&#128203; Copy</button>
             <button class="clear-pantry-btn" id="shop-clear">Clear</button>
           </div>` : ''}
       </div>
@@ -556,7 +556,7 @@ function renderLog() {
       '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + state.goals.calories + '</span></div>' +
     '</div>' +
     '<div class="log-search-wrap">' +
-      '<input id="log-search" class="log-search-input" placeholder="🔍 Search recipes to log..." value="' + esc(search) + '" />' +
+      '<input id="log-search" class="log-search-input" placeholder="&#128269; Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
           '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + '</button>'
@@ -607,7 +607,7 @@ const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 function renderCalendar() {
   const dates = getWeekDates(state.weekOffset)
-  const weekLabel = state.weekOffset === 0 ? 'This Week' : state.weekOffset === 1 ? 'Next Week' : state.weekOffset === -1 ? 'Last Week' : formatDate(dates[0]) + ' – ' + formatDate(dates[6])
+  const weekLabel = state.weekOffset === 0 ? 'This Week' : state.weekOffset === 1 ? 'Next Week' : state.weekOffset === -1 ? 'Last Week' : formatDate(dates[0]) + ' - ' + formatDate(dates[6])
 
   let html = '<div class="tab-content">'
   html += '<div class="cal-header">'
@@ -687,8 +687,8 @@ function renderCalendar() {
 
 function renderTags() {
   const namespaces = [
-    { key: 'recipe', label: 'Recipe Tags', hint: 'For recipes — meal type, occasion, cooking method, main ingredient' },
-    { key: 'location', label: 'Pantry/Store Tags', hint: 'For pantry items and shopping list — store aisle or home storage location' },
+    { key: 'recipe', label: 'Recipe Tags', hint: 'For recipes - meal type, occasion, cooking method, main ingredient' },
+    { key: 'location', label: 'Pantry/Store Tags', hint: 'For pantry items and shopping list - store aisle or home storage location' },
   ]
   return '<div class="tab-content">' +
     '<div class="section-title">Tag Library</div>' +
@@ -715,7 +715,7 @@ function renderTags() {
 
 function renderChat() {
   const prompts = [
-    { icon: '📋', label: 'Weekly meal plan', text: 'Plan my meals for the week using my saved recipes' },
+    { icon: '&#128203;', label: 'Weekly meal plan', text: 'Plan my meals for the week using my saved recipes' },
     { icon: '🔄', label: 'Use my recipes',   text: 'What can I make with my saved recipes this week?' },
     { icon: '🎯', label: "Today's plan",     text: "What should I eat today to hit my goals?" },
     { icon: '🛒', label: 'Meal prep list',   text: 'Give me a meal prep plan and shopping list for the week' },
@@ -740,7 +740,7 @@ function renderChat() {
       <div class="claude-how">
         <div class="claude-how-step">1. Pick a prompt or type your own</div>
         <div class="claude-how-step">2. Claude opens with ALL your data already loaded</div>
-        <div class="claude-how-step">3. Ask for meal plans, recipe edits, ingredient ideas — anything</div>
+        <div class="claude-how-step">3. Ask for meal plans, recipe edits, ingredient ideas - anything</div>
       </div>
     </div>`
 }
@@ -750,10 +750,10 @@ function renderPasteModal() {
   return `
     <div class="modal-bg" id="paste-modal-bg">
       <div class="modal-sheet">
-        <div class="modal-title">📋 Paste a Recipe</div>
+        <div class="modal-title">&#128203; Paste a Recipe</div>
         <div class="modal-sub">From YouTube, Instagram, a comment, anywhere</div>
         <input id="paste-name" placeholder="Recipe name" />
-        <textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text — ingredients, instructions, however messy. Edit before saving."></textarea>
+        <textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving."></textarea>
         <div class="modal-btns">
           <button class="modal-cancel" id="paste-cancel">Cancel</button>
           <button class="modal-save" id="paste-save">Save to Recipe Box</button>
@@ -1132,7 +1132,7 @@ function bindEvents() {
     render()
 
     try {
-      const prompt = 'Estimate the calories for this portion of this recipe. Reply with ONLY a single number — the estimated calories. No text, no ranges, just one integer.
+      const prompt = "Estimate the calories for this portion of this recipe. Reply with ONLY a single number - the estimated calories. No text, no ranges, just one integer.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "") + "\nPortion: " + portion
 
 Recipe: ' + recipe.name + '
 Ingredients: ' + (recipe.ingredients || '') + '
@@ -1152,12 +1152,12 @@ Portion: ' + portion
         render()
       } else {
         state.logModal.estimating = false
-        state.logModal.estimateMsg = 'Could not estimate — please enter calories manually.'
+        state.logModal.estimateMsg = 'Could not estimate - please enter calories manually.'
         render()
       }
     } catch(e) {
       state.logModal.estimating = false
-      state.logModal.estimateMsg = 'Estimate failed — please enter calories manually.'
+      state.logModal.estimateMsg = 'Estimate failed - please enter calories manually.'
       render()
     }
   })
