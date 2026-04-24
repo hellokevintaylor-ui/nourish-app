@@ -4,7 +4,7 @@ export default async function handler(req, res) {
   const { messages, system } = req.body
   if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid messages' })
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.miseenplace_apikey || process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' })
 
   try {
