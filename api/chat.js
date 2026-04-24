@@ -25,12 +25,14 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const err = await response.text()
+      console.error('Anthropic API error:', response.status, err)
       return res.status(response.status).json({ error: err })
     }
 
     const data = await response.json()
     return res.status(200).json(data)
   } catch (e) {
+    console.error('Chat handler exception:', e)
     return res.status(500).json({ error: e.message })
   }
 }
