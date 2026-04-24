@@ -6,9 +6,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Nourish',
-        short_name: 'Nourish',
-        description: 'AI meal planner, recipe box, pantry & shopping list',
+        name: 'Mise en Place',
+        short_name: 'Mise en Place',
+        description: 'Your kitchen, organized.',
         theme_color: '#2a2318',
         background_color: '#faf8f3',
         display: 'standalone',
