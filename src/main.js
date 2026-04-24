@@ -177,7 +177,7 @@ function render() {
     <div class="layout">
       <!-- HEADER -->
       <div class="header">
-        <div class="header-title">Nourish<span>.</span></div>
+        <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           <button class="icon-btn" id="paste-btn">&#128203; Paste Recipe</button>
           <button class="icon-btn" id="sync-toggle">&#128279; Sync</button>
@@ -226,10 +226,10 @@ function render() {
 
       <!-- TABS -->
       <div class="tabs">
-        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">&#127373; Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
         <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
         <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
-        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">&#128203; Log</div>
+        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">Log</div>
         <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">📅 Week</div>
         <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
         <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
