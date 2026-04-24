@@ -13,7 +13,9 @@ const state = {
   activeCategory: 'All',
   allTags: [],
   activeTagFilter: null,
-  tagInput: { recipes: '', pantry: '', shop: '' },
+  activeTagFilterNs: null,
+  showTagFilter: false,
+  tagPickerOpen: null,
   editingNotes: null,
   shopReview: null,
   pasteModal: false,
@@ -215,6 +217,7 @@ function render() {
         <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
         <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
         <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">📋 Log</div>
+        <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
         <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
       </div>
 
@@ -241,6 +244,7 @@ function render() {
         ${!state.loading && state.tab === 'pantry'  ? renderPantry()  : ''}
         ${!state.loading && state.tab === 'shop'    ? renderShop()    : ''}
         ${!state.loading && state.tab === 'log'     ? renderLog()     : ''}
+        ${!state.loading && state.tab === 'tags'    ? renderTags()    : ''}
         ${!state.loading && state.tab === 'chat'    ? renderChat()    : ''}
       </div>
 
@@ -292,12 +296,20 @@ function renderTagInput(itemId, namespace, currentTags) {
   '</div>'
 }
 
-function renderTagFilterChips(namespace, label) {
+function renderTagFilterChips(namespace) {
   const tags = getTagsForNamespace(namespace)
   if (!tags.length) return ''
-  return '<div class="tag-filter-row">' +
-    '<button class="tag-filter-chip ' + (!state.activeTagFilter ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
-    tags.map(t => '<button class="tag-filter-chip ' + (state.activeTagFilter === t.name ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
+  const isOpen = state.showTagFilter && state.activeTagFilterNs === namespace
+  const activeTag = state.activeTagFilterNs === namespace ? state.activeTagFilter : null
+  return '<div class="tag-filter-wrap">' +
+    '<button class="tag-filter-toggle ' + (activeTag ? 'has-filter' : '') + '" data-filter-toggle="' + namespace + '">' +
+      (activeTag ? '🏷 ' + activeTag : '🏷 Filter by tag') +
+      (isOpen ? ' ▲' : ' ▼') +
+    '</button>' +
+    (isOpen ? '<div class="tag-filter-row">' +
+      '<button class="tag-filter-chip ' + (!activeTag ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
+      tags.map(t => '<button class="tag-filter-chip ' + (activeTag===t.name ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
+    '</div>' : '') +
   '</div>'
 }
 
@@ -321,8 +333,28 @@ function renderRecipeCard(r) {
       '<button class="notes-save-btn" data-notes-save="' + r.id + '">Save Notes</button>'
     : '<div class="notes-display ' + (!r.cookingNotes ? 'notes-empty' : '') + '">' + (r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!') + '</div>'
 
-  const tagChips = renderTagChips(r.tags, r.id, 'meal')
-  const tagInput = renderTagInput(r.id, 'meal', r.tags)
+  const tagChips = (r.tags||[]).map(t =>
+    '<span class="tag-chip">' + esc(t) +
+    '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + r.id + '" data-tag-ns="meal">×</button>' +
+    '</span>'
+  ).join('')
+  const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="meal">+ Tag</button>'
+  const isPickerOpen = state.tagPickerOpen === r.id + '-meal'
+  const mealTags = getTagsForNamespace('meal')
+  const tagPicker = isPickerOpen ? (
+    '<div class="tag-picker-popover">' +
+    mealTags.map(t => {
+      const checked = (r.tags||[]).includes(t.name)
+      return '<label class="tag-picker-option">' +
+        '<input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="meal" ' + (checked?'checked':'') + ' />' +
+        esc(t.name) + '</label>'
+    }).join('') +
+    '<div class="tag-picker-new">' +
+      '<input class="tag-picker-input" id="new-tag-' + r.id + '-meal" placeholder="New tag..." />' +
+      '<button class="tag-picker-add" data-new-tag-item="' + r.id + '" data-new-tag-ns="meal">Add</button>' +
+    '</div>' +
+    '</div>'
+  ) : ''
 
   const body = '<div class="recipe-body">' +
     (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">🔗 View original</a></div>' : '') +
@@ -332,9 +364,8 @@ function renderRecipeCard(r) {
       '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
     '</div>' +
     notesSection +
-    '<div class="recipe-section-label">Meal Tags</div>' +
-    '<div class="tag-chips-row">' + tagChips + '</div>' +
-    tagInput +
+    '<div class="tag-row">' + tagChips + tagPickerBtn + '</div>' +
+    tagPicker +
     '<div class="recipe-actions">' +
       '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
       '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">🍽 Log meal</button>' +
@@ -347,7 +378,7 @@ function renderRecipeCard(r) {
 }
 
 function renderRecipes() {
-  const filtered = state.activeTagFilter ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
+  const filtered = (state.activeTagFilter && state.activeTagFilterNs === 'meal') ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
   return `
     <div class="tab-content">
       <div class="section-header">
@@ -397,19 +428,21 @@ function renderPantry() {
         <div class="empty-state">Your pantry is empty.<br>Add staples you keep on hand! 🧺</div>
       ` : `
         <div class="pantry-list">
-          ${state.pantry.map(item =>
-            '<div class="pantry-row pantry-row-wrap">' +
+          ${state.pantry.map(item => {
+            const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="pantry">×</button></span>').join('')
+            const pickerId = item.id + '-pantry'
+            const isOpen = state.tagPickerOpen === pickerId
+            const pantryTags = getTagsForNamespace('pantry')
+            const picker = isOpen ? ('<div class="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="pantry" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-pantry" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="pantry">Add</button></div></div>') : ''
+            return '<div class="pantry-row pantry-row-wrap">' +
               '<div class="pantry-row-main">' +
                 '<div class="pantry-row-name">' + esc(item.name) + '</div>' +
                 '<input class="pantry-qty-input" data-qty-id="' + item.id + '" value="' + esc(item.qty||'') + '" placeholder="qty" />' +
                 '<button class="remove-btn" data-pantry-del="' + item.id + '">×</button>' +
               '</div>' +
-              '<div class="pantry-row-tags">' +
-                renderTagChips(item.tags||[], item.id, 'pantry') +
-                renderTagInput(item.id, 'pantry', item.tags||[]) +
-              '</div>' +
+              '<div class="pantry-row-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + item.id + '" data-picker-ns="pantry">+ Tag</button>' + picker + '</div>' +
             '</div>'
-          ).join('')}
+          }).join('')}
         </div>
         <button class="clear-pantry-btn" id="clear-pantry">Clear all</button>
       `}
@@ -444,16 +477,21 @@ function renderShop() {
         ${Object.entries(byRecipe).map(([recipe, items]) => `
           <div class="shop-recipe-group">
             <div class="shop-recipe-name">📄 ${esc(recipe)}</div>
-            ${items.map(i =>
-              '<div class="shop-row">' +
-                '<div class="shop-check" data-check="' + i.id + '"></div>' +
-                '<div class="shop-item-main">' +
-                  '<div class="shop-item-name">' + esc(i.name) + '</div>' +
-                  '<div class="shop-item-tags">' + renderTagChips(i.tags||[], i.id, 'store') + renderTagInput(i.id, 'store', i.tags||[]) + '</div>' +
-                '</div>' +
-                '<button class="remove-btn" data-shop-del="' + i.id + '">×</button>' +
-              '</div>'
-            ).join('')}
+            ${items.map(i => {
+                const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="store">×</button></span>').join('')
+                const pickerId = i.id + '-store'
+                const isOpen = state.tagPickerOpen === pickerId
+                const storeTags = getTagsForNamespace('store')
+                const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="store" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-store" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="store">Add</button></div></div>') : ''
+                return '<div class="shop-row">' +
+                  '<div class="shop-check" data-check="' + i.id + '"></div>' +
+                  '<div class="shop-item-main">' +
+                    '<div class="shop-item-name">' + esc(i.name) + '</div>' +
+                    '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="store">+ Tag</button>' + picker + '</div>' +
+                  '</div>' +
+                  '<button class="remove-btn" data-shop-del="' + i.id + '">×</button>' +
+                '</div>'
+              }).join('')}
           </div>
         `).join('')}
       ` : ''}
@@ -501,6 +539,36 @@ function renderLog() {
           </div>
         `).join('')}
     </div>`
+}
+
+
+function renderTags() {
+  const namespaces = [
+    { key: 'meal', label: 'Meal Tags', hint: 'Used on recipes — meal type, occasion, method, ingredient' },
+    { key: 'store', label: 'Store Tags', hint: 'Used on shopping list — aisle/section of the store' },
+    { key: 'pantry', label: 'Pantry Tags', hint: 'Used on pantry items — fridge, freezer, shelf location' },
+  ]
+  return '<div class="tab-content">' +
+    '<div class="section-title">Tag Library</div>' +
+    namespaces.map(ns => {
+      const tags = getTagsForNamespace(ns.key)
+      return '<div class="tags-section">' +
+        '<div class="tags-section-title">' + ns.label + '</div>' +
+        '<div class="tags-section-hint">' + ns.hint + '</div>' +
+        '<div class="tags-section-chips">' +
+          tags.map(t =>
+            '<span class="tag-library-chip">' + esc(t.name) +
+            '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns.key + '">×</button>' +
+            '</span>'
+          ).join('') +
+        '</div>' +
+        '<div class="tag-add-row">' +
+          '<input class="tag-lib-input" id="new-lib-tag-' + ns.key + '" placeholder="New ' + ns.label.toLowerCase() + '..." />' +
+          '<button class="add-btn" data-add-lib-tag="' + ns.key + '">+ Add</button>' +
+        '</div>' +
+      '</div>'
+    }).join('') +
+  '</div>'
 }
 
 function renderChat() {
