@@ -1133,10 +1133,6 @@ function bindEvents() {
 
     try {
       const prompt = "Estimate the calories for this portion of this recipe. Reply with ONLY a single number - the estimated calories. No text, no ranges, just one integer.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "") + "\nPortion: " + portion
-
-Recipe: ' + recipe.name + '
-Ingredients: ' + (recipe.ingredients || '') + '
-Portion: ' + portion
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
