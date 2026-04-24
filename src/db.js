@@ -45,7 +45,7 @@ export async function fetchPantry() {
   return data || []
 }
 export async function addPantryItem(name, qty) {
-  const { data } = await supabase.from('pantry').insert({ user_id: uid(), name, qty: qty || '' }).select()
+  const { data } = await supabase.from('pantry').insert({ user_id: uid(), name, qty: qty || '', tags: [] }).select()
   return data?.[0]
 }
 export async function updatePantryItem(id, qty) {
@@ -64,7 +64,7 @@ export async function fetchShopList() {
   return data || []
 }
 export async function addShopItem(name, fromRecipe) {
-  const { data } = await supabase.from('shop_list').insert({ user_id: uid(), name, from_recipe: fromRecipe || '', have: false }).select()
+  const { data } = await supabase.from('shop_list').insert({ user_id: uid(), name, from_recipe: fromRecipe || '', have: false, tags: [] }).select()
   return data?.[0]
 }
 export async function updateShopItem(id, have) {
