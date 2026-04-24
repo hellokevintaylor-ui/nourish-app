@@ -236,21 +236,7 @@ function render() {
         <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
       </div>
 
-      <!-- STATS BAR -->
-      <div class="stats-bar">
-        <div class="stat">
-          <div class="stat-val">${cals}</div>
-          <div class="stat-label">Calories</div>
-          <div class="progress-bar"><div class="progress-fill ${calCls}" style="width:${calPct}%"></div></div>
-        </div>
-        ${['protein','carbs','fat'].map(f => `
-          <div class="stat">
-            <div class="stat-val">0g</div>
-            <div class="stat-label">${f}</div>
-            <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
-          </div>
-        `).join('')}
-      </div>
+
 
       <!-- CONTENT -->
       <div class="content">
@@ -1007,10 +993,26 @@ function bindEvents() {
 
   // ── TAG EVENTS ──
 
+  // Filter toggle button (open/close the dropdown)
+  document.querySelectorAll('.tag-filter-toggle[data-filter-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ns = el.dataset.filterToggle
+      if (state.showTagFilter && state.activeTagFilterNs === ns) {
+        state.showTagFilter = false
+      } else {
+        state.showTagFilter = true
+        state.activeTagFilterNs = ns
+      }
+      render()
+    })
+  })
+
   // Filter chips
   document.querySelectorAll('.tag-filter-chip[data-filter-tag]').forEach(el => {
     el.addEventListener('click', () => {
       state.activeTagFilter = el.dataset.filterTag || null
+      state.activeTagFilterNs = el.dataset.filterNs || null
+      state.showTagFilter = false
       render()
     })
   })
