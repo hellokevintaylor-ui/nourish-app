@@ -800,10 +800,9 @@ function renderLogModal() {
       '<input id="lm-portion" placeholder="How much? (e.g. 1 cup, 2 servings)" />' +
       '<div class="lm-cal-row">' +
         '<input id="lm-cals" type="number" placeholder="Calories" style="flex:1" />' +
-        (recipe ? '<button class="lm-estimate-btn" id="lm-estimate"' + (estimating ? ' disabled' : '') + '>' +
-          (estimating ? 'Estimating...' : 'Estimate') + '</button>' : '') +
+        (recipe ? '<button class="lm-estimate-btn" id="lm-estimate">Ask Claude</button>' : '') +
       '</div>' +
-      (m.estimateMsg ? '<div class="modal-note">' + esc(m.estimateMsg) + '</div>' : '<div class="modal-note">Type a portion and tap Estimate for a calorie guess, or enter manually.</div>') +
+      (m.estimateMsg ? '<div class="modal-note">' + esc(m.estimateMsg) + '</div>' : '<div class="modal-note">Enter portion, tap Ask Claude for a calorie estimate, then come back and type the number.</div>') +
       '<div class="modal-btns">' +
         '<button class="modal-cancel" id="lm-cancel">Cancel</button>' +
         '<button class="modal-save" id="lm-save">Add to Log</button>' +
@@ -1121,41 +1120,17 @@ function bindEvents() {
   })
   document.getElementById('lm-cancel')?.addEventListener('click', () => { state.logModal = null; render() })
 
-  // Estimate calories button
-  document.getElementById('lm-estimate')?.addEventListener('click', async () => {
+  // Ask Claude for calorie estimate
+  document.getElementById('lm-estimate')?.addEventListener('click', () => {
     const portion = document.getElementById('lm-portion')?.value?.trim()
-    if (!portion) { alert('Enter a portion size first (e.g. "1 cup" or "1 serving")'); return; }
     const recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
     if (!recipe) return
-
-    state.logModal.estimating = true
+    const q = portion
+      ? "How many calories in " + portion + " of this recipe? Just give me a single number.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
+      : "How many calories per serving of this recipe?\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
+    window.open("https://claude.ai/new?q=" + encodeURIComponent(q), "_blank")
+    state.logModal.estimateMsg = "Claude opened in a new tab - come back and enter the number!"
     render()
-
-    try {
-      const prompt = "Estimate the calories for this portion of this recipe. Reply with ONLY a single number - the estimated calories. No text, no ranges, just one integer.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "") + "\nPortion: " + portion
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 20, messages: [{ role: 'user', content: prompt }] })
-      })
-      const data = await resp.json()
-      const text = data.content?.[0]?.text?.trim() || ''
-      const cals = parseInt(text.replace(/[^0-9]/g, ''))
-      if (cals && cals > 0) {
-        document.getElementById('lm-cals').value = cals
-        state.logModal.estimating = false
-        state.logModal.estimateMsg = 'Estimated ~' + cals + ' calories for ' + portion + '. Adjust if needed!'
-        render()
-      } else {
-        state.logModal.estimating = false
-        state.logModal.estimateMsg = 'Could not estimate - please enter calories manually.'
-        render()
-      }
-    } catch(e) {
-      state.logModal.estimating = false
-      state.logModal.estimateMsg = 'Estimate failed - please enter calories manually.'
-      render()
-    }
   })
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
   document.getElementById('lm-save')?.addEventListener('click', async () => {
