@@ -93,8 +93,10 @@ export async function fetchLog() {
   const { data } = await supabase.from('food_log').select('*').eq('user_id', uid()).gte('logged_at', today).order('logged_at')
   return data || []
 }
-export async function addLogEntry(food, calories) {
-  const { data } = await supabase.from('food_log').insert({ user_id: uid(), food, calories }).select()
+export async function addLogEntry(food, calories, recipeId) {
+  const row = { user_id: uid(), food, calories }
+  if (recipeId) row.recipe_id = recipeId
+  const { data } = await supabase.from('food_log').insert(row).select()
   return data?.[0]
 }
 export async function deleteLogEntry(id) {
@@ -142,4 +144,28 @@ export async function updatePantryTags(id, tags) {
 // Update shop item tags
 export async function updateShopItemTags(id, tags) {
   await supabase.from('shop_list').update({ tags }).eq('id', id)
+}
+
+// ── MEAL PLAN ─────────────────────────────────────────────────────────────────
+export async function fetchMealPlan(startDate, endDate) {
+  const { data } = await supabase.from('meal_plan')
+    .select('*')
+    .eq('user_id', uid())
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date')
+  return data || []
+}
+export async function saveMealPlanEntry(date, mealSlot, recipeId, recipeName, notes) {
+  const { data } = await supabase.from('meal_plan').insert({
+    user_id: uid(), date, meal_slot: mealSlot,
+    recipe_id: recipeId || null, recipe_name: recipeName || '', notes: notes || ''
+  }).select()
+  return data?.[0]
+}
+export async function deleteMealPlanEntry(id) {
+  await supabase.from('meal_plan').delete().eq('id', id)
+}
+export async function updateLogEntry(id, calories) {
+  await supabase.from('food_log').update({ calories }).eq('id', id)
 }

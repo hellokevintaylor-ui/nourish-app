@@ -16,6 +16,11 @@ const state = {
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
+  weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
+  mealPlan: [],         // loaded meal plan entries
+  calendarSlot: null,   // { date, slot } when picker is open
+  logSearch: '',        // search query in log tab
+  logRecipeResults: [], // recipe search results in log
   editingNotes: null,
   shopReview: null,
   pasteModal: false,
@@ -76,10 +81,13 @@ async function removeTagFromItem(name, namespace, itemId) {
 
 async function init() {
   render()
-  const [recipes, pantry, shopList, log, goals, allTags] = await Promise.all([
-    db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags()
+  const weekDates = getWeekDates(0)
+  const [recipes, pantry, shopList, log, goals, allTags, mealPlan] = await Promise.all([
+    db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags(),
+    db.fetchMealPlan(weekDates[0], weekDates[6])
   ])
   state.allTags = allTags || []
+  state.mealPlan = mealPlan || []
   state.recipes  = recipes.map(normalizeRecipe)
   state.pantry   = pantry
   state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }))
@@ -217,6 +225,7 @@ function render() {
         <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
         <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
         <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">📋 Log</div>
+        <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">📅 Week</div>
         <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
         <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
       </div>
@@ -244,6 +253,7 @@ function render() {
         ${!state.loading && state.tab === 'pantry'  ? renderPantry()  : ''}
         ${!state.loading && state.tab === 'shop'    ? renderShop()    : ''}
         ${!state.loading && state.tab === 'log'     ? renderLog()     : ''}
+        ${!state.loading && state.tab === 'calendar' ? renderCalendar() : ''}
         ${!state.loading && state.tab === 'tags'    ? renderTags()    : ''}
         ${!state.loading && state.tab === 'chat'    ? renderChat()    : ''}
       </div>
@@ -517,30 +527,163 @@ function renderShop() {
 function renderLog() {
   const cals = todayCalories()
   const rem = state.goals.calories - cals
-  return `
-    <div class="tab-content">
-      <div class="log-total">
-        <div>
-          <div class="log-total-label">Calories today</div>
-          <div class="log-total-sub">${rem > 0 ? rem + ' remaining' : Math.abs(rem) + ' over goal'}</div>
-        </div>
-        <div><span class="log-total-val">${cals}</span><span class="log-total-goal"> / ${state.goals.calories}</span></div>
-      </div>
-      <div class="log-add-row">
-        <input id="log-food" placeholder="Food name" />
-        <input id="log-cals" type="number" placeholder="Cal" style="max-width:70px" />
-        <button class="add-btn" id="log-add-btn">+ Add</button>
-      </div>
-      ${state.log.length === 0 ? '<div class="empty-state">Nothing logged yet today!</div>' :
-        state.log.map(e => `
-          <div class="log-entry">
-            <div><div class="log-food">${esc(e.food)}</div><div class="log-cal">${e.calories} kcal</div></div>
-            <button class="remove-btn" data-log-del="${e.id}">×</button>
-          </div>
-        `).join('')}
-    </div>`
+  const search = state.logSearch || ''
+  const recipeResults = search ? state.recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase())).slice(0,6) : []
+
+  const logEntries = state.log.length === 0
+    ? '<div class="empty-state">Nothing logged yet today!</div>'
+    : state.log.map(e =>
+        '<div class="log-entry">' +
+          '<div>' +
+            '<div class="log-food">' + esc(e.food) + '</div>' +
+            '<div class="log-cal ' + (e.calories === 0 ? 'log-cal-zero' : '') + '">' +
+              (e.calories === 0
+                ? '<button class="log-add-cals-btn" data-add-cals-id="' + e.id + '">+ Add calories</button>'
+                : e.calories + ' kcal') +
+            '</div>' +
+          '</div>' +
+          (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">📖</button>' : '') +
+          '<button class="remove-btn" data-log-del="' + e.id + '">×</button>' +
+        '</div>'
+      ).join('')
+
+  return '<div class="tab-content">' +
+    '<div class="log-total">' +
+      '<div>' +
+        '<div class="log-total-label">Calories today</div>' +
+        '<div class="log-total-sub">' + (rem > 0 ? rem + ' remaining' : Math.abs(rem) + ' over goal') + '</div>' +
+      '</div>' +
+      '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + state.goals.calories + '</span></div>' +
+    '</div>' +
+    '<div class="log-search-wrap">' +
+      '<input id="log-search" class="log-search-input" placeholder="🔍 Search recipes to log..." value="' + esc(search) + '" />' +
+      (recipeResults.length ? '<div class="log-search-results">' +
+        recipeResults.map(r =>
+          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + '</button>'
+        ).join('') +
+      '</div>' : '') +
+    '</div>' +
+    '<div class="log-add-row">' +
+      '<input id="log-food" placeholder="Or type food name manually..." />' +
+      '<input id="log-cals" type="number" placeholder="Cal" style="max-width:70px" />' +
+      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
+    '</div>' +
+    logEntries +
+  '</div>'
 }
 
+
+
+// ── WEEK HELPERS ─────────────────────────────────────────────────────────────
+function getWeekDates(offset) {
+  const now = new Date()
+  const day = now.getDay()
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + (offset * 7))
+  monday.setHours(0,0,0,0)
+  return Array.from({length: 7}, (_, i) => {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    return d.toISOString().slice(0,10)
+  })
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00')
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function isToday(dateStr) {
+  return dateStr === new Date().toISOString().slice(0,10)
+}
+
+function getMealPlanEntries(date, slot) {
+  return state.mealPlan.filter(e => e.date === date && e.meal_slot === slot)
+}
+
+const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+
+function renderCalendar() {
+  const dates = getWeekDates(state.weekOffset)
+  const weekLabel = state.weekOffset === 0 ? 'This Week' : state.weekOffset === 1 ? 'Next Week' : state.weekOffset === -1 ? 'Last Week' : formatDate(dates[0]) + ' – ' + formatDate(dates[6])
+
+  let html = '<div class="tab-content">'
+  html += '<div class="cal-header">'
+  html += '<button class="cal-nav" data-week-nav="-1">‹</button>'
+  html += '<div class="cal-week-label">' + weekLabel + '</div>'
+  html += '<button class="cal-nav" data-week-nav="1">›</button>'
+  html += '</div>'
+
+  // Log today button if viewing current week
+  if (state.weekOffset === 0) {
+    const todayEntries = state.mealPlan.filter(e => e.date === new Date().toISOString().slice(0,10))
+    if (todayEntries.length > 0) {
+      html += '<button class="cal-log-today-btn" id="log-today-btn">📋 Log today's meals</button>'
+    }
+  }
+
+  // Day cards
+  dates.forEach((date, idx) => {
+    const today = isToday(date)
+    html += '<div class="cal-day ' + (today ? 'cal-day-today' : '') + '">'
+    html += '<div class="cal-day-header">'
+    html += '<span class="cal-day-name">' + DAY_NAMES[idx] + '</span>'
+    html += '<span class="cal-day-date">' + formatDate(date).split(', ')[1] + '</span>'
+    html += '</div>'
+
+    MEAL_SLOTS.forEach(slot => {
+      const entries = getMealPlanEntries(date, slot)
+      html += '<div class="cal-slot">'
+      html += '<div class="cal-slot-label">' + slot + '</div>'
+
+      entries.forEach(entry => {
+        html += '<div class="cal-entry">'
+        html += '<span class="cal-entry-name">' + esc(entry.recipe_name || 'Unnamed') + '</span>'
+        html += '<div class="cal-entry-actions">'
+        html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
+        html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">×</button>'
+        html += '</div>'
+        html += '</div>'
+      })
+
+      html += '<button class="cal-add-btn" data-cal-date="' + date + '" data-cal-slot="' + slot + '">+ Add</button>'
+      html += '</div>'
+    })
+
+    html += '</div>'
+  })
+
+  // Recipe picker modal for calendar
+  if (state.calendarSlot) {
+    const { date, slot } = state.calendarSlot
+    const search = state.calendarSearch || ''
+    const results = search
+      ? state.recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
+      : state.recipes.slice(0, 8)
+
+    html += '<div class="modal-bg" id="cal-picker-bg">'
+    html += '<div class="modal-sheet">'
+    html += '<div class="modal-title">Add to ' + slot + '</div>'
+    html += '<div class="modal-sub">' + formatDate(date) + '</div>'
+    html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" />'
+    html += '<div class="cal-recipe-list">'
+    if (results.length === 0) {
+      html += '<div class="empty-state" style="padding:20px">No recipes found</div>'
+    } else {
+      results.forEach(r => {
+        html += '<button class="cal-recipe-option" data-pick-recipe="' + r.id + '" data-pick-name="' + esc(r.name) + '">' + esc(r.name) + '</button>'
+      })
+    }
+    html += '</div>'
+    html += '<div class="modal-btns"><button class="modal-cancel" id="cal-picker-cancel">Cancel</button></div>'
+    html += '</div></div>'
+  }
+
+  html += '</div>'
+  return html
+}
 
 function renderTags() {
   const namespaces = [
@@ -977,9 +1120,13 @@ function bindEvents() {
     const portion = document.getElementById('lm-portion')?.value?.trim()
     const cals = parseInt(document.getElementById('lm-cals')?.value) || 0
     if (!portion) return
-    const food = `${state.logModal.recipeName} (${portion})`
+    const food = state.logModal.recipeName + ' (' + portion + ')'
     const saved = await db.addLogEntry(food, cals)
-    if (saved) state.log.push(saved)
+    if (saved) {
+      // Attach recipe_id for back-linking
+      if (state.logModal.recipeId) saved.recipe_id = state.logModal.recipeId
+      state.log.push(saved)
+    }
     state.logModal = null; state.tab = 'log'; render()
   })
 
@@ -1093,6 +1240,126 @@ function bindEvents() {
   })
   document.querySelectorAll('.tag-picker-popover').forEach(el => {
     el.addEventListener('click', e => e.stopPropagation())
+  })
+
+
+  // ── CALENDAR HANDLERS ──
+
+  // Week navigation
+  document.querySelectorAll('.cal-nav[data-week-nav]').forEach(el => {
+    el.addEventListener('click', async () => {
+      state.weekOffset += parseInt(el.dataset.weekNav)
+      const dates = getWeekDates(state.weekOffset)
+      state.mealPlan = await db.fetchMealPlan(dates[0], dates[6])
+      render()
+    })
+  })
+
+  // Open recipe picker for a slot
+  document.querySelectorAll('[data-cal-date]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.calendarSlot = { date: el.dataset.calDate, slot: el.dataset.calSlot }
+      state.calendarSearch = ''
+      render()
+      setTimeout(() => document.getElementById('cal-search-input')?.focus(), 50)
+    })
+  })
+
+  // Calendar search
+  document.getElementById('cal-search-input')?.addEventListener('input', e => {
+    state.calendarSearch = e.target.value
+    render()
+  })
+
+  // Pick recipe for calendar slot
+  document.querySelectorAll('.cal-recipe-option[data-pick-recipe]').forEach(el => {
+    el.addEventListener('click', async () => {
+      if (!state.calendarSlot) return
+      const { date, slot } = state.calendarSlot
+      const saved = await db.saveMealPlanEntry(date, slot, el.dataset.pickRecipe, el.dataset.pickName, '')
+      if (saved) state.mealPlan.push(saved)
+      state.calendarSlot = null
+      state.calendarSearch = ''
+      render()
+    })
+  })
+
+  // Close calendar picker
+  document.getElementById('cal-picker-cancel')?.addEventListener('click', () => { state.calendarSlot = null; render() })
+  document.getElementById('cal-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'cal-picker-bg') { state.calendarSlot = null; render() } })
+
+  // Delete meal plan entry
+  document.querySelectorAll('[data-del-plan]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      await db.deleteMealPlanEntry(el.dataset.delPlan)
+      state.mealPlan = state.mealPlan.filter(m => m.id !== el.dataset.delPlan)
+      render()
+    })
+  })
+
+  // Log a planned meal from calendar
+  document.querySelectorAll('[data-log-plan]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.logModal = { recipeId: el.dataset.planRid || null, recipeName: el.dataset.planName }
+      render()
+    })
+  })
+
+  // Log today's meals button
+  document.getElementById('log-today-btn')?.addEventListener('click', async () => {
+    const today = new Date().toISOString().slice(0,10)
+    const todayEntries = state.mealPlan.filter(e => e.date === today)
+    for (const entry of todayEntries) {
+      const already = state.log.some(l => l.food.includes(entry.recipe_name))
+      if (!already) {
+        const saved = await db.addLogEntry(entry.recipe_name, 0)
+        if (saved) state.log.push(saved)
+      }
+    }
+    state.tab = 'log'
+    render()
+  })
+
+  // ── LOG SEARCH HANDLERS ──
+
+  document.getElementById('log-search')?.addEventListener('input', e => {
+    state.logSearch = e.target.value
+    render()
+  })
+
+  // Log from recipe search result
+  document.querySelectorAll('[data-log-recipe][data-log-recipe-name]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.logModal = { recipeId: el.dataset.logRecipe, recipeName: el.dataset.logRecipeName }
+      state.logSearch = ''
+      render()
+    })
+  })
+
+  // Add calories to a zero-calorie log entry
+  document.querySelectorAll('.log-add-cals-btn[data-add-cals-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const cals = prompt('How many calories?')
+      if (cals && !isNaN(parseInt(cals))) {
+        const entry = state.log.find(l => l.id === el.dataset.addCalsId)
+        if (entry) {
+          entry.calories = parseInt(cals)
+          db.updateLogEntry(entry.id, entry.calories)
+          render()
+        }
+      }
+    })
+  })
+
+  // Go to recipe from log entry
+  document.querySelectorAll('.log-recipe-link[data-go-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.tab = 'recipes'
+      state.expandedRecipe = el.dataset.goRecipe
+      render()
+    })
   })
 }
 
