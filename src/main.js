@@ -16,6 +16,8 @@ const state = {
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
+  newRecipeTags: [],
+  newRecipeTagPickerOpen: false,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
   historyLog: [],       // full log history
   historyOffset: 0,     // week offset for history view
@@ -505,11 +507,22 @@ function renderRecipes() {
           <textarea id="r-ingredients" placeholder="One ingredient per line..."></textarea>
           <div class="clip-field-label">Instructions</div>
           <textarea id="r-instructions" placeholder="Step by step..."></textarea>
-          <div class="clip-field-label">Category</div>
-          <select id="r-category" class="category-select">
-            <option value="">No category</option>
-            ${categoryOptions('')}
-          </select>
+          <div class="clip-field-label">Tags</div>
+          <div class="tag-row" style="position:relative">
+            ${(state.newRecipeTags).map(t => `<span class="tag-chip">${esc(t)}<button class="new-recipe-tag-remove" data-remove-tag="${esc(t)}" style="background:none;border:none;cursor:pointer;color:inherit;margin-left:2px;font-size:13px">×</button></span>`).join('')}
+            <button class="tag-picker-btn" id="new-recipe-tag-btn">+ Tag</button>
+            ${state.newRecipeTagPickerOpen ? `
+              <div class="tag-picker-popover">
+                ${getTagsForNamespace('recipe').filter(t => !state.newRecipeTags.includes(t.name)).map(t =>
+                  `<label class="tag-picker-option"><input type="checkbox" class="new-recipe-tag-check" data-tag="${esc(t.name)}">${esc(t.name)}</label>`
+                ).join('')}
+                <div class="tag-picker-new">
+                  <input class="tag-picker-input" id="new-recipe-tag-input" placeholder="New tag..." />
+                  <button class="tag-picker-add" id="new-recipe-tag-add">Add</button>
+                </div>
+              </div>
+            ` : ''}
+          </div>
           <div class="add-row" style="margin-top:8px">
             <input id="r-notes" placeholder="Note (optional)" style="flex:1" />
             <button class="add-btn" id="r-save-btn">Save</button>
@@ -1217,18 +1230,61 @@ function bindEvents() {
     })
   })
 
-  document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
-  document.getElementById('r-cancel-btn')?.addEventListener('click', () => { state.addRecipeModal = false; render() })
+  document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; state.newRecipeTags = []; state.newRecipeTagPickerOpen = false; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
+  document.getElementById('r-cancel-btn')?.addEventListener('click', () => { state.addRecipeModal = false; state.newRecipeTags = []; state.newRecipeTagPickerOpen = false; render() })
+
+  // New recipe tag picker
+  document.getElementById('new-recipe-tag-btn')?.addEventListener('click', e => {
+    e.stopPropagation()
+    state.newRecipeTagPickerOpen = !state.newRecipeTagPickerOpen; render()
+  })
+  document.querySelectorAll('.new-recipe-tag-check[data-tag]').forEach(el => {
+    el.addEventListener('change', e => {
+      e.stopPropagation()
+      if (el.checked) state.newRecipeTags = [...state.newRecipeTags, el.dataset.tag]
+      else state.newRecipeTags = state.newRecipeTags.filter(t => t !== el.dataset.tag)
+      state.newRecipeTagPickerOpen = false; render()
+    })
+  })
+  document.querySelectorAll('.new-recipe-tag-remove[data-remove-tag]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.newRecipeTags = state.newRecipeTags.filter(t => t !== el.dataset.removeTag); render()
+    })
+  })
+  document.getElementById('new-recipe-tag-add')?.addEventListener('click', async e => {
+    e.stopPropagation()
+    const input = document.getElementById('new-recipe-tag-input')
+    const name = input?.value?.trim()
+    if (!name) return
+    const saved = await db.saveTag(name, 'recipe')
+    if (saved && !state.allTags.find(t => t.name === name && t.namespace === 'recipe')) state.allTags.push(saved)
+    state.newRecipeTags = [...state.newRecipeTags, name]
+    state.newRecipeTagPickerOpen = false
+    if (input) input.value = ''
+    render()
+  })
+  document.getElementById('new-recipe-tag-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('new-recipe-tag-add')?.click() }
+  })
+
   document.getElementById('r-save-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('r-name')?.value?.trim()
     const ingredients = document.getElementById('r-ingredients')?.value?.trim()
     const instructions = document.getElementById('r-instructions')?.value?.trim()
     const notes = document.getElementById('r-notes')?.value?.trim()
-    const category = document.getElementById('r-category')?.value || ''
+    const tags = [...state.newRecipeTags]
     if (!name) return
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, category })
+    // Save any new tags to the library
+    for (const tag of tags) {
+      if (!state.allTags.find(t => t.name === tag && t.namespace === 'recipe')) {
+        const saved = await db.saveTag(tag, 'recipe')
+        if (saved) state.allTags.push(saved)
+      }
+    }
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, tags })
     if (saved) state.recipes.unshift(normalizeRecipe(saved))
-    state.addRecipeModal = false; render()
+    state.addRecipeModal = false; state.newRecipeTags = []; state.newRecipeTagPickerOpen = false; render()
   })
 
   document.querySelectorAll('.recipe-card-header').forEach(el => {

@@ -15,7 +15,8 @@ export async function saveRecipe(recipe) {
     instructions: recipe.instructions || '',
     cooking_notes: recipe.cookingNotes || '',
     clipped_from: recipe.clippedFrom || '',
-    notes: recipe.notes || ''
+    notes: recipe.notes || '',
+    tags: recipe.tags || []
   }
   if (recipe.id && typeof recipe.id === 'string' && recipe.id.includes('-')) {
     const { data } = await supabase.from('recipes').update(row).eq('id', recipe.id).select()
