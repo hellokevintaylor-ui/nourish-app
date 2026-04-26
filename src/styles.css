@@ -39,8 +39,8 @@ html, body {
   width: 100%;
 }
 
-#app { min-height: 100vh; display: flex; justify-content: center; overflow-x: hidden; }
-.layout { width: 100%; max-width: 600px; display: flex; flex-direction: column; overflow-x: hidden; }
+#app { min-height: 100vh; display: flex; justify-content: center; overflow-x: hidden; width: 100%; }
+.layout { width: 100%; max-width: 600px; flex: 1; display: flex; flex-direction: column; overflow-x: hidden; min-width: 0; }
 
 /* ── PWA STANDALONE CLOSE BUTTON ── */
 .pwa-close-btn { display: none; }
@@ -90,18 +90,23 @@ html, body {
   font-style: italic;
 }
 .header-title span { color: var(--sage2); font-style: normal; }
-.header-right { display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; flex-shrink: 1; min-width: 0; }
+.header-right { display: flex; gap: 4px; align-items: center; flex-shrink: 1; min-width: 0; overflow: hidden; }
 .icon-btn {
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.15);
   color: var(--cream);
-  padding: 5px 9px; border-radius: 20px;
+  padding: 5px 8px; border-radius: 20px;
   font-size: 11px; font-weight: 500;
   cursor: pointer; font-family: 'DM Sans', sans-serif;
   transition: all 0.2s; white-space: nowrap; letter-spacing: 0.3px;
-  flex-shrink: 1;
+  flex-shrink: 0;
 }
 .icon-btn:hover, .icon-btn.active { background: rgba(255,255,255,0.2); }
+.icon-btn .btn-label { display: inline; }
+@media (max-width: 400px) {
+  .icon-btn .btn-label { display: none; }
+  .icon-btn { padding: 5px 7px; }
+}
 
 /* ── GOALS PANEL ── */
 .goals-panel {
@@ -169,8 +174,8 @@ html, body {
 .cal-bar-nums span { color:var(--ink4); font-weight:400; }
 
 /* ── CONTENT ── */
-.content { flex:1; padding-bottom:40px; }
-.tab-content { padding:16px 18px; }
+.content { flex:1; padding-bottom:40px; overflow-x: hidden; }
+.tab-content { padding:16px 18px; overflow-x: hidden; }
 
 /* ── LOADING ── */
 .loading { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; gap:12px; color:var(--ink3); }

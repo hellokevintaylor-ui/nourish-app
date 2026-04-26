@@ -308,10 +308,10 @@ function render() {
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
-          <button class="icon-btn" id="clip-url-btn">🔗 Clip</button>
-          <button class="icon-btn" id="paste-btn">📋 Paste</button>
-          <button class="icon-btn" id="sync-toggle">Sync</button>
-          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">⚙</button>
+          <button class="icon-btn" id="clip-url-btn">🔗 <span class="btn-label">Clip</span></button>
+          <button class="icon-btn" id="paste-btn">📋 <span class="btn-label">Paste</span></button>
+          <button class="icon-btn" id="sync-toggle">🔗 <span class="btn-label">Sync</span></button>
+          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">⚙ <span class="btn-label">Goals</span></button>
           <button class="icon-btn pwa-close-btn" id="pwa-close-btn">✕</button>
         </div>
       </div>
