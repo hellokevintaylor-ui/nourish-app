@@ -22,6 +22,7 @@ const state = {
   sharedRecipe: null,
   clipboardBanner: null,
   _lastClipboardUrl: null,
+  clipUrlModal: false,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
   historyLog: [],       // full log history
   historyOffset: 0,     // week offset for history view
@@ -308,6 +309,7 @@ function render() {
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
         <button class="icon-btn" id="paste-btn">&#128203; Paste Recipe</button>
+          <button class="icon-btn" id="clip-url-btn">🔗 Clip URL</button>
           <button class="icon-btn" id="sync-toggle">&#128279; Sync</button>
           <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">&#9881; Goals</button>
         </div>
@@ -380,6 +382,7 @@ function render() {
 
       <!-- MODALS -->
       ${state.pasteModal    ? renderPasteModal()    : ''}
+      ${state.clipUrlModal  ? renderClipUrlModal()  : ''}
       ${state.shopReview    ? renderShopReview()    : ''}
       ${state.logModal      ? renderLogModal()      : ''}
     </div>
@@ -1048,6 +1051,21 @@ function renderChat() {
 }
 
 
+function renderClipUrlModal() {
+  return `
+    <div class="modal-bg" id="clip-url-modal-bg">
+      <div class="modal-sheet">
+        <div class="modal-title">🔗 Clip from URL</div>
+        <div class="modal-sub">Paste a recipe link — we'll fetch and parse it automatically</div>
+        <input id="clip-url-input" placeholder="https://..." style="font-family:monospace;font-size:13px" />
+        <div class="modal-btns">
+          <button class="modal-cancel" id="clip-url-cancel">Cancel</button>
+          <button class="modal-save" id="clip-url-go">Fetch Recipe</button>
+        </div>
+      </div>
+    </div>`
+}
+
 function renderPasteModal() {
   if (state.shareLoading) return `
     <div class="modal-bg" id="paste-modal-bg">
@@ -1533,6 +1551,47 @@ function bindEvents() {
 
   // Paste modal
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+
+  // Clip URL modal
+  document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
+    state.clipUrlModal = true
+    render()
+    // Try to pre-fill from clipboard
+    setTimeout(async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const input = document.getElementById('clip-url-input')
+        if (input && text?.startsWith('http')) input.value = text
+      } catch(e) {}
+      document.getElementById('clip-url-input')?.focus()
+      document.getElementById('clip-url-input')?.select()
+    }, 100)
+  })
+  document.getElementById('clip-url-cancel')?.addEventListener('click', () => { state.clipUrlModal = false; render() })
+  document.getElementById('clip-url-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'clip-url-modal-bg') { state.clipUrlModal = false; render() } })
+  document.getElementById('clip-url-go')?.addEventListener('click', async () => {
+    const url = document.getElementById('clip-url-input')?.value?.trim()
+    if (!url?.startsWith('http')) return
+    state.clipUrlModal = false
+    state.pasteModal = true
+    state.shareLoading = true
+    render()
+    try {
+      const resp = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`)
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false
+      state.sharedRecipe = recipe
+      render()
+    } catch(e) {
+      state.shareLoading = false
+      state.sharedRecipe = null
+      render()
+    }
+  })
+  document.getElementById('clip-url-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('clip-url-go')?.click()
+  })
 
   // Clipboard banner — "Clip it" fetches the URL and opens the save modal
   document.getElementById('clipboard-yes')?.addEventListener('click', async () => {
