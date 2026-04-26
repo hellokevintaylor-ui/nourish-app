@@ -1560,6 +1560,7 @@ function bindEvents() {
     if (window.history.length > 1) window.history.back()
     else window.close()
   })
+  document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
     state.clipUrlModal = true
     render()
     // Try to pre-fill from clipboard
