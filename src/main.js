@@ -345,6 +345,11 @@ function render() {
           <div class="sync-id-value" id="sync-id-display">${getUserId()}</div>
           <button class="sync-copy-btn" id="sync-copy-btn">Copy</button>
         </div>
+        <div class="sync-id-box" style="flex-direction:column;align-items:flex-start;gap:8px">
+          <div class="sync-id-label">📱 Add to iPhone Home Screen</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.5">Open this link in Safari, then Share → Add to Home Screen. Your Account ID will be saved automatically.</div>
+          <button class="sync-copy-btn" id="sync-bookmark-btn">Copy Bookmark Link</button>
+        </div>
         <div class="sync-switch-box">
           <div class="sync-id-label">Switch to a different Account ID</div>
           <div class="sync-input-row">
@@ -640,18 +645,6 @@ function renderShop() {
               }).join('')}
           </div>
         `).join('')}
-      ` : ''}
-      ${got.length > 0 ? `
-        <div class="shop-got-section">
-          <div class="shop-section-label">Got ✓</div>
-          ${got.map(i => `
-            <div class="shop-row shop-row-got">
-              <div class="shop-check shop-check-done" data-uncheck="${i.id}">✓</div>
-              <div class="shop-item-name shop-item-got">${esc(i.name)}</div>
-              <button class="remove-btn" data-shop-del="${i.id}">×</button>
-            </div>
-          `).join('')}
-        </div>
       ` : ''}
       <div class="shop-add-row">
         <input id="shop-manual-input" placeholder="Add item manually..." />
@@ -1234,6 +1227,13 @@ function bindEvents() {
       document.getElementById('sync-id-display').textContent = "Copied!";
       setTimeout(() => render(), 1500);
     });
+  })
+  document.getElementById('sync-bookmark-btn')?.addEventListener('click', () => {
+    const bookmarkUrl = `${window.location.origin}/?uid=${getUserId()}`
+    navigator.clipboard.writeText(bookmarkUrl).then(() => {
+      document.getElementById('sync-bookmark-btn').textContent = 'Copied!'
+      setTimeout(() => render(), 1500)
+    })
   })
   document.getElementById('sync-switch-btn')?.addEventListener('click', async () => {
     const newId = document.getElementById('sync-input')?.value?.trim();
