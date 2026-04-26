@@ -1081,6 +1081,7 @@ function renderPasteModal() {
       <div class="modal-sheet">
         <div class="modal-title">${r ? '📎 Save Clipped Recipe' : '📋 Paste a Recipe'}</div>
         <div class="modal-sub">${r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'}</div>
+        ${r?.warning ? `<div class="modal-note" style="color:var(--terra);background:#fff5f2;border-radius:8px;padding:8px 10px;margin-bottom:8px">⚠️ ${esc(r.warning)}</div>` : ''}
         <input id="paste-name" placeholder="Recipe name" value="${esc(r?.name || '')}" />
         ${r ? `
           <div class="clip-field-label">Ingredients</div>
