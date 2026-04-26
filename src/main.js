@@ -18,6 +18,8 @@ const state = {
   tagPickerOpen: null,
   newRecipeTags: [],
   newRecipeTagPickerOpen: false,
+  shareLoading: false,
+  sharedRecipe: null,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
   historyLog: [],       // full log history
   historyOffset: 0,     // week offset for history view
@@ -1033,13 +1035,29 @@ function renderChat() {
 
 
 function renderPasteModal() {
+  if (state.shareLoading) return `
+    <div class="modal-bg" id="paste-modal-bg">
+      <div class="modal-sheet" style="text-align:center;padding:40px 20px">
+        <div style="font-size:32px;margin-bottom:12px">🍽️</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">Reading recipe...</div>
+        <div style="color:var(--muted);font-size:13px">Fetching from the page you shared</div>
+      </div>
+    </div>`
+  const r = state.sharedRecipe
   return `
     <div class="modal-bg" id="paste-modal-bg">
       <div class="modal-sheet">
-        <div class="modal-title">&#128203; Paste a Recipe</div>
-        <div class="modal-sub">From YouTube, Instagram, a comment, anywhere</div>
-        <input id="paste-name" placeholder="Recipe name" />
-        <textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving."></textarea>
+        <div class="modal-title">${r ? '📎 Save Clipped Recipe' : '📋 Paste a Recipe'}</div>
+        <div class="modal-sub">${r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'}</div>
+        <input id="paste-name" placeholder="Recipe name" value="${esc(r?.name || '')}" />
+        ${r ? `
+          <div class="clip-field-label">Ingredients</div>
+          <textarea id="paste-ingredients" style="min-height:100px" placeholder="One ingredient per line...">${esc(r.ingredients || '')}</textarea>
+          <div class="clip-field-label">Instructions</div>
+          <textarea id="paste-instructions" style="min-height:80px" placeholder="Step by step...">${esc(r.instructions || '')}</textarea>
+        ` : `
+          <textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving."></textarea>
+        `}
         <div class="modal-btns">
           <button class="modal-cancel" id="paste-cancel">Cancel</button>
           <button class="modal-save" id="paste-save">Save to Recipe Box</button>
@@ -1501,19 +1519,31 @@ function bindEvents() {
 
   // Paste modal
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
-  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; render() })
-  document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; render() } })
+  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() })
+  document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
   document.getElementById('paste-save')?.addEventListener('click', async () => {
     const name = document.getElementById('paste-name')?.value?.trim()
-    const text = document.getElementById('paste-text')?.value?.trim()
-    if (!name || !text) return
-    const lower = text.toLowerCase()
-    let ingredients = text, instructions = ''
-    const splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
-    if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '' })
+    if (!name) return
+
+    let ingredients = '', instructions = ''
+
+    if (state.sharedRecipe) {
+      // Shared recipe — fields are split already
+      ingredients = document.getElementById('paste-ingredients')?.value?.trim() || ''
+      instructions = document.getElementById('paste-instructions')?.value?.trim() || ''
+    } else {
+      // Manual paste — split heuristically
+      const text = document.getElementById('paste-text')?.value?.trim() || ''
+      if (!text) return
+      ingredients = text; instructions = ''
+      const splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
+      if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
+    }
+
+    const clippedFrom = state.sharedRecipe?.url || ''
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom })
     if (saved) state.recipes.unshift(normalizeRecipe(saved))
-    state.pasteModal = false; state.tab = 'recipes'; render()
+    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.tab = 'recipes'; render()
   })
 
   // Chat handled by chat handlers below
@@ -1759,6 +1789,53 @@ function bindEvents() {
 
 // ── START ─────────────────────────────────────────────────────────────────────
 init()
+
+// ── SHARE TARGET ──────────────────────────────────────────────────────────────
+// Handles incoming shares from the iOS/Android share sheet
+;(async () => {
+  const params = new URLSearchParams(window.location.search)
+  const sharedUrl = params.get('url') || params.get('text') || ''
+  if (!sharedUrl || !sharedUrl.startsWith('http')) return
+
+  // Clear the share params from the URL so refreshing doesn't re-trigger
+  window.history.replaceState({}, '', '/')
+
+  // Show a loading state in the paste modal
+  state.pasteModal = true
+  state.shareLoading = true
+  render()
+
+  try {
+    const resp = await fetch(`/api/scrape?url=${encodeURIComponent(sharedUrl)}`)
+    const recipe = await resp.json()
+
+    if (recipe.error) throw new Error(recipe.error)
+
+    // Pre-fill the paste modal fields
+    state.shareLoading = false
+    state.sharedRecipe = recipe
+    render()
+
+    // Fill in the form fields after render
+    setTimeout(() => {
+      const nameEl = document.getElementById('paste-name')
+      const ingEl = document.getElementById('paste-ingredients')
+      const instEl = document.getElementById('paste-instructions')
+      if (nameEl) nameEl.value = recipe.name || ''
+      if (ingEl) ingEl.value = recipe.ingredients || ''
+      if (instEl) instEl.value = recipe.instructions || ''
+    }, 50)
+  } catch (e) {
+    state.shareLoading = false
+    state.sharedRecipe = null
+    render()
+    // Still open the modal so user can paste manually
+    setTimeout(() => {
+      const nameEl = document.getElementById('paste-name')
+      if (nameEl) nameEl.placeholder = `Couldn't auto-read recipe — paste it manually`
+    }, 50)
+  }
+})()
 
 // Re-fetch from Supabase when user switches back to this tab (e.g. after using Chrome extension)
 document.addEventListener('visibilitychange', async () => {
