@@ -308,10 +308,11 @@ function render() {
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
-        <button class="icon-btn" id="paste-btn">&#128203; Paste Recipe</button>
-          <button class="icon-btn" id="clip-url-btn">🔗 Clip URL</button>
-          <button class="icon-btn" id="sync-toggle">&#128279; Sync</button>
-          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">&#9881; Goals</button>
+          <button class="icon-btn" id="clip-url-btn">🔗 Clip</button>
+          <button class="icon-btn" id="paste-btn">📋 Paste</button>
+          <button class="icon-btn" id="sync-toggle">Sync</button>
+          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">⚙</button>
+          <button class="icon-btn pwa-close-btn" id="pwa-close-btn">✕</button>
         </div>
       </div>
 
@@ -594,7 +595,8 @@ function renderPantry() {
 }
 
 function renderShop() {
-  const need = state.shopList.filter(i => !i.have)
+  const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
+  const need = state.shopList.filter(i => !i.have && (!activeTag || (i.tags||[]).includes(activeTag)))
   const got  = state.shopList.filter(i => i.have)
   const byRecipe = {}
   need.forEach(i => { if (!byRecipe[i.fromRecipe||'Other']) byRecipe[i.fromRecipe||'Other'] = []; byRecipe[i.fromRecipe||'Other'].push(i) })
@@ -1554,7 +1556,10 @@ function bindEvents() {
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
 
   // Clip URL modal
-  document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
+  document.getElementById('pwa-close-btn')?.addEventListener('click', () => {
+    if (window.history.length > 1) window.history.back()
+    else window.close()
+  })
     state.clipUrlModal = true
     render()
     // Try to pre-fill from clipboard

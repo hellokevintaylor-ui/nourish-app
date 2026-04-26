@@ -35,9 +35,19 @@ html, body {
   font-family: 'DM Sans', sans-serif;
   color: var(--ink);
   font-size: 14px;
+  overflow-x: hidden;
+  width: 100%;
 }
 
-#app { min-height: 100vh; display: flex; justify-content: center; }
+#app { min-height: 100vh; display: flex; justify-content: center; overflow-x: hidden; }
+.layout { width: 100%; max-width: 600px; display: flex; flex-direction: column; overflow-x: hidden; }
+
+/* ── PWA STANDALONE CLOSE BUTTON ── */
+.pwa-close-btn { display: none; }
+@media (display-mode: standalone) {
+  .pwa-close-btn { display: flex; align-items: center; justify-content: center; opacity: 0.7; }
+  .pwa-close-btn:hover { opacity: 1; }
+}
 
 /* ── HEADER ── */
 .clipboard-banner {
@@ -80,15 +90,16 @@ html, body {
   font-style: italic;
 }
 .header-title span { color: var(--sage2); font-style: normal; }
-.header-right { display: flex; gap: 6px; align-items: center; }
+.header-right { display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; flex-shrink: 1; min-width: 0; }
 .icon-btn {
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.15);
   color: var(--cream);
-  padding: 5px 11px; border-radius: 20px;
+  padding: 5px 9px; border-radius: 20px;
   font-size: 11px; font-weight: 500;
   cursor: pointer; font-family: 'DM Sans', sans-serif;
   transition: all 0.2s; white-space: nowrap; letter-spacing: 0.3px;
+  flex-shrink: 1;
 }
 .icon-btn:hover, .icon-btn.active { background: rgba(255,255,255,0.2); }
 
