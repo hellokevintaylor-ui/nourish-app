@@ -16,6 +16,13 @@ const state = {
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
+  newRecipeTags: [],
+  newRecipeTagPickerOpen: false,
+  shareLoading: false,
+  sharedRecipe: null,
+  clipboardBanner: null,
+  _lastClipboardUrl: null,
+  clipUrlModal: false,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
   historyLog: [],       // full log history
   historyOffset: 0,     // week offset for history view
@@ -71,13 +78,16 @@ async function sendChatMessage(userMessage) {
       body: JSON.stringify({ messages, system: systemPrompt })
     })
 
-    if (!resp.ok) throw new Error('API error ' + resp.status)
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}))
+      throw new Error('API ' + resp.status + ': ' + (errData.error || resp.statusText))
+    }
     const data = await resp.json()
     const reply = data.content?.[0]?.text || 'Sorry, I could not get a response.'
 
     state.chatMessages.push({ role: 'assistant', content: reply })
   } catch(e) {
-    state.chatMessages.push({ role: 'assistant', content: 'Sorry, something went wrong. Please try again.' })
+    state.chatMessages.push({ role: 'assistant', content: '⚠️ ' + (e.message || 'Something went wrong. Please try again.') })
   }
 
   state.chatLoading = false
@@ -102,12 +112,12 @@ async function addTagToItem(name, namespace, itemId) {
       await db.updateRecipeTags(r.id, r.tags)
     }
   } else if (namespace === 'location') {
+    // Search both pantry and shop list — both use 'location' namespace
     const p = state.pantry.find(x => String(x.id) === String(itemId))
     if (p && !(p.tags||[]).includes(name)) {
       p.tags = [...(p.tags||[]), name]
       await db.updatePantryTags(p.id, p.tags)
     }
-  } else if (namespace === 'location') {
     const s = state.shopList.find(x => String(x.id) === String(itemId))
     if (s && !(s.tags||[]).includes(name)) {
       s.tags = [...(s.tags||[]), name]
@@ -122,9 +132,9 @@ async function removeTagFromItem(name, namespace, itemId) {
     const r = state.recipes.find(x => String(x.id) === String(itemId))
     if (r) { r.tags = (r.tags||[]).filter(t => t !== name); await db.updateRecipeTags(r.id, r.tags) }
   } else if (namespace === 'location') {
+    // Search both pantry and shop list — both use 'location' namespace
     const p = state.pantry.find(x => String(x.id) === String(itemId))
     if (p) { p.tags = (p.tags||[]).filter(t => t !== name); await db.updatePantryTags(p.id, p.tags) }
-  } else if (namespace === 'location') {
     const s = state.shopList.find(x => String(x.id) === String(itemId))
     if (s) { s.tags = (s.tags||[]).filter(t => t !== name); await db.updateShopItemTags(s.id, s.tags) }
   }
@@ -168,6 +178,62 @@ function stripMeasurements(line) {
     .replace(/[,.\-–()]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+// Convert a full recipe ingredient line into a clean shopping list name
+// e.g. "3 ounces (85g) crustless white bread, cut into 1/2-inch cubes (about 2 cups)" → "White Bread, 3oz"
+function parseIngredientLine(line) {
+  // Unicode fractions map
+  const fracs = { '¼':'1/4','½':'1/2','¾':'3/4','⅓':'1/3','⅔':'2/3','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8' }
+  let s = line
+  Object.entries(fracs).forEach(([u, r]) => { s = s.replace(new RegExp(u, 'g'), r) })
+
+  // Strip everything after a comma or prep verb — "cut into", "divided", "at room temp" etc.
+  s = s.replace(/,.*$/, '')
+  s = s.replace(/\s+(cut|sliced|diced|chopped|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|room temperature|at room|packed|unpacked|heaping|about|such as|or more|to taste).*/i, '')
+
+  // Remove parenthetical metric/imperial equivalents like (85g) or (about 2 cups)
+  s = s.replace(/\([^)]*\)/g, ' ')
+
+  // Extract leading quantity + unit  e.g. "3 ounces", "1/2 cup", "2 tablespoons"
+  const unitMap = {
+    'tablespoons?':'tbsp', 'tbsp':'tbsp',
+    'teaspoons?':'tsp', 'tsp':'tsp',
+    'cups?':'cup',
+    'ounces?':'oz', 'oz':'oz',
+    'pounds?':'lb', 'lbs?':'lb',
+    'grams?':'g', 'g':'g',
+    'kilograms?':'kg', 'kg':'kg',
+    'ml':'ml', 'milliliters?':'ml',
+    'liters?':'L', 'l':'L',
+    'pints?':'pt', 'quarts?':'qt',
+    'cans?':'can', 'jars?':'jar',
+    'packages?':'pkg', 'pkgs?':'pkg',
+    'bunches?':'bunch', 'heads?':'head',
+    'cloves?':'clove', 'slices?':'slice',
+    'pieces?':'piece', 'strips?':'strip',
+    'sprigs?':'sprig', 'stalks?':'stalk',
+  }
+  const unitPattern = Object.keys(unitMap).join('|')
+  const qtyRe = new RegExp(`^\\s*(\\d+(?:[\\./]\\d+)?)\\s*(?:(${unitPattern})\\s+)?`, 'i')
+  let qty = ''
+  const qtyMatch = s.match(qtyRe)
+  if (qtyMatch) {
+    const num = qtyMatch[1]
+    const rawUnit = qtyMatch[2]
+    const unit = rawUnit ? (unitMap[Object.keys(unitMap).find(k => new RegExp('^'+k+'$','i').test(rawUnit))] || rawUnit) : ''
+    qty = unit ? `${num}${unit}` : num
+    s = s.replace(qtyRe, '')
+  }
+
+  // Strip leftover size/state adjectives
+  s = s.replace(/\b(large|medium|small|fresh|dried|frozen|raw|cooked|whole|boneless|skinless|canned|unsalted|salted|extra[-\s]virgin|pure|plain)\b/gi, '')
+
+  // Clean up and title-case
+  s = s.replace(/\s+/g, ' ').trim()
+  const name = s.replace(/\b\w/g, c => c.toUpperCase())
+
+  return qty ? `${name}, ${qty}` : name
+}
+
 function buildClaudeContext() {
   const recipeList = state.recipes.length === 0 ? 'No recipes saved yet.'
     : state.recipes.map((r,i) => `${i+1}. ${r.name}\nINGREDIENTS:\n${r.ingredients||''}\nINSTRUCTIONS:\n${r.instructions||r.text||''}${r.cookingNotes?`\nMY NOTES: ${r.cookingNotes}`:''}`).join('\n\n')
@@ -189,8 +255,9 @@ ${recipeList}`
 }
 
 function openClaude(prompt) {
-  const url = `https://claude.ai/new?q=${encodeURIComponent(buildClaudeContext() + '\n\n---\n\n' + (prompt || 'Help me with my meal planning this week.'))}`
-  window.open(url, '_blank')
+  state.tab = 'chat'
+  sendChatMessage(prompt || 'Help me with my meal planning this week.')
+  render()
 }
 
 function formatRecipeText(text) {
@@ -224,12 +291,25 @@ function render() {
 
   app.innerHTML = `
     <div class="layout">
+      ${state.clipboardBanner ? `
+        <div class="clipboard-banner" id="clipboard-banner">
+          <div class="clipboard-banner-text">
+            <span class="clipboard-banner-icon">📋</span>
+            Recipe link detected — clip it?
+          </div>
+          <div class="clipboard-banner-btns">
+            <button class="clipboard-banner-yes" id="clipboard-yes">Clip it</button>
+            <button class="clipboard-banner-no" id="clipboard-no">✕</button>
+          </div>
+        </div>
+      ` : ''}
       <!-- HEADER -->
       <div class="header">
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
         <button class="icon-btn" id="paste-btn">&#128203; Paste Recipe</button>
+          <button class="icon-btn" id="clip-url-btn">🔗 Clip URL</button>
           <button class="icon-btn" id="sync-toggle">&#128279; Sync</button>
           <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">&#9881; Goals</button>
         </div>
@@ -302,6 +382,7 @@ function render() {
 
       <!-- MODALS -->
       ${state.pasteModal    ? renderPasteModal()    : ''}
+      ${state.clipUrlModal  ? renderClipUrlModal()  : ''}
       ${state.shopReview    ? renderShopReview()    : ''}
       ${state.logModal      ? renderLogModal()      : ''}
     </div>
@@ -445,11 +526,22 @@ function renderRecipes() {
           <textarea id="r-ingredients" placeholder="One ingredient per line..."></textarea>
           <div class="clip-field-label">Instructions</div>
           <textarea id="r-instructions" placeholder="Step by step..."></textarea>
-          <div class="clip-field-label">Category</div>
-          <select id="r-category" class="category-select">
-            <option value="">No category</option>
-            ${categoryOptions('')}
-          </select>
+          <div class="clip-field-label">Tags</div>
+          <div class="tag-row" style="position:relative">
+            ${(state.newRecipeTags).map(t => `<span class="tag-chip">${esc(t)}<button class="new-recipe-tag-remove" data-remove-tag="${esc(t)}" style="background:none;border:none;cursor:pointer;color:inherit;margin-left:2px;font-size:13px">×</button></span>`).join('')}
+            <button class="tag-picker-btn" id="new-recipe-tag-btn">+ Tag</button>
+            ${state.newRecipeTagPickerOpen ? `
+              <div class="tag-picker-popover">
+                ${getTagsForNamespace('recipe').filter(t => !state.newRecipeTags.includes(t.name)).map(t =>
+                  `<label class="tag-picker-option"><input type="checkbox" class="new-recipe-tag-check" data-tag="${esc(t.name)}">${esc(t.name)}</label>`
+                ).join('')}
+                <div class="tag-picker-new">
+                  <input class="tag-picker-input" id="new-recipe-tag-input" placeholder="New tag..." />
+                  <button class="tag-picker-add" id="new-recipe-tag-add">Add</button>
+                </div>
+              </div>
+            ` : ''}
+          </div>
           <div class="add-row" style="margin-top:8px">
             <input id="r-notes" placeholder="Note (optional)" style="flex:1" />
             <button class="add-btn" id="r-save-btn">Save</button>
@@ -959,14 +1051,45 @@ function renderChat() {
 }
 
 
+function renderClipUrlModal() {
+  return `
+    <div class="modal-bg" id="clip-url-modal-bg">
+      <div class="modal-sheet">
+        <div class="modal-title">🔗 Clip from URL</div>
+        <div class="modal-sub">Paste a recipe link — we'll fetch and parse it automatically</div>
+        <input id="clip-url-input" placeholder="https://..." style="font-family:monospace;font-size:13px" />
+        <div class="modal-btns">
+          <button class="modal-cancel" id="clip-url-cancel">Cancel</button>
+          <button class="modal-save" id="clip-url-go">Fetch Recipe</button>
+        </div>
+      </div>
+    </div>`
+}
+
 function renderPasteModal() {
+  if (state.shareLoading) return `
+    <div class="modal-bg" id="paste-modal-bg">
+      <div class="modal-sheet" style="text-align:center;padding:40px 20px">
+        <div style="font-size:32px;margin-bottom:12px">🍽️</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">Reading recipe...</div>
+        <div style="color:var(--muted);font-size:13px">Fetching from the page you shared</div>
+      </div>
+    </div>`
+  const r = state.sharedRecipe
   return `
     <div class="modal-bg" id="paste-modal-bg">
       <div class="modal-sheet">
-        <div class="modal-title">&#128203; Paste a Recipe</div>
-        <div class="modal-sub">From YouTube, Instagram, a comment, anywhere</div>
-        <input id="paste-name" placeholder="Recipe name" />
-        <textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving."></textarea>
+        <div class="modal-title">${r ? '📎 Save Clipped Recipe' : '📋 Paste a Recipe'}</div>
+        <div class="modal-sub">${r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'}</div>
+        <input id="paste-name" placeholder="Recipe name" value="${esc(r?.name || '')}" />
+        ${r ? `
+          <div class="clip-field-label">Ingredients</div>
+          <textarea id="paste-ingredients" style="min-height:100px" placeholder="One ingredient per line...">${esc(r.ingredients || '')}</textarea>
+          <div class="clip-field-label">Instructions</div>
+          <textarea id="paste-instructions" style="min-height:80px" placeholder="Step by step...">${esc(r.instructions || '')}</textarea>
+        ` : `
+          <textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving."></textarea>
+        `}
         <div class="modal-btns">
           <button class="modal-cancel" id="paste-cancel">Cancel</button>
           <button class="modal-save" id="paste-save">Save to Recipe Box</button>
@@ -1157,18 +1280,61 @@ function bindEvents() {
     })
   })
 
-  document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
-  document.getElementById('r-cancel-btn')?.addEventListener('click', () => { state.addRecipeModal = false; render() })
+  document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; state.newRecipeTags = []; state.newRecipeTagPickerOpen = false; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
+  document.getElementById('r-cancel-btn')?.addEventListener('click', () => { state.addRecipeModal = false; state.newRecipeTags = []; state.newRecipeTagPickerOpen = false; render() })
+
+  // New recipe tag picker
+  document.getElementById('new-recipe-tag-btn')?.addEventListener('click', e => {
+    e.stopPropagation()
+    state.newRecipeTagPickerOpen = !state.newRecipeTagPickerOpen; render()
+  })
+  document.querySelectorAll('.new-recipe-tag-check[data-tag]').forEach(el => {
+    el.addEventListener('change', e => {
+      e.stopPropagation()
+      if (el.checked) state.newRecipeTags = [...state.newRecipeTags, el.dataset.tag]
+      else state.newRecipeTags = state.newRecipeTags.filter(t => t !== el.dataset.tag)
+      state.newRecipeTagPickerOpen = false; render()
+    })
+  })
+  document.querySelectorAll('.new-recipe-tag-remove[data-remove-tag]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.newRecipeTags = state.newRecipeTags.filter(t => t !== el.dataset.removeTag); render()
+    })
+  })
+  document.getElementById('new-recipe-tag-add')?.addEventListener('click', async e => {
+    e.stopPropagation()
+    const input = document.getElementById('new-recipe-tag-input')
+    const name = input?.value?.trim()
+    if (!name) return
+    const saved = await db.saveTag(name, 'recipe')
+    if (saved && !state.allTags.find(t => t.name === name && t.namespace === 'recipe')) state.allTags.push(saved)
+    state.newRecipeTags = [...state.newRecipeTags, name]
+    state.newRecipeTagPickerOpen = false
+    if (input) input.value = ''
+    render()
+  })
+  document.getElementById('new-recipe-tag-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('new-recipe-tag-add')?.click() }
+  })
+
   document.getElementById('r-save-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('r-name')?.value?.trim()
     const ingredients = document.getElementById('r-ingredients')?.value?.trim()
     const instructions = document.getElementById('r-instructions')?.value?.trim()
     const notes = document.getElementById('r-notes')?.value?.trim()
-    const category = document.getElementById('r-category')?.value || ''
+    const tags = [...state.newRecipeTags]
     if (!name) return
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, category })
+    // Save any new tags to the library
+    for (const tag of tags) {
+      if (!state.allTags.find(t => t.name === tag && t.namespace === 'recipe')) {
+        const saved = await db.saveTag(tag, 'recipe')
+        if (saved) state.allTags.push(saved)
+      }
+    }
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, tags })
     if (saved) state.recipes.unshift(normalizeRecipe(saved))
-    state.addRecipeModal = false; render()
+    state.addRecipeModal = false; state.newRecipeTags = []; state.newRecipeTagPickerOpen = false; render()
   })
 
   document.querySelectorAll('.recipe-card-header').forEach(el => {
@@ -1213,7 +1379,7 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       const r = state.recipes.find(x => x.id === el.dataset.ask)
-      if (r) openClaude(`Tell me ways I can use this recipe throughout the week:\n\n${r.name}\n${r.text}`)
+      if (r) { state.tab = 'chat'; sendChatMessage('Tell me ways I can use this recipe this week: ' + r.name + '. Ingredients: ' + (r.ingredients||'')); render() }
     })
   })
 
@@ -1253,8 +1419,9 @@ function bindEvents() {
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
         .map(l => l.replace(/^[•\-\d\.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
-      const items = ingLines.map(name => {
-        const stripped = stripMeasurements(name)
+      const items = ingLines.map(raw => {
+        const name = parseIngredientLine(raw)
+        const stripped = stripMeasurements(raw)
         const match = state.pantry.find(p => {
           const pl = p.name.toLowerCase()
           return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
@@ -1349,7 +1516,7 @@ function bindEvents() {
   })
   document.getElementById('lm-cancel')?.addEventListener('click', () => { state.logModal = null; render() })
 
-  // Ask Claude for calorie estimate
+  // Ask Claude for calorie estimate (in-app chat)
   document.getElementById('lm-estimate')?.addEventListener('click', () => {
     const portion = document.getElementById('lm-portion')?.value?.trim()
     const recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
@@ -1357,10 +1524,10 @@ function bindEvents() {
     const q = portion
       ? "How many calories in " + portion + " of this recipe? Just give me a single number.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
       : "How many calories per serving of this recipe?\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
-    window.open("https://claude.ai/new?q=" + encodeURIComponent(q), "_blank")
-    // Update note without full re-render to preserve event listeners
-    const noteEl = document.querySelector('.modal-note')
-    if (noteEl) noteEl.textContent = "Claude opened - come back and enter the number here!"
+    state.logModal = null
+    state.tab = 'chat'
+    sendChatMessage(q)
+    render()
   })
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
   document.getElementById('lm-save')?.addEventListener('click', async () => {
@@ -1384,33 +1551,101 @@ function bindEvents() {
 
   // Paste modal
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
-  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; render() })
-  document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; render() } })
-  document.getElementById('paste-save')?.addEventListener('click', async () => {
-    const name = document.getElementById('paste-name')?.value?.trim()
-    const text = document.getElementById('paste-text')?.value?.trim()
-    if (!name || !text) return
-    const lower = text.toLowerCase()
-    let ingredients = text, instructions = ''
-    const splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
-    if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '' })
-    if (saved) state.recipes.unshift(normalizeRecipe(saved))
-    state.pasteModal = false; state.tab = 'recipes'; render()
+
+  // Clip URL modal
+  document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
+    state.clipUrlModal = true
+    render()
+    // Try to pre-fill from clipboard
+    setTimeout(async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const input = document.getElementById('clip-url-input')
+        if (input && text?.startsWith('http')) input.value = text
+      } catch(e) {}
+      document.getElementById('clip-url-input')?.focus()
+      document.getElementById('clip-url-input')?.select()
+    }, 100)
+  })
+  document.getElementById('clip-url-cancel')?.addEventListener('click', () => { state.clipUrlModal = false; render() })
+  document.getElementById('clip-url-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'clip-url-modal-bg') { state.clipUrlModal = false; render() } })
+  document.getElementById('clip-url-go')?.addEventListener('click', async () => {
+    const url = document.getElementById('clip-url-input')?.value?.trim()
+    if (!url?.startsWith('http')) return
+    state.clipUrlModal = false
+    state.pasteModal = true
+    state.shareLoading = true
+    render()
+    try {
+      const resp = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`)
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false
+      state.sharedRecipe = recipe
+      render()
+    } catch(e) {
+      state.shareLoading = false
+      state.sharedRecipe = null
+      render()
+    }
+  })
+  document.getElementById('clip-url-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('clip-url-go')?.click()
   })
 
-  // Chat / Claude launcher
-  document.getElementById('open-claude-btn')?.addEventListener('click', () => openClaude(''))
-  document.querySelectorAll('[data-prompt]').forEach(el => {
-    el.addEventListener('click', () => openClaude(el.dataset.text))
+  // Clipboard banner — "Clip it" fetches the URL and opens the save modal
+  document.getElementById('clipboard-yes')?.addEventListener('click', async () => {
+    const url = state.clipboardBanner
+    state.clipboardBanner = null
+    state.pasteModal = true
+    state.shareLoading = true
+    render()
+    try {
+      const resp = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`)
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false
+      state.sharedRecipe = recipe
+      render()
+    } catch (e) {
+      state.shareLoading = false
+      state.sharedRecipe = null
+      render()
+    }
   })
-  document.getElementById('claude-send-btn')?.addEventListener('click', () => {
-    const val = document.getElementById('claude-input')?.value?.trim()
-    openClaude(val || '')
+  document.getElementById('clipboard-no')?.addEventListener('click', () => {
+    state.clipboardBanner = null
+    render()
   })
-  document.getElementById('claude-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('claude-send-btn')?.click()
+  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() })
+  document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
+  document.getElementById('paste-save')?.addEventListener('click', async () => {
+    const name = document.getElementById('paste-name')?.value?.trim()
+    if (!name) return
+
+    let ingredients = '', instructions = ''
+
+    if (state.sharedRecipe) {
+      // Shared recipe — fields are split already
+      ingredients = document.getElementById('paste-ingredients')?.value?.trim() || ''
+      instructions = document.getElementById('paste-instructions')?.value?.trim() || ''
+    } else {
+      // Manual paste — split heuristically
+      const text = document.getElementById('paste-text')?.value?.trim() || ''
+      if (!text) return
+      ingredients = text; instructions = ''
+      const splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
+      if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
+    }
+
+    const clippedFrom = state.sharedRecipe?.url || ''
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom })
+    if (saved) state.recipes.unshift(normalizeRecipe(saved))
+    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.tab = 'recipes'; render()
   })
+
+  // Chat handled by chat handlers below
+
 
 
   // ── TAG LIBRARY HANDLERS ──
@@ -1454,29 +1689,26 @@ function bindEvents() {
     })
   })
 
-  // Tag picker checkbox toggle
+  // Tag picker checkbox toggle — close picker after applying
   document.querySelectorAll('.tag-picker-check[data-pick-tag]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      // Use setTimeout to let checkbox state update before reading it
       setTimeout(async () => {
+        state.tagPickerOpen = null
         if (el.checked) await addTagToItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
         else await removeTagFromItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
       }, 0)
     })
   })
-  // Prevent label clicks from closing picker
-  document.querySelectorAll('.tag-picker-option').forEach(el => {
-    el.addEventListener('click', e => e.stopPropagation())
-  })
 
-  // Tag picker new inline tag
+  // Tag picker new inline tag — close picker after adding
   document.querySelectorAll('.tag-picker-add[data-new-tag-item]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const input = document.getElementById('new-tag-' + el.dataset.newTagItem + '-' + el.dataset.newTagNs)
+      const input = el.closest('.tag-picker-new')?.querySelector('.tag-picker-input')
       const name = input?.value?.trim()
       if (!name) return
+      state.tagPickerOpen = null
       await addTagToItem(name, el.dataset.newTagNs, el.dataset.newTagItem)
       if (input) input.value = ''
     })
@@ -1486,13 +1718,19 @@ function bindEvents() {
     el.addEventListener('keydown', async e => {
       if (e.key === 'Enter') {
         e.preventDefault()
-        el.closest('.tag-picker-popover')?.querySelector('.tag-picker-add')?.click()
+        const addBtn = el.closest('.tag-picker-new')?.querySelector('.tag-picker-add')
+        if (addBtn) addBtn.click()
       }
     })
   })
-  document.querySelectorAll('.tag-picker-popover').forEach(el => {
-    el.addEventListener('click', e => e.stopPropagation())
-  })
+
+  // Close picker when clicking anywhere outside it
+  document.addEventListener('click', () => {
+    if (state.tagPickerOpen) {
+      state.tagPickerOpen = null
+      render()
+    }
+  }, { once: true })
 
 
   // ── CALENDAR HANDLERS ──
@@ -1650,3 +1888,77 @@ function bindEvents() {
 // ── START ─────────────────────────────────────────────────────────────────────
 init()
 
+// ── SHARE TARGET ──────────────────────────────────────────────────────────────
+// Handles incoming shares from the iOS/Android share sheet
+;(async () => {
+  const params = new URLSearchParams(window.location.search)
+  const sharedUrl = params.get('url') || params.get('text') || ''
+  if (!sharedUrl || !sharedUrl.startsWith('http')) return
+
+  // Clear the share params from the URL so refreshing doesn't re-trigger
+  window.history.replaceState({}, '', '/')
+
+  // Show a loading state in the paste modal
+  state.pasteModal = true
+  state.shareLoading = true
+  render()
+
+  try {
+    const resp = await fetch(`/api/scrape?url=${encodeURIComponent(sharedUrl)}`)
+    const recipe = await resp.json()
+
+    if (recipe.error) throw new Error(recipe.error)
+
+    // Pre-fill the paste modal fields
+    state.shareLoading = false
+    state.sharedRecipe = recipe
+    render()
+
+    // Fill in the form fields after render
+    setTimeout(() => {
+      const nameEl = document.getElementById('paste-name')
+      const ingEl = document.getElementById('paste-ingredients')
+      const instEl = document.getElementById('paste-instructions')
+      if (nameEl) nameEl.value = recipe.name || ''
+      if (ingEl) ingEl.value = recipe.ingredients || ''
+      if (instEl) instEl.value = recipe.instructions || ''
+    }, 50)
+  } catch (e) {
+    state.shareLoading = false
+    state.sharedRecipe = null
+    render()
+    // Still open the modal so user can paste manually
+    setTimeout(() => {
+      const nameEl = document.getElementById('paste-name')
+      if (nameEl) nameEl.placeholder = `Couldn't auto-read recipe — paste it manually`
+    }, 50)
+  }
+})()
+
+// Re-fetch from Supabase when user switches back to this tab (e.g. after using Chrome extension)
+// Also checks clipboard for a copied recipe URL
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    // Refresh data from Supabase
+    const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
+    state.recipes = recipes.map(normalizeRecipe)
+    state.allTags = allTags || []
+    render()
+
+    // Check clipboard for a recipe URL (iOS: copy link → open app)
+    try {
+      const text = await navigator.clipboard.readText()
+      const trimmed = (text || '').trim()
+      // Only act if it looks like a URL and isn't the same one we already clipped
+      const isUrl = trimmed.startsWith('http') && trimmed.length < 500
+      const alreadyShown = state._lastClipboardUrl === trimmed
+      if (isUrl && !alreadyShown && !state.pasteModal && !state.shareLoading) {
+        state._lastClipboardUrl = trimmed
+        state.clipboardBanner = trimmed
+        render()
+      }
+    } catch (e) {
+      // Clipboard permission denied or not available — that's fine
+    }
+  }
+})
