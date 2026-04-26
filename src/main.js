@@ -20,6 +20,8 @@ const state = {
   newRecipeTagPickerOpen: false,
   shareLoading: false,
   sharedRecipe: null,
+  clipboardBanner: null,
+  _lastClipboardUrl: null,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
   historyLog: [],       // full log history
   historyOffset: 0,     // week offset for history view
@@ -288,6 +290,18 @@ function render() {
 
   app.innerHTML = `
     <div class="layout">
+      ${state.clipboardBanner ? `
+        <div class="clipboard-banner" id="clipboard-banner">
+          <div class="clipboard-banner-text">
+            <span class="clipboard-banner-icon">📋</span>
+            Recipe link detected — clip it?
+          </div>
+          <div class="clipboard-banner-btns">
+            <button class="clipboard-banner-yes" id="clipboard-yes">Clip it</button>
+            <button class="clipboard-banner-no" id="clipboard-no">✕</button>
+          </div>
+        </div>
+      ` : ''}
       <!-- HEADER -->
       <div class="header">
         <div class="header-title"><em>Mise en Place</em></div>
@@ -1519,6 +1533,31 @@ function bindEvents() {
 
   // Paste modal
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+
+  // Clipboard banner — "Clip it" fetches the URL and opens the save modal
+  document.getElementById('clipboard-yes')?.addEventListener('click', async () => {
+    const url = state.clipboardBanner
+    state.clipboardBanner = null
+    state.pasteModal = true
+    state.shareLoading = true
+    render()
+    try {
+      const resp = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`)
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false
+      state.sharedRecipe = recipe
+      render()
+    } catch (e) {
+      state.shareLoading = false
+      state.sharedRecipe = null
+      render()
+    }
+  })
+  document.getElementById('clipboard-no')?.addEventListener('click', () => {
+    state.clipboardBanner = null
+    render()
+  })
   document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() })
   document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
   document.getElementById('paste-save')?.addEventListener('click', async () => {
@@ -1838,11 +1877,29 @@ init()
 })()
 
 // Re-fetch from Supabase when user switches back to this tab (e.g. after using Chrome extension)
+// Also checks clipboard for a copied recipe URL
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible') {
+    // Refresh data from Supabase
     const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
     state.recipes = recipes.map(normalizeRecipe)
     state.allTags = allTags || []
     render()
+
+    // Check clipboard for a recipe URL (iOS: copy link → open app)
+    try {
+      const text = await navigator.clipboard.readText()
+      const trimmed = (text || '').trim()
+      // Only act if it looks like a URL and isn't the same one we already clipped
+      const isUrl = trimmed.startsWith('http') && trimmed.length < 500
+      const alreadyShown = state._lastClipboardUrl === trimmed
+      if (isUrl && !alreadyShown && !state.pasteModal && !state.shareLoading) {
+        state._lastClipboardUrl = trimmed
+        state.clipboardBanner = trimmed
+        render()
+      }
+    } catch (e) {
+      // Clipboard permission denied or not available — that's fine
+    }
   }
 })
