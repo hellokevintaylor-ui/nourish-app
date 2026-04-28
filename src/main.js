@@ -658,9 +658,9 @@ function renderShop() {
                   '</div>' +
                   '<button class="remove-btn" data-shop-del="' + i.id + '">×</button>' +
                 '</div>'
+              }).join('')}
           </div>
         `).join('')}
-      ` : ''}
       <div class="shop-add-row">
         <input id="shop-manual-input" placeholder="Add item manually..." />
         <button class="add-btn" id="shop-manual-add">+ Add</button>
