@@ -458,8 +458,7 @@ function renderRecipeCard(r) {
       '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
     '</div>' +
     notesSection +
-    '<div class="tag-row">' + tagChips + tagPickerBtn + '</div>' +
-    tagPicker +
+    '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
     '<div class="recipe-actions">' +
       '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
       '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">&#127373; Log meal</button>' +
@@ -1670,10 +1669,12 @@ function bindEvents() {
       if (e.key === 'Enter') { e.preventDefault(); el.closest('.tag-picker-new')?.querySelector('.tag-picker-add')?.click() }
     })
   })
-  // Close picker on outside click
-  document.addEventListener('click', () => {
-    if (state.tagPickerOpen) { state.tagPickerOpen = null; render() }
-  }, { once: true })
+  // Close picker on outside click - setTimeout prevents immediate firing
+  setTimeout(() => {
+    document.addEventListener('click', () => {
+      if (state.tagPickerOpen) { state.tagPickerOpen = null; render() }
+    }, { once: true })
+  }, 0)
 
 
   // ── CALENDAR HANDLERS ──
