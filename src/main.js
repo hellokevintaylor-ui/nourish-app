@@ -323,17 +323,10 @@ function render() {
       <div class="goals-panel">
         <div class="goals-title">Your Goals</div>
         <div class="goal-presets">
-          ${Object.entries(GOAL_PRESETS).map(([k,p]) => `
-            <button class="preset-btn ${state.goals.goal===k?'active':''}" data-preset="${k}">${p.label}</button>
-          `).join('')}
+          ' + Object.entries(GOAL_PRESETS).map(([k,p]) => '<button class="preset-btn ' + (state.goals.goal===k?'active':'') + '" data-preset="' + k + '">' + p.label + '</button>').join('') + '
         </div>
         <div class="goals-grid">
-          ${['calories','protein','carbs','fat'].map(f => `
-            <div class="goal-field">
-              <label>${f}${f!=='calories'?' (g)':' (kcal)'}</label>
-              <input type="number" data-goal="${f}" value="${state.goals[f]}" />
-            </div>
-          `).join('')}
+          ' + ['calories','protein','carbs','fat'].map(f => '<div class="goal-field"><label>' + f + (f!=="calories"?' (g)':' (kcal)') + '</label><input type="number" data-goal="' + f + '" value="' + state.goals[f] + '" /></div>').join('') + '
         </div>
       </div>` : ''}
 
@@ -535,19 +528,16 @@ function renderRecipes() {
           <textarea id="r-instructions" placeholder="Step by step..."></textarea>
           <div class="clip-field-label">Tags</div>
           <div class="tag-row" style="position:relative">
-            ${(state.newRecipeTags).map(t => `<span class="tag-chip">${esc(t)}<button class="new-recipe-tag-remove" data-remove-tag="${esc(t)}" style="background:none;border:none;cursor:pointer;color:inherit;margin-left:2px;font-size:13px">×</button></span>`).join('')}
+            ' + (state.newRecipeTags).map(t => '<span class="tag-chip">' + esc(t) + '<button class="new-recipe-tag-remove" data-remove-tag="' + esc(t) + '" style="background:none;border:none;cursor:pointer;color:inherit;margin-left:2px;font-size:13px">×</button></span>').join('') + '
             <button class="tag-picker-btn" id="new-recipe-tag-btn">+ Tag</button>
-            ${state.newRecipeTagPickerOpen ? `
-              <div class="tag-picker-popover">
-                ${getTagsForNamespace('recipe').filter(t => !state.newRecipeTags.includes(t.name)).map(t =>
-                  `<label class="tag-picker-option"><input type="checkbox" class="new-recipe-tag-check" data-tag="${esc(t.name)}">${esc(t.name)}</label>`
-                ).join('')}
-                <div class="tag-picker-new">
-                  <input class="tag-picker-input" id="new-recipe-tag-input" placeholder="New tag..." />
-                  <button class="tag-picker-add" id="new-recipe-tag-add">Add</button>
-                </div>
-              </div>
-            ` : ''}
+            ' + (state.newRecipeTagPickerOpen ?
+              '<div class="tag-picker-popover">' +
+              getTagsForNamespace('recipe').filter(t => !state.newRecipeTags.includes(t.name)).map(t =>
+                '<label class="tag-picker-option"><input type="checkbox" class="new-recipe-tag-check" data-tag="' + esc(t.name) + '">' + esc(t.name) + '</label>'
+              ).join('') +
+              '<div class="tag-picker-new"><input class="tag-picker-input" id="new-recipe-tag-input" placeholder="New tag..." /><button class="tag-picker-add" id="new-recipe-tag-add">Add</button></div>' +
+              '</div>'
+            : '') + '
           </div>
           <div class="add-row" style="margin-top:8px">
             <input id="r-notes" placeholder="Note (optional)" style="flex:1" />
@@ -556,9 +546,9 @@ function renderRecipes() {
           </div>
         </div>
       ` : ''}
-      ${filtered.length === 0 && !state.addRecipeModal ? `
-        <div class="empty-state">${state.activeCategory !== 'All' ? `No ${state.activeCategory} recipes yet.` : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!'} </div>
-      ` : filtered.map(r => renderRecipeCard(r)).join('')}
+      ' + (filtered.length === 0 && !state.addRecipeModal ? (
+        <div class="empty-state">' + (state.activeCategory !== 'All' ? 'No ' + state.activeCategory + ' recipes yet.' : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!') + '</div>
+      ) : filtered.map(r => renderRecipeCard(r)).join('')) + '
     </div>`
 }
 
@@ -608,6 +598,38 @@ function renderPantry() {
     </div>`
 }
 
+function renderShopGroups(byRecipe) {
+  return Object.entries(byRecipe).map(function(entry) {
+    const recipe = entry[0], items = entry[1]
+    const itemsHtml = items.map(function(i) {
+      const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">x</button></span>').join('')
+      const pickerId = i.id + '-location'
+      const isOpen = state.tagPickerOpen === pickerId
+      const storeTags = getTagsForNamespace('location')
+      const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+      const isEditingS = state.editingShopId === String(i.id)
+      return '<div class="shop-row">' +
+        '<div class="shop-check" data-check="' + i.id + '"></div>' +
+        '<div class="shop-item-main">' +
+        (isEditingS ?
+          '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
+          '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
+        :
+          '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
+        ) +
+        '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
+        '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">Pantry</button>' + picker + '</div>' +
+        '</div>' +
+        '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' +
+      '</div>'
+    }).join('')
+    return '<div class="shop-recipe-group">' +
+      '<div class="shop-recipe-name">' + esc(recipe) + '</div>' +
+      itemsHtml +
+    '</div>'
+  }).join('')
+}
+
 function renderShop() {
   const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
   const need = state.shopList.filter(i => !i.have && (!activeTag || (i.tags||[]).includes(activeTag)))
@@ -634,40 +656,7 @@ function renderShop() {
           <div class="shop-got-it-text">${need.length} item${need.length!==1?'s':''} to buy</div>
           <button class="shop-got-it-btn" id="shop-got-it">[ok] Got it all!</button>
         </div>
-        ${Object.entries(byRecipe).map(([recipe, items]) => `
-          <div class="shop-recipe-group">
-            <div class="shop-recipe-name"> ${esc(recipe)}</div>
-            ${items.map(i => {
-                const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">×</button></span>').join('')
-                const pickerId = i.id + '-location'
-                const isOpen = state.tagPickerOpen === pickerId
-                const storeTags = getTagsForNamespace('location')
-                const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
-                const isEditingS = state.editingShopId === String(i.id)
-                return '<div class="shop-row">' +
-                  '<div class="shop-check" data-check="' + i.id + '"></div>' +
-                  '<div class="shop-item-main">' +
-                  (isEditingS ?
-                    '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
-                    '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
-                  :
-                    '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
-                  ) +
-                    '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
-                    '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">→ Pantry</button>' + picker + '</div>' +
-                  '</div>' +
-                  '<button class="remove-btn" data-shop-del="' + i.id + '">×</button>' +
-                '</div>'
-              }).join('')}
-          </div>
-        `).join('')}
-      <div class="shop-add-row">
-        <input id="shop-manual-input" placeholder="Add item manually..." />
-        <button class="add-btn" id="shop-manual-add">+ Add</button>
-      </div>
-    </div>`
-}
-
+        ' + renderShopGroups(byRecipe) + '
 function renderLog() {
   const cals = todayCalories()
   const rem = state.goals.calories - cals
@@ -1114,29 +1103,30 @@ function renderPasteModal() {
 
 function renderShopReview() {
   const s = state.shopReview
-  return `
-    <div class="modal-bg" id="shop-review-bg">
-      <div class="modal-sheet">
-        <div class="modal-title"> What do you need?</div>
-        <div class="modal-sub">${esc(s.recipeName)}</div>
-        <div class="shop-review-hint">Pre-checked items aren't in your pantry. Adjust as needed.</div>
-        <div class="shop-review-list">
-          ${s.items.map((item,idx) => `
-            <label class="shop-review-row">
-              <input type="checkbox" class="shop-review-check" data-idx="${idx}" ${item.checked?'checked':''} />
-              <div class="shop-review-info">
-                <div class="shop-review-name">${esc(item.name)}</div>
-                ${item.pantryQty ? '<div class="shop-review-have">You have: ' + esc(item.pantryQty) + '</div>' : '<div class="shop-review-none">Not in pantry</div>'}
-              </div>
-            </label>
-          `).join('')}
-        </div>
-        <div class="modal-btns">
-          <button class="modal-cancel" id="shop-review-cancel">Cancel</button>
-          <button class="modal-save" id="shop-review-add">Add to Shopping List</button>
-        </div>
-      </div>
-    </div>`
+  const itemsHtml = s.items.map(function(item, idx) {
+    const pantryInfo = item.pantryQty
+      ? '<div class="shop-review-have">You have: ' + esc(item.pantryQty) + '</div>'
+      : '<div class="shop-review-none">Not in pantry</div>'
+    return '<label class="shop-review-row">' +
+      '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (item.checked ? 'checked' : '') + ' />' +
+      '<div class="shop-review-info">' +
+        '<div class="shop-review-name">' + esc(item.name) + '</div>' +
+        pantryInfo +
+      '</div>' +
+    '</label>'
+  }).join('')
+  return '<div class="modal-bg" id="shop-review-bg">' +
+    '<div class="modal-sheet">' +
+      '<div class="modal-title">What do you need?</div>' +
+      '<div class="modal-sub">' + esc(s.recipeName) + '</div>' +
+      '<div class="shop-review-hint">Pre-checked items are not in your pantry. Adjust as needed.</div>' +
+      '<div class="shop-review-list">' + itemsHtml + '</div>' +
+      '<div class="modal-btns">' +
+        '<button class="modal-cancel" id="shop-review-cancel">Cancel</button>' +
+        '<button class="modal-save" id="shop-review-add">Add to Shopping List</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
 }
 
 function renderLogModal() {
