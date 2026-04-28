@@ -34,6 +34,7 @@ const state = {
   chatLoading: false,   // waiting for AI response
   mealPlan: [],         // loaded meal plan entries
   calendarSlot: null,   // { date, slot } when picker is open
+  calendarTagFilter: null,
   logSearch: '',        // search query in log tab
   logRecipeResults: [], // recipe search results in log
   editingNotes: null,
@@ -889,21 +890,39 @@ function renderCalendar() {
   if (state.calendarSlot) {
     const { date, slot } = state.calendarSlot
     const search = state.calendarSearch || ''
-    const results = search
-      ? state.recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
-      : state.recipes.slice(0, 8)
+    const tagFilter = state.calendarTagFilter
+    const recipeTags = getTagsForNamespace('recipe')
+
+    let results = state.recipes
+    if (tagFilter) results = results.filter(r => (r.tags||[]).includes(tagFilter))
+    if (search) results = results.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
+    results = results.slice(0, 12)
 
     html += '<div class="modal-bg" id="cal-picker-bg">'
     html += '<div class="modal-sheet">'
     html += '<div class="modal-title">Add to ' + slot + '</div>'
     html += '<div class="modal-sub">' + formatDate(date) + '</div>'
     html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" />'
+
+    // Tag filter chips
+    if (recipeTags.length > 0) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">'
+      html += '<button class="tag-filter-chip ' + (!tagFilter ? 'active' : '') + '" data-cal-tag="">All</button>'
+      recipeTags.forEach(t => {
+        html += '<button class="tag-filter-chip ' + (tagFilter === t.name ? 'active' : '') + '" data-cal-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>'
+      })
+      html += '</div>'
+    }
+
     html += '<div class="cal-recipe-list">'
     if (results.length === 0) {
       html += '<div class="empty-state" style="padding:20px">No recipes found</div>'
     } else {
       results.forEach(r => {
-        html += '<button class="cal-recipe-option" data-pick-recipe="' + r.id + '" data-pick-name="' + esc(r.name) + '">' + esc(r.name) + '</button>'
+        const tagChips = (r.tags||[]).map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('')
+        html += '<button class="cal-recipe-option" data-pick-recipe="' + r.id + '" data-pick-name="' + esc(r.name) + '">' +
+          esc(r.name) + (tagChips ? '<div>' + tagChips + '</div>' : '') +
+        '</button>'
       })
     }
     html += '</div>'
@@ -1803,6 +1822,17 @@ function bindEvents() {
     el.addEventListener('click', () => {
       state.calendarSlot = { date: el.dataset.calDate, slot: el.dataset.calSlot }
       state.calendarSearch = ''
+      state.calendarTagFilter = null
+      render()
+      setTimeout(() => document.getElementById('cal-search-input')?.focus(), 50)
+    })
+  })
+
+  // Tag filter chips in calendar picker
+  document.querySelectorAll('[data-cal-tag]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.calendarTagFilter = el.dataset.calTag || null
       render()
       setTimeout(() => document.getElementById('cal-search-input')?.focus(), 50)
     })
@@ -1828,8 +1858,8 @@ function bindEvents() {
   })
 
   // Close calendar picker
-  document.getElementById('cal-picker-cancel')?.addEventListener('click', () => { state.calendarSlot = null; render() })
-  document.getElementById('cal-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'cal-picker-bg') { state.calendarSlot = null; render() } })
+  document.getElementById('cal-picker-cancel')?.addEventListener('click', () => { state.calendarSlot = null; state.calendarTagFilter = null; render() })
+  document.getElementById('cal-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'cal-picker-bg') { state.calendarSlot = null; state.calendarTagFilter = null; render() } })
 
   // Delete meal plan entry
   document.querySelectorAll('[data-del-plan]').forEach(el => {
