@@ -16,6 +16,7 @@ const state = {
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
+  tagPickerPos: null,
   newRecipeTags: [],
   newRecipeTagPickerOpen: false,
   shareLoading: false,
@@ -349,6 +350,12 @@ function render() {
     </div>
   `
   bindEvents()
+  // Position active tag picker near its button
+  const activePicker = document.getElementById('tag-picker-popover')
+  if (activePicker && state.tagPickerPos) {
+    activePicker.style.top = state.tagPickerPos.top + 'px'
+    activePicker.style.left = Math.min(state.tagPickerPos.left, window.innerWidth - 220) + 'px'
+  }
 }
 
 // ── TAB RENDERS ───────────────────────────────────────────────────────────────
@@ -363,6 +370,12 @@ function categoryOptions(selected) {
 
 
 // Tag helpers
+function tagPickerStyle() {
+  const pos = state.tagPickerPos
+  if (!pos) return 'top:0;left:0'
+  return 'top:' + pos.top + 'px;left:' + pos.left + 'px'
+}
+
 function getTagsForNamespace(namespace) {
   return state.allTags.filter(t => t.namespace === namespace)
 }
@@ -436,7 +449,7 @@ function renderRecipeCard(r) {
   const isPickerOpen = state.tagPickerOpen === r.id + '-recipe'
   const mealTags = getTagsForNamespace('recipe')
   const tagPicker = isPickerOpen ? (
-    '<div class="tag-picker-popover">' +
+    '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
     mealTags.map(t => {
       const checked = (r.tags||[]).includes(t.name)
       return '<label class="tag-picker-option">' +
@@ -523,7 +536,7 @@ function renderPantry() {
         const pickerId = item.id + '-location'
         const isOpen = state.tagPickerOpen === pickerId
         const pantryTags = getTagsForNamespace('location')
-        const picker = isOpen ? ('<div class="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+        const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
         const isEditing = state.editingPantryId === String(item.id)
         return '<div class="pantry-row pantry-row-wrap">' +
           '<div class="pantry-row-main">' +
@@ -555,7 +568,7 @@ function renderShopGroups(byRecipe) {
       const pickerId = i.id + '-location'
       const isOpen = state.tagPickerOpen === pickerId
       const storeTags = getTagsForNamespace('location')
-      const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+      const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
       const isEditingS = state.editingShopId === String(i.id)
       return '<div class="shop-row">' +
         '<div class="shop-check" data-check="' + i.id + '"></div>' +
@@ -1634,7 +1647,18 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       const key = el.dataset.pickerId + '-' + el.dataset.pickerNs
-      state.tagPickerOpen = state.tagPickerOpen === key ? null : key
+      if (state.tagPickerOpen === key) {
+        state.tagPickerOpen = null
+        state.tagPickerPos = null
+      } else {
+        state.tagPickerOpen = key
+        // Position relative to button
+        const rect = el.getBoundingClientRect()
+        state.tagPickerPos = {
+          top: rect.bottom + 6,
+          left: Math.min(rect.left, window.innerWidth - 220)
+        }
+      }
       render()
     })
   })

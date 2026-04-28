@@ -367,7 +367,7 @@ html, body {
 .tag-row { display:flex; flex-wrap:wrap; gap:5px; align-items:center; margin-bottom:10px; position:relative; }
 .tag-picker-btn { padding:4px 11px; background:var(--cream2); border:1.5px dashed var(--border2); border-radius:12px; font-size:11px; cursor:pointer; font-family:'DM Sans',sans-serif; color:var(--ink3); transition:all 0.15s; font-weight:500; }
 .tag-picker-btn:hover { border-color:var(--forest2); color:var(--forest); background:var(--sage4); }
-.tag-picker-popover { position:absolute; left:0; top:100%; background:white; border:1.5px solid var(--forest2); border-radius:12px; padding:12px; margin-top:4px; display:flex; flex-direction:column; gap:4px; box-shadow:0 8px 24px var(--shadow2); z-index:50; min-width:180px; }
+.tag-picker-popover { position:fixed; background:white; border:1.5px solid var(--forest2); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:4px; box-shadow:0 8px 24px var(--shadow2); z-index:200; min-width:200px; max-height:60vh; overflow-y:auto; }
 .tag-picker-option { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink); padding:5px 4px; cursor:pointer; border-radius:6px; }
 .tag-picker-option:hover { background:var(--cream); }
 .tag-picker-option input { accent-color:var(--forest); width:15px; height:15px; cursor:pointer; }
