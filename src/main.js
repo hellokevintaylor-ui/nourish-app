@@ -37,6 +37,7 @@ const state = {
   logSearch: '',        // search query in log tab
   logRecipeResults: [], // recipe search results in log
   editingNotes: null,
+  editingRecipeId: null,
   shopReview: null,
   pasteModal: false,
   addRecipeModal: false,
@@ -463,10 +464,24 @@ function renderRecipeCard(r) {
     '</div>'
   ) : ''
 
+  const isEditingRecipe = state.editingRecipeId === r.id
   const body = '<div class="recipe-body">' +
     (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">&#128279; View original</a></div>' : '') +
-    (r.ingredients ? '<div class="recipe-section-label">Ingredients</div><div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '') +
-    (r.instructions ? '<div class="recipe-section-label">Instructions</div><div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : '') +
+    '<div class="recipe-section-label cooking-notes-label">Ingredients' +
+      '<button class="notes-edit-btn" data-recipe-edit="' + r.id + '">' + (isEditingRecipe ? 'Done' : 'Edit') + '</button>' +
+    '</div>' +
+    (isEditingRecipe ?
+      '<textarea class="notes-textarea" id="edit-ingredients-' + r.id + '" style="min-height:120px">' + esc(r.ingredients || '') + '</textarea>' +
+      '<button class="notes-save-btn" data-recipe-save="' + r.id + '">Save Changes</button>'
+    :
+      (r.ingredients ? '<div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '<div class="recipe-text" style="color:var(--ink4);font-style:italic">No ingredients yet — tap Edit to add</div>')
+    ) +
+    '<div class="recipe-section-label">Instructions</div>' +
+    (isEditingRecipe ?
+      '<textarea class="notes-textarea" id="edit-instructions-' + r.id + '" style="min-height:120px">' + esc(r.instructions || '') + '</textarea>'
+    :
+      (r.instructions ? '<div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : (r.text ? '<div class="recipe-text">' + formatRecipeText(r.text) + '</div>' : ''))
+    ) +
     '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
       '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
     '</div>' +
@@ -1258,6 +1273,33 @@ function bindEvents() {
     el.addEventListener('click', () => {
       const rid = el.closest('.recipe-card').dataset.rid
       state.expandedRecipe = state.expandedRecipe === rid ? null : rid
+      render()
+    })
+  })
+
+  // Recipe ingredients/instructions editing
+  document.querySelectorAll('[data-recipe-edit]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.recipeEdit
+      state.editingRecipeId = state.editingRecipeId === rid ? null : rid
+      render()
+      setTimeout(() => document.getElementById('edit-ingredients-' + rid)?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-recipe-save]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const rid = el.dataset.recipeSave
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      const ingredients = document.getElementById('edit-ingredients-' + rid)?.value?.trim()
+      const instructions = document.getElementById('edit-instructions-' + rid)?.value?.trim()
+      if (recipe) {
+        recipe.ingredients = ingredients
+        recipe.instructions = instructions
+        await db.updateRecipe(rid, { ingredients, instructions })
+      }
+      state.editingRecipeId = null
       render()
     })
   })
