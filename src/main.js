@@ -552,7 +552,18 @@ function renderPantry() {
       '<input id="pantry-name" placeholder="Item name" style="flex:2" />' +
       '<input id="pantry-qty" placeholder="Qty (2 cans)" style="flex:1" />' +
       '<button class="add-btn" id="pantry-add-btn">+ Add</button>' +
-    '</div></div>' +
+    '</div>' +
+    (getTagsForNamespace('location').length > 0 ?
+      '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
+      getTagsForNamespace('location').map(t =>
+        '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
+        '<input type="checkbox" class="pantry-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
+        esc(t.name) + '</label>'
+      ).join('') +
+      '</div>'
+    : '') +
+    '</div>' +
     (state.pantry.length === 0 ? '<div class="empty-state">Your pantry is empty.<br>Add staples you keep on hand!</div>' :
       '<div class="pantry-list">' +
       state.pantry.map(function(item) {
@@ -640,6 +651,16 @@ function renderShop() {
       '<input id="shop-manual-input" placeholder="Add item manually..." />' +
       '<button class="add-btn" id="shop-manual-add">+ Add</button>' +
     '</div>' +
+    (getTagsForNamespace('location').length > 0 ?
+      '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
+      getTagsForNamespace('location').map(t =>
+        '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
+        '<input type="checkbox" class="shop-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
+        esc(t.name) + '</label>'
+      ).join('') +
+      '</div>'
+    : '') +
   '</div>'
 }
 
@@ -1356,8 +1377,15 @@ function bindEvents() {
     const name = document.getElementById('pantry-name')?.value?.trim()
     const qty  = document.getElementById('pantry-qty')?.value?.trim()
     if (!name) return
+    const tags = Array.from(document.querySelectorAll('.pantry-new-tag-check:checked')).map(el => el.dataset.tag)
     const saved = await db.addPantryItem(name, qty)
-    if (saved) state.pantry.push(saved)
+    if (saved) {
+      if (tags.length) { saved.tags = tags; await db.updatePantryTags(saved.id, tags) }
+      state.pantry.push(saved)
+    }
+    document.getElementById('pantry-name').value = ''
+    if (document.getElementById('pantry-qty')) document.getElementById('pantry-qty').value = ''
+    document.querySelectorAll('.pantry-new-tag-check').forEach(el => el.checked = false)
     render()
   })
   ;['pantry-name','pantry-qty'].forEach(id => {
@@ -1454,8 +1482,14 @@ function bindEvents() {
   document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
     const val = document.getElementById('shop-manual-input')?.value?.trim()
     if (!val) return
+    const tags = Array.from(document.querySelectorAll('.shop-new-tag-check:checked')).map(el => el.dataset.tag)
     const saved = await db.addShopItem(val, 'Manual')
-    if (saved) state.shopList.push({ ...saved, fromRecipe: 'Manual' })
+    if (saved) {
+      if (tags.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
+      state.shopList.push({ ...saved, fromRecipe: 'Manual', tags })
+    }
+    document.getElementById('shop-manual-input').value = ''
+    document.querySelectorAll('.shop-new-tag-check').forEach(el => el.checked = false)
     render()
   })
   document.getElementById('shop-manual-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('shop-manual-add')?.click() })
