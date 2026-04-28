@@ -1,7 +1,7 @@
 import * as db from './db.js'
 import { getUserId } from './supabase.js'
 
-// ── STATE ─────────────────────────────────────────────────────────────────────
+// -- STATE ---------------------------------------------------------------------
 const state = {
   tab: 'recipes',
   recipes: [], pantry: [], shopList: [], log: [],
@@ -48,7 +48,7 @@ const GOAL_PRESETS = {
   gain:     { calories: 2500, label: 'Build Muscle' },
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
+// -- INIT ----------------------------------------------------------------------
 
 
 async function sendChatMessage(userMessage) {
@@ -89,7 +89,7 @@ async function sendChatMessage(userMessage) {
 
     state.chatMessages.push({ role: 'assistant', content: reply })
   } catch(e) {
-    state.chatMessages.push({ role: 'assistant', content: '[!]️ ' + (e.message || 'Something went wrong. Please try again.') })
+    state.chatMessages.push({ role: 'assistant', content: '[!] ' + (e.message || 'Something went wrong. Please try again.') })
   }
 
   state.chatLoading = false
@@ -167,7 +167,7 @@ function normalizeRecipe(r) {
   return { ...r, cookingNotes: r.cooking_notes || '', clippedFrom: r.clipped_from || '', category: r.category || '', tags: r.tags || [], text: [r.ingredients, r.instructions].filter(Boolean).join('\n\n') }
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
+// -- HELPERS -------------------------------------------------------------------
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function todayCalories() { return state.log.reduce((s,e) => s + (e.calories||0), 0) }
 
@@ -175,16 +175,16 @@ function todayCalories() { return state.log.reduce((s,e) => s + (e.calories||0),
 // Strip measurements from ingredient lines for pantry matching
 function stripMeasurements(line) {
   return line.toLowerCase()
-    .replace(/[\d¼½¾⅓⅔⅛⅜⅝⅞]+\/?\ d*\s*/g, '')
+    .replace(/[\d¼½¾1/32/31/83/85/87/8]+\/?\ d*\s*/g, '')
     .replace(/\b(cups?|tbsp|tsp|tablespoons?|teaspoons?|oz|ounces?|lbs?|pounds?|grams?|kg|ml|liters?|pints?|quarts?|cans?|jars?|packages?|bunches?|heads?|cloves?|slices?|pieces?|large|medium|small|fresh|dried|chopped|minced|diced|sliced|about|to\s+\d+)\b/gi, '')
     .replace(/[,.\--()]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 // Convert a full recipe ingredient line into a clean shopping list name
-// e.g. "3 ounces (85g) crustless white bread, cut into 1/2-inch cubes (about 2 cups)" → "White Bread, 3oz"
+// e.g. "3 ounces (85g) crustless white bread, cut into 1/2-inch cubes (about 2 cups)" -> "White Bread, 3oz"
 function parseIngredientLine(line) {
   // Unicode fractions map
-  const fracs = { '¼':'1/4','½':'1/2','¾':'3/4','⅓':'1/3','⅔':'2/3','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8' }
+  const fracs = { '¼':'1/4','½':'1/2','¾':'3/4','1/3':'1/3','2/3':'2/3','1/8':'1/8','3/8':'3/8','5/8':'5/8','7/8':'7/8' }
   let s = line
   Object.entries(fracs).forEach(([u, r]) => { s = s.replace(new RegExp(u, 'g'), r) })
 
@@ -267,7 +267,7 @@ function formatRecipeText(text) {
   return text.split('\n').map(line => {
     line = line.trim()
     if (!line) return ''
-    if (line.startsWith('•') || /^\d+\./.test(line)) return `<div class="rt-item">${esc(line)}</div>`
+    if (line.startsWith('*') || /^\d+\./.test(line)) return `<div class="rt-item">${esc(line)}</div>`
     return `<div class="rt-line">${esc(line)}</div>`
   }).join('')
 }
@@ -276,14 +276,14 @@ function formatText(text) {
   return text.split('\n').map(line => {
     if (/^#{1,3}\s/.test(line)) return `<div class="fmt-h3">${line.replace(/^#+\s/,'')}</div>`
     if (line.startsWith('**') && line.endsWith('**')) return `<div class="fmt-h3">${line.slice(2,-2)}</div>`
-    if (line.startsWith('- ') || line.startsWith('• ')) return `<div class="fmt-li">${line.slice(2)}</div>`
+    if (line.startsWith('- ') || line.startsWith('* ')) return `<div class="fmt-li">${line.slice(2)}</div>`
     if (/^\d+\.\s/.test(line)) return `<div class="fmt-li">${line.replace(/^\d+\.\s/,'')}</div>`
     if (!line.trim()) return '<div style="height:5px"></div>'
     return `<div class="fmt-p">${line}</div>`
   }).join('')
 }
 
-// ── RENDER ────────────────────────────────────────────────────────────────────
+// -- RENDER --------------------------------------------------------------------
 function render() {
   const app = document.getElementById('app')
   const cals = todayCalories()
@@ -342,7 +342,7 @@ function render() {
         </div>
         <div class="sync-id-box" style="flex-direction:column;align-items:flex-start;gap:8px">
           <div class="sync-id-label">[phone] Add to iPhone Home Screen</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.5">Open this link in Safari, then Share → Add to Home Screen. Your Account ID will be saved automatically.</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.5">Open this link in Safari, then Share -> Add to Home Screen. Your Account ID will be saved automatically.</div>
           <button class="sync-copy-btn" id="sync-bookmark-btn">Copy Bookmark Link</button>
         </div>
         <div class="sync-switch-box">
@@ -370,7 +370,7 @@ function render() {
 
       <!-- CONTENT -->
       <div class="content">
-        ${state.loading ? '<div class="loading"><div class="spinner"></div><div>Loading your data…</div></div>' : ''}
+        ${state.loading ? '<div class="loading"><div class="spinner"></div><div>Loading your data...</div></div>' : ''}
         ${!state.loading && state.tab === 'recipes' ? renderRecipes() : ''}
         ${!state.loading && state.tab === 'pantry'  ? renderPantry()  : ''}
         ${!state.loading && state.tab === 'shop'    ? renderShop()    : ''}
@@ -391,7 +391,7 @@ function render() {
   bindEvents()
 }
 
-// ── TAB RENDERS ───────────────────────────────────────────────────────────────
+// -- TAB RENDERS ---------------------------------------------------------------
 const CATEGORIES = ['Mains','Dressings & Sauces','Sides','Breakfast','Soups & Stews','Meal Prep','Desserts','Snacks']
 
 function categoryOptions(selected) {
@@ -414,7 +414,7 @@ function renderTagChips(tags, itemId, namespace, removeEvent) {
   if (!tags || !tags.length) return ''
   return tags.map(tag =>
     '<span class="tag-chip">' + esc(tag) +
-    '<button class="tag-chip-remove" data-remove-tag="' + esc(tag) + '" data-tag-item="' + itemId + '" data-tag-ns="' + namespace + '">×</button>' +
+    '<button class="tag-chip-remove" data-remove-tag="' + esc(tag) + '" data-tag-item="' + itemId + '" data-tag-ns="' + namespace + '">x</button>' +
     '</span>'
   ).join('')
 }
@@ -438,7 +438,7 @@ function renderTagFilterChips(namespace) {
   return '<div class="tag-filter-wrap">' +
     '<button class="tag-filter-toggle ' + (activeTag ? 'has-filter' : '') + '" data-filter-toggle="' + namespace + '">' +
       (activeTag ? ' ' + activeTag : ' Filter by tag') +
-      (isOpen ? ' ▲' : ' ▼') +
+      (isOpen ? ' ^' : ' v') +
     '</button>' +
     (isOpen ? '<div class="tag-filter-row">' +
       '<button class="tag-filter-chip ' + (!activeTag ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
@@ -457,7 +457,7 @@ function renderRecipeCard(r) {
         (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
         (r.clippedFrom ? '<div class="recipe-meta"> ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
       '</div>' +
-      '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
+      '<div class="chevron ' + (isExpanded ? 'open' : '') + '">v</div>' +
     '</div>'
 
   if (!isExpanded) return header + '</div>'
@@ -469,7 +469,7 @@ function renderRecipeCard(r) {
 
   const tagChips = (r.tags||[]).map(t =>
     '<span class="tag-chip">' + esc(t) +
-    '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe">×</button>' +
+    '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe">x</button>' +
     '</span>'
   ).join('')
   const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe">+ Tag</button>'
@@ -528,7 +528,7 @@ function renderRecipes() {
           <textarea id="r-instructions" placeholder="Step by step..."></textarea>
           <div class="clip-field-label">Tags</div>
           <div class="tag-row" style="position:relative">
-            ' + (state.newRecipeTags).map(t => '<span class="tag-chip">' + esc(t) + '<button class="new-recipe-tag-remove" data-remove-tag="' + esc(t) + '" style="background:none;border:none;cursor:pointer;color:inherit;margin-left:2px;font-size:13px">×</button></span>').join('') + '
+            ' + (state.newRecipeTags).map(t => '<span class="tag-chip">' + esc(t) + '<button class="new-recipe-tag-remove" data-remove-tag="' + esc(t) + '" style="background:none;border:none;cursor:pointer;color:inherit;margin-left:2px;font-size:13px">x</button></span>').join('') + '
             <button class="tag-picker-btn" id="new-recipe-tag-btn">+ Tag</button>
             ' + (state.newRecipeTagPickerOpen ?
               '<div class="tag-picker-popover">' +
@@ -570,7 +570,7 @@ function renderPantry() {
       ` : `
         <div class="pantry-list">
           ${state.pantry.map(item => {
-            const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="location">×</button></span>').join('')
+            const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="location">x</button></span>').join('')
             const pickerId = item.id + '-location'
             const isOpen = state.tagPickerOpen === pickerId
             const pantryTags = getTagsForNamespace('location')
@@ -585,8 +585,8 @@ function renderPantry() {
               :
                 '<div class="pantry-row-name" data-edit-pantry="' + item.id + '" style="cursor:pointer;flex:2" title="Tap to edit">' + esc(item.name) + '</div>' +
                 '<input class="pantry-qty-input" data-qty-id="' + item.id + '" value="' + esc(item.qty||'') + '" placeholder="qty" />' +
-                '<button class="ra-btn ra-shop" data-move-to-list="' + item.id + '" style="font-size:10px;padding:4px 8px">→ List</button>' +
-                '<button class="remove-btn" data-pantry-del="' + item.id + '">×</button>'
+                '<button class="ra-btn ra-shop" data-move-to-list="' + item.id + '" style="font-size:10px;padding:4px 8px">-> List</button>' +
+                '<button class="remove-btn" data-pantry-del="' + item.id + '">x</button>'
               ) +
               '</div>' +
               '<div class="pantry-row-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + item.id + '" data-picker-ns="location">+ Tag</button>' + picker + '</div>' +
@@ -676,7 +676,7 @@ function renderLog() {
             '</div>' +
           '</div>' +
           (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '"></button>' : '') +
-          '<button class="remove-btn" data-log-del="' + e.id + '">×</button>' +
+          '<button class="remove-btn" data-log-del="' + e.id + '">x</button>' +
         '</div>'
       ).join('')
 
@@ -707,7 +707,7 @@ function renderLog() {
 
 
 
-// ── WEEK HELPERS ─────────────────────────────────────────────────────────────
+// -- WEEK HELPERS -------------------------------------------------------------
 function getWeekDates(offset) {
   const now = new Date()
   const day = now.getDay()
@@ -739,7 +739,7 @@ const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 
 
-// ── ANALYTICS & AGENT PROFILE ────────────────────────────────────────────────
+// -- ANALYTICS & AGENT PROFILE ------------------------------------------------
 function buildAgentProfile(fullLog, fullMealPlan) {
   if (!fullLog.length) return null
 
@@ -1010,7 +1010,7 @@ function renderTags() {
         '<div class="tags-section-chips">' +
           tags.map(t =>
             '<span class="tag-library-chip">' + esc(t.name) +
-            '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns.key + '">×</button>' +
+            '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns.key + '">x</button>' +
             '</span>'
           ).join('') +
         '</div>' +
@@ -1044,7 +1044,7 @@ function renderChat() {
     (messages.length > 0 ? '<button class="chat-clear-btn" id="chat-clear">Clear conversation</button>' : '') +
     '<div class="chat-input-row">' +
       '<input id="chat-input" class="chat-input" placeholder="Message your food coach..." />' +
-      '<button class="chat-send-btn" id="chat-send" ' + (state.chatLoading ? 'disabled' : '') + '>▶</button>' +
+      '<button class="chat-send-btn" id="chat-send" ' + (state.chatLoading ? 'disabled' : '') + '>></button>' +
     '</div>' +
   '</div>'
 }
@@ -1151,7 +1151,7 @@ function renderLogModal() {
   '</div>'
 }
 
-// ── EVENTS ────────────────────────────────────────────────────────────────────
+// -- EVENTS --------------------------------------------------------------------
 function bindEvents() {
   // Tabs
   document.querySelectorAll('.tab[data-tab]').forEach(el => {
@@ -1161,7 +1161,7 @@ function bindEvents() {
   // Goals
   document.getElementById('goals-toggle')?.addEventListener('click', () => { state.showGoals = !state.showGoals; state.showSync = false; render() })
 
-  // ── TAG EVENTS ──
+  // -- TAG EVENTS --
 
   // Filter toggle button (open/close the dropdown)
   document.querySelectorAll('.tag-filter-toggle[data-filter-toggle]').forEach(el => {
@@ -1470,7 +1470,7 @@ function bindEvents() {
       const r = state.recipes.find(x => x.id === el.dataset.shop)
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
-        .map(l => l.replace(/^[•\-\d\.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
+        .map(l => l.replace(/^[*\-\d\.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
       const items = ingLines.map(raw => {
         const name = parseIngredientLine(raw)
         const stripped = stripMeasurements(raw)
@@ -1532,7 +1532,7 @@ function bindEvents() {
   document.getElementById('shop-copy-btn')?.addEventListener('click', () => {
     const need = state.shopList.filter(i => !i.have)
     const text = Object.entries(need.reduce((g,i) => { const k=i.fromRecipe||'Other'; if(!g[k])g[k]=[]; g[k].push(i.name); return g }, {}))
-      .map(([r,items]) => r + ':\n' + items.map(n => '• ' + n).join('\n')).join('\n\n')
+      .map(([r,items]) => r + ':\n' + items.map(n => '* ' + n).join('\n')).join('\n\n')
     navigator.clipboard.writeText(text).then(() => alert('Shopping list copied!'))
   })
   // Shop list inline edit
@@ -1744,7 +1744,7 @@ function bindEvents() {
 
 
 
-  // ── TAG LIBRARY HANDLERS ──
+  // -- TAG LIBRARY HANDLERS --
 
   // Add tag from library tab
   document.querySelectorAll('[data-add-lib-tag]').forEach(el => {
@@ -1829,7 +1829,7 @@ function bindEvents() {
   }, { once: true })
 
 
-  // ── CALENDAR HANDLERS ──
+  // -- CALENDAR HANDLERS --
 
   // Week navigation
   document.querySelectorAll('.cal-nav[data-week-nav]').forEach(el => {
@@ -1908,7 +1908,7 @@ function bindEvents() {
     render()
   })
 
-  // ── LOG SEARCH HANDLERS ──
+  // -- LOG SEARCH HANDLERS --
 
   document.getElementById('log-search')?.addEventListener('input', e => {
     state.logSearch = e.target.value
@@ -1959,7 +1959,7 @@ function bindEvents() {
   })
 
 
-  // ── CHAT HANDLERS ──
+  // -- CHAT HANDLERS --
   document.getElementById('chat-send')?.addEventListener('click', () => {
     const input = document.getElementById('chat-input')
     const msg = input?.value?.trim()
@@ -1981,10 +1981,10 @@ function bindEvents() {
   })
 }
 
-// ── START ─────────────────────────────────────────────────────────────────────
+// -- START ---------------------------------------------------------------------
 init()
 
-// ── SHARE TARGET ──────────────────────────────────────────────────────────────
+// -- SHARE TARGET --------------------------------------------------------------
 // Handles incoming shares from the iOS/Android share sheet
 ;(async () => {
   const params = new URLSearchParams(window.location.search)
@@ -2041,7 +2041,7 @@ document.addEventListener('visibilitychange', async () => {
     state.allTags = allTags || []
     render()
 
-    // Check clipboard for a recipe URL (iOS: copy link → open app)
+    // Check clipboard for a recipe URL (iOS: copy link -> open app)
     try {
       const text = await navigator.clipboard.readText()
       const trimmed = (text || '').trim()
