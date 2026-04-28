@@ -296,7 +296,7 @@ function render() {
       ${state.clipboardBanner ? `
         <div class="clipboard-banner" id="clipboard-banner">
           <div class="clipboard-banner-text">
-            <span class="clipboard-banner-icon">📋</span>
+            <span class="clipboard-banner-icon">&#128203;</span>
             Recipe link detected — clip it?
           </div>
           <div class="clipboard-banner-btns">
@@ -310,9 +310,9 @@ function render() {
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
-          <button class="icon-btn" id="clip-url-btn">🔗 <span class="btn-label">Clip</span></button>
-          <button class="icon-btn" id="paste-btn">📋 <span class="btn-label">Paste</span></button>
-          <button class="icon-btn" id="sync-toggle">🔗 <span class="btn-label">Sync</span></button>
+          <button class="icon-btn" id="clip-url-btn">&#128279; <span class="btn-label">Clip</span></button>
+          <button class="icon-btn" id="paste-btn">&#128203; <span class="btn-label">Paste</span></button>
+          <button class="icon-btn" id="sync-toggle">&#128279; <span class="btn-label">Sync</span></button>
           <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">⚙ <span class="btn-label">Goals</span></button>
           <button class="icon-btn pwa-close-btn" id="pwa-close-btn">✕</button>
         </div>
@@ -1065,7 +1065,7 @@ function renderClipUrlModal() {
   return `
     <div class="modal-bg" id="clip-url-modal-bg">
       <div class="modal-sheet">
-        <div class="modal-title">🔗 Clip from URL</div>
+        <div class="modal-title">&#128279; Clip from URL</div>
         <div class="modal-sub">Paste a recipe link — we'll fetch and parse it automatically</div>
         <input id="clip-url-input" placeholder="https://..." style="font-family:monospace;font-size:13px" />
         <div class="modal-btns">
@@ -1080,7 +1080,7 @@ function renderPasteModal() {
   if (state.shareLoading) return `
     <div class="modal-bg" id="paste-modal-bg">
       <div class="modal-sheet" style="text-align:center;padding:40px 20px">
-        <div style="font-size:32px;margin-bottom:12px">🍽️</div>
+        <div style="font-size:32px;margin-bottom:12px">&#127869;</div>
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Reading recipe...</div>
         <div style="color:var(--muted);font-size:13px">Fetching from the page you shared</div>
       </div>
@@ -1089,7 +1089,7 @@ function renderPasteModal() {
   return `
     <div class="modal-bg" id="paste-modal-bg">
       <div class="modal-sheet">
-        <div class="modal-title">${r ? '📎 Save Clipped Recipe' : '📋 Paste a Recipe'}</div>
+        <div class="modal-title">${r ? '&#128206; Save Clipped Recipe' : '&#128203; Paste a Recipe'}</div>
         <div class="modal-sub">${r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'}</div>
         ${r?.warning ? `<div class="modal-note" style="color:var(--terra);background:#fff5f2;border-radius:8px;padding:8px 10px;margin-bottom:8px">⚠️ ${esc(r.warning)}</div>` : ''}
         <input id="paste-name" placeholder="Recipe name" value="${esc(r?.name || '')}" />
