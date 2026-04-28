@@ -2026,7 +2026,7 @@ init()
     // Still open the modal so user can paste manually
     setTimeout(() => {
       const nameEl = document.getElementById('paste-name')
-      if (nameEl) nameEl.placeholder = `Couldn't auto-read recipe -- paste it manually`
+      if (nameEl) nameEl.placeholder = "Couldn't auto-read recipe -- paste it manually"
     }, 50)
   }
 })()
