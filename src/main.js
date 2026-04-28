@@ -181,14 +181,18 @@ function stripMeasurements(line) {
 
 // Parse ingredient line to clean shopping list format
 function parseIngredientLine(line) {
-  const fracs = {'1/4':'1/4','1/2':'1/2','3/4':'3/4','1/3':'1/3','2/3':'2/3','1/8':'1/8'}
   let s = line
-  s = s.replace(/,.*$/, '')
-  s = s.replace(/\s+(cut|sliced|diced|chopped|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|room temperature|packed|heaping|about|such as|or more|to taste).*/i, '')
+  // Remove parenthetical notes first
   s = s.replace(/\([^)]*\)/g, ' ')
+  // Remove everything after a comma
+  s = s.replace(/,.*$/, '')
+  s = s.replace(/\s+/g, ' ').trim()
+
   const unitMap = {'tablespoons?':'tbsp','tbsp':'tbsp','teaspoons?':'tsp','tsp':'tsp','cups?':'cup','ounces?':'oz','oz':'oz','pounds?':'lb','lbs?':'lb','grams?':'g','kg':'kg','ml':'ml','cans?':'can','jars?':'jar','packages?':'pkg','bunches?':'bunch','heads?':'head','cloves?':'clove','slices?':'slice'}
   const unitPattern = Object.keys(unitMap).join('|')
-  const qtyRe = new RegExp('^\\s*(\\d+(?:[\\./]\\d+)?)\\s*(?:('+unitPattern+')\\s+)?','i')
+  const qtyRe = new RegExp('^\\s*(\\d+(?:[./]\\d+)?)\\s*(?:('+unitPattern+')\\s+)?','i')
+
+  // Extract leading quantity FIRST
   let qty = ''
   const m = s.match(qtyRe)
   if (m) {
@@ -197,10 +201,15 @@ function parseIngredientLine(line) {
     qty = unit ? num+unit : num
     s = s.replace(qtyRe, '')
   }
+
+  // NOW strip prep words and size adjectives from what remains
+  s = s.replace(/^(chopped|sliced|diced|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|packed|heaping|fresh|dried|frozen|raw|cooked|whole|boneless|skinless|canned|unsalted|salted|large|medium|small)\s+/gi, '')
+  s = s.replace(/\s+(chopped|sliced|diced|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|room temperature|at room temp|packed|heaping|to taste|or more|such as).*/i, '')
   s = s.replace(/\b(large|medium|small|fresh|dried|frozen|raw|cooked|whole|boneless|skinless|canned|unsalted|salted)\b/gi, '')
-  s = s.replace(/\s+/g,' ').trim()
+  s = s.replace(/\s+/g, ' ').trim()
+
   const name = s.replace(/\b\w/g, c => c.toUpperCase())
-  return qty ? name+', '+qty : name
+  return qty ? name + ', ' + qty : name
 }
 
 function buildClaudeContext() {
