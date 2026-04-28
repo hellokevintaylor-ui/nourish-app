@@ -49,8 +49,9 @@ export async function addPantryItem(name, qty) {
   const { data } = await supabase.from('pantry').insert({ user_id: uid(), name, qty: qty || '', tags: [] }).select()
   return data?.[0]
 }
-export async function updatePantryItem(id, qty) {
-  await supabase.from('pantry').update({ qty }).eq('id', id)
+export async function updatePantryItem(id, fields) {
+  const data = typeof fields === 'object' ? fields : { qty: fields }
+  await supabase.from('pantry').update(data).eq('id', id)
 }
 export async function deletePantryItem(id) {
   await supabase.from('pantry').delete().eq('id', id)
@@ -68,8 +69,9 @@ export async function addShopItem(name, fromRecipe) {
   const { data } = await supabase.from('shop_list').insert({ user_id: uid(), name, from_recipe: fromRecipe || '', have: false, tags: [] }).select()
   return data?.[0]
 }
-export async function updateShopItem(id, have) {
-  await supabase.from('shop_list').update({ have }).eq('id', id)
+export async function updateShopItem(id, fields) {
+  const data = typeof fields === 'object' ? fields : { have: fields }
+  await supabase.from('shop_list').update(data).eq('id', id)
 }
 export async function deleteShopItem(id) {
   await supabase.from('shop_list').delete().eq('id', id)

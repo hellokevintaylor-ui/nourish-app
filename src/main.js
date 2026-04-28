@@ -23,6 +23,8 @@ const state = {
   clipboardBanner: null,
   _lastClipboardUrl: null,
   clipUrlModal: false,
+  editingPantryId: null,
+  editingShopId: null,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
   historyLog: [],       // full log history
   historyOffset: 0,     // week offset for history view
@@ -503,8 +505,7 @@ function renderRecipeCard(r) {
       '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
     '</div>' +
     notesSection +
-    '<div class="tag-row">' + tagChips + tagPickerBtn + '</div>' +
-    tagPicker +
+    '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
     '<div class="recipe-actions">' +
       '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
       '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">&#127373; Log meal</button>' +
@@ -584,11 +585,19 @@ function renderPantry() {
             const isOpen = state.tagPickerOpen === pickerId
             const pantryTags = getTagsForNamespace('location')
             const picker = isOpen ? ('<div class="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+            const isEditingP = state.editingPantryId === String(item.id)
             return '<div class="pantry-row pantry-row-wrap">' +
               '<div class="pantry-row-main">' +
-                '<div class="pantry-row-name">' + esc(item.name) + '</div>' +
+              (isEditingP ?
+                '<input class="pantry-edit-name" data-edit-pantry-name="' + item.id + '" value="' + esc(item.name) + '" style="flex:2;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit" />' +
                 '<input class="pantry-qty-input" data-qty-id="' + item.id + '" value="' + esc(item.qty||'') + '" placeholder="qty" />' +
-                '<button class="remove-btn" data-pantry-del="' + item.id + '">×</button>' +
+                '<button class="add-btn" data-save-pantry="' + item.id + '" style="padding:5px 10px;font-size:11px">Save</button>'
+              :
+                '<div class="pantry-row-name" data-edit-pantry="' + item.id + '" style="cursor:pointer;flex:2" title="Tap to edit">' + esc(item.name) + '</div>' +
+                '<input class="pantry-qty-input" data-qty-id="' + item.id + '" value="' + esc(item.qty||'') + '" placeholder="qty" />' +
+                '<button class="ra-btn ra-shop" data-move-to-list="' + item.id + '" style="font-size:10px;padding:4px 8px">→ List</button>' +
+                '<button class="remove-btn" data-pantry-del="' + item.id + '">×</button>'
+              ) +
               '</div>' +
               '<div class="pantry-row-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + item.id + '" data-picker-ns="location">+ Tag</button>' + picker + '</div>' +
             '</div>'
@@ -634,15 +643,21 @@ function renderShop() {
                 const isOpen = state.tagPickerOpen === pickerId
                 const storeTags = getTagsForNamespace('location')
                 const picker = isOpen ? ('<div class="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+                const isEditingS = state.editingShopId === String(i.id)
                 return '<div class="shop-row">' +
                   '<div class="shop-check" data-check="' + i.id + '"></div>' +
                   '<div class="shop-item-main">' +
-                    '<div class="shop-item-name">' + esc(i.name) + '</div>' +
-                    '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' + picker + '</div>' +
+                  (isEditingS ?
+                    '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
+                    '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
+                  :
+                    '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
+                  ) +
+                    '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
+                    '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">→ Pantry</button>' + picker + '</div>' +
                   '</div>' +
                   '<button class="remove-btn" data-shop-del="' + i.id + '">×</button>' +
                 '</div>'
-              }).join('')}
           </div>
         `).join('')}
       ` : ''}
@@ -1387,6 +1402,47 @@ function bindEvents() {
   })
 
   // Pantry
+  // Pantry inline edit
+  document.querySelectorAll('[data-edit-pantry]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingPantryId = String(el.dataset.editPantry)
+      render()
+      setTimeout(() => document.querySelector('[data-edit-pantry-name]')?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-save-pantry]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.savePantry
+      const name = document.querySelector(`[data-edit-pantry-name="${id}"]`)?.value?.trim()
+      const qty = document.querySelector(`[data-qty-id="${id}"]`)?.value?.trim()
+      if (!name) return
+      const item = state.pantry.find(p => String(p.id) === String(id))
+      if (item) { item.name = name; item.qty = qty; await db.updatePantryItem(id, { name, qty }) }
+      state.editingPantryId = null; render()
+    })
+  })
+  document.querySelectorAll('[data-edit-pantry-name]').forEach(el => {
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.querySelector(`[data-save-pantry="${el.dataset.editPantryName}"]`)?.click()
+    })
+  })
+  // Move pantry item to shopping list
+  document.querySelectorAll('[data-move-to-list]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.moveToList
+      const item = state.pantry.find(p => String(p.id) === String(id))
+      if (!item) return
+      const saved = await db.saveShopItem(item.name, 'Pantry')
+      if (saved) state.shopList.push({ ...saved, fromRecipe: 'Pantry' })
+      await db.deletePantryItem(id)
+      state.pantry = state.pantry.filter(p => String(p.id) !== String(id))
+      render()
+    })
+  })
+
   document.getElementById('pantry-add-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('pantry-name')?.value?.trim()
     const qty  = document.getElementById('pantry-qty')?.value?.trim()
@@ -1486,6 +1542,46 @@ function bindEvents() {
       .map(([r,items]) => r + ':\n' + items.map(n => '• ' + n).join('\n')).join('\n\n')
     navigator.clipboard.writeText(text).then(() => alert('Shopping list copied!'))
   })
+  // Shop list inline edit
+  document.querySelectorAll('[data-edit-shop]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingShopId = String(el.dataset.editShop)
+      render()
+      setTimeout(() => document.querySelector('[data-edit-shop-name]')?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-save-shop]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.saveShop
+      const name = document.querySelector(`[data-edit-shop-name="${id}"]`)?.value?.trim()
+      if (!name) return
+      const item = state.shopList.find(i => String(i.id) === String(id))
+      if (item) { item.name = name; await db.updateShopItem(id, { name }) }
+      state.editingShopId = null; render()
+    })
+  })
+  document.querySelectorAll('[data-edit-shop-name]').forEach(el => {
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.querySelector(`[data-save-shop="${el.dataset.editShopName}"]`)?.click()
+    })
+  })
+  // Move shop item to pantry
+  document.querySelectorAll('[data-move-to-pantry]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.moveToPantry
+      const item = state.shopList.find(i => String(i.id) === String(id))
+      if (!item) return
+      const saved = await db.addPantryItem(item.name, '')
+      if (saved) state.pantry.push(saved)
+      await db.deleteShopItem(id)
+      state.shopList = state.shopList.filter(i => String(i.id) !== String(id))
+      render()
+    })
+  })
+
   document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
     const val = document.getElementById('shop-manual-input')?.value?.trim()
     if (!val) return
