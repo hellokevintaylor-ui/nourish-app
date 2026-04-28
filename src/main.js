@@ -89,7 +89,7 @@ async function sendChatMessage(userMessage) {
 
     state.chatMessages.push({ role: 'assistant', content: reply })
   } catch(e) {
-    state.chatMessages.push({ role: 'assistant', content: '⚠️ ' + (e.message || 'Something went wrong. Please try again.') })
+    state.chatMessages.push({ role: 'assistant', content: '[!]️ ' + (e.message || 'Something went wrong. Please try again.') })
   }
 
   state.chatLoading = false
@@ -296,12 +296,12 @@ function render() {
       ${state.clipboardBanner ? `
         <div class="clipboard-banner" id="clipboard-banner">
           <div class="clipboard-banner-text">
-            <span class="clipboard-banner-icon">📋</span>
+            <span class="clipboard-banner-icon">[paste]</span>
             Recipe link detected -- clip it?
           </div>
           <div class="clipboard-banner-btns">
             <button class="clipboard-banner-yes" id="clipboard-yes">Clip it</button>
-            <button class="clipboard-banner-no" id="clipboard-no">✕</button>
+            <button class="clipboard-banner-no" id="clipboard-no">x</button>
           </div>
         </div>
       ` : ''}
@@ -310,11 +310,11 @@ function render() {
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
-          <button class="icon-btn" id="clip-url-btn">🔗 <span class="btn-label">Clip</span></button>
-          <button class="icon-btn" id="paste-btn">📋 <span class="btn-label">Paste</span></button>
-          <button class="icon-btn" id="sync-toggle">🔗 <span class="btn-label">Sync</span></button>
-          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">⚙ <span class="btn-label">Goals</span></button>
-          <button class="icon-btn pwa-close-btn" id="pwa-close-btn">✕</button>
+          <button class="icon-btn" id="clip-url-btn">[link] <span class="btn-label">Clip</span></button>
+          <button class="icon-btn" id="paste-btn">[paste] <span class="btn-label">Paste</span></button>
+          <button class="icon-btn" id="sync-toggle">[link] <span class="btn-label">Sync</span></button>
+          <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">[settings] <span class="btn-label">Goals</span></button>
+          <button class="icon-btn pwa-close-btn" id="pwa-close-btn">x</button>
         </div>
       </div>
 
@@ -340,7 +340,7 @@ function render() {
       <!-- SYNC PANEL -->
       ${state.showSync ? `
       <div class="sync-panel">
-        <div class="sync-title">🔗 Sync Devices</div>
+        <div class="sync-title">[link] Sync Devices</div>
         <div class="sync-hint">Use the same Account ID on all your devices and browsers to share recipes, pantry and lists.</div>
         <div class="sync-id-box">
           <div class="sync-id-label">Your Account ID</div>
@@ -348,7 +348,7 @@ function render() {
           <button class="sync-copy-btn" id="sync-copy-btn">Copy</button>
         </div>
         <div class="sync-id-box" style="flex-direction:column;align-items:flex-start;gap:8px">
-          <div class="sync-id-label">📱 Add to iPhone Home Screen</div>
+          <div class="sync-id-label">[phone] Add to iPhone Home Screen</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.5">Open this link in Safari, then Share → Add to Home Screen. Your Account ID will be saved automatically.</div>
           <button class="sync-copy-btn" id="sync-bookmark-btn">Copy Bookmark Link</button>
         </div>
@@ -358,19 +358,19 @@ function render() {
             <input id="sync-input" placeholder="Paste Account ID here..." />
             <button class="add-btn" id="sync-switch-btn">Switch</button>
           </div>
-          <div class="sync-warning">⚠ This will replace your current data with that account's data.</div>
+          <div class="sync-warning">[!] This will replace your current data with that account's data.</div>
         </div>
       </div>` : ""}
 
       <!-- TABS -->
       <div class="tabs">
-        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">🍳 Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
-        <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
-        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
-        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">📝 Log</div>
-        <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">📅 Week</div>
-        <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
-        <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
+        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes"> Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry"> Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop"> List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
+        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log"> Log</div>
+        <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar"> Week</div>
+        <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags"> Tags</div>
+        <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat"> AI</div>
       </div>
 
 
@@ -444,7 +444,7 @@ function renderTagFilterChips(namespace) {
   const activeTag = state.activeTagFilterNs === namespace ? state.activeTagFilter : null
   return '<div class="tag-filter-wrap">' +
     '<button class="tag-filter-toggle ' + (activeTag ? 'has-filter' : '') + '" data-filter-toggle="' + namespace + '">' +
-      (activeTag ? '🏷 ' + activeTag : '🏷 Filter by tag') +
+      (activeTag ? ' ' + activeTag : ' Filter by tag') +
       (isOpen ? ' ▲' : ' ▼') +
     '</button>' +
     (isOpen ? '<div class="tag-filter-row">' +
@@ -462,7 +462,7 @@ function renderRecipeCard(r) {
         '<div class="recipe-name">' + esc(r.name) + '</div>' +
         ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
-        (r.clippedFrom ? '<div class="recipe-meta">📎 ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta"> ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
       '</div>' +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
@@ -498,7 +498,7 @@ function renderRecipeCard(r) {
   ) : ''
 
   const body = '<div class="recipe-body">' +
-    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">🔗 View original</a></div>' : '') +
+    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">[link] View original</a></div>' : '') +
     (r.ingredients ? '<div class="recipe-section-label">Ingredients</div><div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '') +
     (r.instructions ? '<div class="recipe-section-label">Instructions</div><div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : '') +
     '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
@@ -507,10 +507,10 @@ function renderRecipeCard(r) {
     notesSection +
     '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
     '<div class="recipe-actions">' +
-      '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">🍽 Log meal</button>' +
-      '<button class="ra-btn ra-ask" data-ask="' + r.id + '">💬 Ask AI</button>' +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '">🗑</button>' +
+      '<button class="ra-btn ra-shop" data-shop="' + r.id + '"> Add to list</button>' +
+      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '"> Log meal</button>' +
+      '<button class="ra-btn ra-ask" data-ask="' + r.id + '"> Ask AI</button>' +
+      '<button class="ra-btn ra-del" data-del="' + r.id + '">[del]</button>' +
     '</div>' +
   '</div>'
 
@@ -557,7 +557,7 @@ function renderRecipes() {
         </div>
       ` : ''}
       ${filtered.length === 0 && !state.addRecipeModal ? `
-        <div class="empty-state">${state.activeCategory !== 'All' ? `No ${state.activeCategory} recipes yet.` : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!'} 🥗</div>
+        <div class="empty-state">${state.activeCategory !== 'All' ? `No ${state.activeCategory} recipes yet.` : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!'} </div>
       ` : filtered.map(r => renderRecipeCard(r)).join('')}
     </div>`
 }
@@ -576,7 +576,7 @@ function renderPantry() {
         </div>
       </div>
       ${state.pantry.length === 0 ? `
-        <div class="empty-state">Your pantry is empty.<br>Add staples you keep on hand! 🧺</div>
+        <div class="empty-state">Your pantry is empty.<br>Add staples you keep on hand! </div>
       ` : `
         <div class="pantry-list">
           ${state.pantry.map(item => {
@@ -621,22 +621,22 @@ function renderShop() {
         <div class="section-title">Shopping List</div>
         ${state.shopList.length > 0 ? `
           <div style="display:flex;gap:6px">
-            <button class="icon-btn" id="shop-copy-btn">📋 Copy</button>
+            <button class="icon-btn" id="shop-copy-btn">[paste] Copy</button>
             <button class="clear-pantry-btn" id="shop-clear">Clear</button>
           </div>` : ''}
       </div>
       ${state.shopList.length === 0 ? `
-        <div class="empty-state">Your list is empty.<br>Open a recipe and tap <strong>Add to list</strong>! 🛒</div>
+        <div class="empty-state">Your list is empty.<br>Open a recipe and tap <strong>Add to list</strong>! </div>
       ` : ''}
       ${state.allTags.some(t => t.namespace === 'location') ? renderTagFilterChips('location', 'Store') : ''}
       ${need.length > 0 ? `
         <div class="shop-got-it-bar">
           <div class="shop-got-it-text">${need.length} item${need.length!==1?'s':''} to buy</div>
-          <button class="shop-got-it-btn" id="shop-got-it">✅ Got it all!</button>
+          <button class="shop-got-it-btn" id="shop-got-it">[ok] Got it all!</button>
         </div>
         ${Object.entries(byRecipe).map(([recipe, items]) => `
           <div class="shop-recipe-group">
-            <div class="shop-recipe-name">📄 ${esc(recipe)}</div>
+            <div class="shop-recipe-name"> ${esc(recipe)}</div>
             ${items.map(i => {
                 const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">×</button></span>').join('')
                 const pickerId = i.id + '-location'
@@ -686,7 +686,7 @@ function renderLog() {
                 : e.calories + ' kcal') +
             '</div>' +
           '</div>' +
-          (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">📖</button>' : '') +
+          (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '"></button>' : '') +
           '<button class="remove-btn" data-log-del="' + e.id + '">×</button>' +
         '</div>'
       ).join('')
@@ -700,7 +700,7 @@ function renderLog() {
       '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + state.goals.calories + '</span></div>' +
     '</div>' +
     '<div class="log-search-wrap">' +
-      '<input id="log-search" class="log-search-input" placeholder="🔍 Search recipes to log..." value="' + esc(search) + '" />' +
+      '<input id="log-search" class="log-search-input" placeholder=" Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
           '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + '</button>'
@@ -1064,7 +1064,7 @@ function renderChat() {
 function renderClipUrlModal() {
   return '<div class="modal-bg" id="clip-url-modal-bg">' +
     '<div class="modal-sheet">' +
-      '<div class="modal-title">🔗 Clip from URL</div>' +
+      '<div class="modal-title">[link] Clip from URL</div>' +
       '<div class="modal-sub">Paste a recipe link and we\'ll fetch it automatically</div>' +
       '<input id="clip-url-input" placeholder="https://..." style="font-family:monospace;font-size:13px" />' +
       '<div class="modal-btns">' +
@@ -1079,16 +1079,16 @@ function renderPasteModal() {
   if (state.shareLoading) {
     return '<div class="modal-bg" id="paste-modal-bg">' +
       '<div class="modal-sheet" style="text-align:center;padding:40px 20px">' +
-        '<div style="font-size:32px;margin-bottom:12px">🍲</div>' +
+        '<div style="font-size:32px;margin-bottom:12px"></div>' +
         '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Reading recipe...</div>' +
         '<div style="color:var(--muted);font-size:13px">Fetching from the page you shared</div>' +
       '</div>' +
     '</div>'
   }
   const r = state.sharedRecipe
-  const title = r ? '📎 Save Clipped Recipe' : '📋 Paste a Recipe'
+  const title = r ? ' Save Clipped Recipe' : '[paste] Paste a Recipe'
   const sub = r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'
-  const warning = r && r.warning ? '<div class="modal-note" style="color:var(--terra);background:#fff5f2;border-radius:8px;padding:8px 10px;margin-bottom:8px">⚠ ' + esc(r.warning) + '</div>' : ''
+  const warning = r && r.warning ? '<div class="modal-note" style="color:var(--terra);background:#fff5f2;border-radius:8px;padding:8px 10px;margin-bottom:8px">[!] ' + esc(r.warning) + '</div>' : ''
   const nameVal = r ? esc(r.name || '') : ''
   const bodyFields = r ?
     '<div class="clip-field-label">Ingredients</div>' +
@@ -1117,7 +1117,7 @@ function renderShopReview() {
   return `
     <div class="modal-bg" id="shop-review-bg">
       <div class="modal-sheet">
-        <div class="modal-title">🛒 What do you need?</div>
+        <div class="modal-title"> What do you need?</div>
         <div class="modal-sub">${esc(s.recipeName)}</div>
         <div class="shop-review-hint">Pre-checked items aren't in your pantry. Adjust as needed.</div>
         <div class="shop-review-list">
@@ -1488,7 +1488,7 @@ function bindEvents() {
           const pl = p.name.toLowerCase()
           return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
         })
-        return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
+        return { name, pantryQty: match ? (match.qty || 'v in pantry') : null, checked: !match }
       })
       state.shopReview = { recipeId: r.id, recipeName: r.name, items }; render()
     })
