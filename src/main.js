@@ -215,23 +215,42 @@ function parseIngredientLine(line) {
 }
 
 function buildClaudeContext() {
-  const recipeList = state.recipes.length === 0 ? 'No recipes saved yet.'
-    : state.recipes.map((r,i) => `${i+1}. ${r.name}\nINGREDIENTS:\n${r.ingredients||''}\nINSTRUCTIONS:\n${r.instructions||r.text||''}${r.cookingNotes?`\nMY NOTES: ${r.cookingNotes}`:''}`).join('\n\n')
-  const pantryList = state.pantry.length === 0 ? 'Empty.'
-    : state.pantry.map(p => p.name + (p.qty ? ' (' + p.qty + ')' : '')).join(', ')
-  const logList = state.log.length === 0 ? 'Nothing logged.' : state.log.map(e => `- ${e.food}: ${e.calories} cal`).join('\n')
-  return `My Nourish Data:
+  const recipeList = state.recipes.length === 0 ? "No recipes saved yet."
+    : state.recipes.map((r,i) => (i+1) + ". " + r.name + "\nINGREDIENTS:\n" + (r.ingredients||"") + "\nINSTRUCTIONS:\n" + (r.instructions||r.text||"") + (r.cookingNotes ? "\nMY NOTES: " + r.cookingNotes : "")).join("\n\n")
+  const pantryList = state.pantry.length === 0 ? "Empty."
+    : state.pantry.map(p => p.name + (p.qty ? " (" + p.qty + ")" : "")).join(", ")
+  const logList = state.log.length === 0 ? "Nothing logged." : state.log.map(e => "- " + e.food + ": " + e.calories + " cal").join("\n")
 
-GOALS: ${state.goals.calories} cal/day | Protein ${state.goals.protein}g | Carbs ${state.goals.carbs}g | Fat ${state.goals.fat}g | Goal: ${GOAL_PRESETS[state.goals.goal]?.label}
+  // Build history summary from historyLog
+  let historySummary = "No history yet."
+  if (state.historyLog && state.historyLog.length > 0) {
+    const byDate = {}
+    state.historyLog.forEach(e => {
+      const d = (e.logged_at || "").slice(0, 10)
+      if (!byDate[d]) byDate[d] = []
+      byDate[d].push(e)
+    })
+    const dates = Object.keys(byDate).sort().reverse()
+    const dailyCals = dates.map(d => byDate[d].reduce((s, e) => s + (e.calories || 0), 0))
+    const avgCals = Math.round(dailyCals.reduce((a, b) => a + b, 0) / dailyCals.length)
+    const foodCounts = {}
+    state.historyLog.forEach(e => { foodCounts[e.food] = (foodCounts[e.food] || 0) + 1 })
+    const topFoods = Object.entries(foodCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([f, n]) => f + " (" + n + "x)").join(", ")
+    const recentDays = dates.slice(0, 7).map(d => {
+      const entries = byDate[d].map(e => e.food + (e.calories ? " " + e.calories + "cal" : "")).join(", ")
+      const total = byDate[d].reduce((s, e) => s + (e.calories || 0), 0)
+      return d + ": " + entries + " | Total: " + total + " cal"
+    }).join("\n")
+    historySummary = "Days tracked: " + dates.length + "\nAvg daily calories: " + avgCals + "\nMost frequently eaten: " + topFoods + "\n\nLAST 7 DAYS:\n" + recentDays
+  }
 
-TODAY'S LOG:
-${logList}
-Total: ${todayCalories()} / ${state.goals.calories} cal
-
-PANTRY: ${pantryList}
-
-SAVED RECIPES (${state.recipes.length}):
-${recipeList}`
+  const goalLabel = (GOAL_PRESETS[state.goals.goal] && GOAL_PRESETS[state.goals.goal].label) || state.goals.goal
+  return "My Mise en Place Data:\n\n" +
+    "GOALS: " + state.goals.calories + " cal/day | Protein " + state.goals.protein + "g | Carbs " + state.goals.carbs + "g | Fat " + state.goals.fat + "g | Goal: " + goalLabel + "\n\n" +
+    "TODAY'S LOG:\n" + logList + "\nTotal: " + todayCalories() + " / " + state.goals.calories + " cal\n\n" +
+    "EATING HISTORY (last 90 days):\n" + historySummary + "\n\n" +
+    "PANTRY: " + pantryList + "\n\n" +
+    "SAVED RECIPES (" + state.recipes.length + "):\n" + recipeList
 }
 
 function openClaude(prompt) {
