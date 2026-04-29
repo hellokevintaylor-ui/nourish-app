@@ -38,6 +38,7 @@ const state = {
   addToWeekModal: null,
   logSearch: '',        // search query in log tab
   logTagFilter: null,
+  logSearchFocused: false,
   logRecipeResults: [], // recipe search results in log
   editingNotes: null,
   editingRecipeId: null,
@@ -779,7 +780,7 @@ function renderLog() {
     // Log new food
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
-      (recipeResults.length ? '<div class="log-search-results">' +
+      (state.logSearchFocused && recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
           '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
         ).join('') +
@@ -2057,7 +2058,15 @@ function bindEvents() {
 
   document.getElementById('log-search')?.addEventListener('input', e => {
     state.logSearch = e.target.value
+    state.logSearchFocused = true
     render()
+  })
+  document.getElementById('log-search')?.addEventListener('focus', () => {
+    state.logSearchFocused = true
+    render()
+  })
+  document.getElementById('log-search')?.addEventListener('blur', () => {
+    setTimeout(() => { state.logSearchFocused = false; render() }, 150)
   })
   document.querySelectorAll('[data-log-tag]').forEach(el => {
     el.addEventListener('click', e => {
@@ -2072,6 +2081,7 @@ function bindEvents() {
     el.addEventListener('click', () => {
       state.logModal = { recipeId: el.dataset.logRecipe, recipeName: el.dataset.logRecipeName }
       state.logSearch = ''
+      state.logSearchFocused = false
       render()
     })
   })
