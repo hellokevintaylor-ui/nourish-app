@@ -103,6 +103,23 @@ async function sendChatMessage(userMessage) {
   }, 50)
 }
 
+function preserveRecipeEditState() {
+  // If we're editing a recipe, snapshot current textarea values into state
+  // so render() doesn't lose what the user typed when tags are added/removed
+  if (state.editingRecipeId) {
+    const rid = state.editingRecipeId
+    const recipe = state.recipes.find(r => String(r.id) === String(rid))
+    if (recipe) {
+      const nameEl = document.getElementById('edit-recipe-name-' + rid)
+      const ingEl = document.getElementById('edit-ingredients-' + rid)
+      const instEl = document.getElementById('edit-instructions-' + rid)
+      if (nameEl) recipe.name = nameEl.value
+      if (ingEl) recipe.ingredients = ingEl.value
+      if (instEl) recipe.instructions = instEl.value
+    }
+  }
+}
+
 async function addTagToItem(name, namespace, itemId) {
   // Save tag to tag library
   const savedTag = await db.saveTag(name, namespace)
@@ -129,6 +146,7 @@ async function addTagToItem(name, namespace, itemId) {
       await db.updateShopItemTags(s.id, s.tags)
     }
   }
+  preserveRecipeEditState()
   render()
 }
 
@@ -143,6 +161,7 @@ async function removeTagFromItem(name, namespace, itemId) {
     const s = state.shopList.find(x => String(x.id) === String(itemId))
     if (s) { s.tags = (s.tags||[]).filter(t => t !== name); await db.updateShopItemTags(s.id, s.tags) }
   }
+  preserveRecipeEditState()
   render()
 }
 
@@ -499,20 +518,22 @@ function renderRecipeCard(r) {
 
   const isEditingRecipe = state.editingRecipeId === r.id
   const body = '<div class="recipe-body">' +
-    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">&#128279; View original</a></div>' : '') +
+    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original</a></div>' : '') +
     '<div class="recipe-section-label cooking-notes-label">Ingredients' +
       '<button class="notes-edit-btn" data-recipe-edit="' + r.id + '">' + (isEditingRecipe ? 'Done' : 'Edit') + '</button>' +
     '</div>' +
     (isEditingRecipe ?
+      '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Recipe Title</label>' +
+      '<input class="notes-textarea" id="edit-recipe-name-' + r.id + '" value="' + esc(r.name) + '" style="margin-top:4px;font-weight:600" /></div>' +
       '<textarea class="notes-textarea" id="edit-ingredients-' + r.id + '" style="min-height:120px">' + esc(r.ingredients || '') + '</textarea>' +
-      '<button class="notes-save-btn" data-recipe-save="' + r.id + '">Save Changes</button>'
+      '<div class="recipe-section-label" style="margin-top:8px">Instructions</div>' +
+      '<textarea class="notes-textarea" id="edit-instructions-' + r.id + '" style="min-height:120px">' + esc(r.instructions || '') + '</textarea>' +
+      '<button class="notes-save-btn" data-recipe-save="' + r.id + '" style="margin-top:8px">Save Changes</button>'
     :
-      (r.ingredients ? '<div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '<div class="recipe-text" style="color:var(--ink4);font-style:italic">No ingredients yet — tap Edit to add</div>')
+      (r.ingredients ? '<div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '<div class="recipe-text" style="color:var(--ink4);font-style:italic">No ingredients yet -- tap Edit to add</div>')
     ) +
-    '<div class="recipe-section-label">Instructions</div>' +
-    (isEditingRecipe ?
-      '<textarea class="notes-textarea" id="edit-instructions-' + r.id + '" style="min-height:120px">' + esc(r.instructions || '') + '</textarea>'
-    :
+    (isEditingRecipe ? '' :
+      '<div class="recipe-section-label">Instructions</div>' +
       (r.instructions ? '<div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : (r.text ? '<div class="recipe-text">' + formatRecipeText(r.text) + '</div>' : ''))
     ) +
     '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
@@ -1477,12 +1498,14 @@ function bindEvents() {
       e.stopPropagation()
       const rid = el.dataset.recipeSave
       const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      const name = document.getElementById('edit-recipe-name-' + rid)?.value?.trim()
       const ingredients = document.getElementById('edit-ingredients-' + rid)?.value?.trim()
       const instructions = document.getElementById('edit-instructions-' + rid)?.value?.trim()
       if (recipe) {
+        if (name) recipe.name = name
         recipe.ingredients = ingredients
         recipe.instructions = instructions
-        await db.updateRecipe(rid, { ingredients, instructions })
+        await db.updateRecipe(rid, { name: name || recipe.name, ingredients, instructions })
       }
       state.editingRecipeId = null
       render()
