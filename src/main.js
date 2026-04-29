@@ -37,6 +37,7 @@ const state = {
   calendarTagFilter: null,
   addToWeekModal: null,
   logSearch: '',        // search query in log tab
+  logTagFilter: null,
   logRecipeResults: [], // recipe search results in log
   editingNotes: null,
   editingRecipeId: null,
@@ -618,34 +619,27 @@ function renderPantry() {
   '</div>'
 }
 
-function renderShopGroups(byRecipe) {
-  return Object.entries(byRecipe).map(function(entry) {
-    const recipe = entry[0], items = entry[1]
-    const itemsHtml = items.map(function(i) {
-      const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">x</button></span>').join('')
-      const pickerId = i.id + '-location'
-      const isOpen = state.tagPickerOpen === pickerId
-      const storeTags = getTagsForNamespace('location')
-      const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
-      const isEditingS = state.editingShopId === String(i.id)
-      return '<div class="shop-row">' +
-        '<div class="shop-check" data-check="' + i.id + '"></div>' +
-        '<div class="shop-item-main">' +
-        (isEditingS ?
-          '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
-          '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
-        :
-          '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
-        ) +
-        '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
-        '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">Pantry</button>' + picker + '</div>' +
-        '</div>' +
-        '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' +
-      '</div>'
-    }).join('')
-    return '<div class="shop-recipe-group">' +
-      '<div class="shop-recipe-name">' + esc(recipe) + '</div>' +
-      itemsHtml +
+function renderShopItems(items) {
+  return items.map(function(i) {
+    const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">x</button></span>').join('')
+    const pickerId = i.id + '-location'
+    const isOpen = state.tagPickerOpen === pickerId
+    const storeTags = getTagsForNamespace('location')
+    const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+    const isEditingS = state.editingShopId === String(i.id)
+    return '<div class="shop-row">' +
+      '<div class="shop-check" data-check="' + i.id + '"></div>' +
+      '<div class="shop-item-main">' +
+      (isEditingS ?
+        '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
+        '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
+      :
+        '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
+      ) +
+      '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
+      '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">Pantry</button>' + picker + '</div>' +
+      '</div>' +
+      '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' +
     '</div>'
   }).join('')
 }
@@ -654,8 +648,7 @@ function renderShopGroups(byRecipe) {
 function renderShop() {
   const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
   const need = state.shopList.filter(i => !i.have && (!activeTag || (i.tags||[]).includes(activeTag)))
-  const byRecipe = {}
-  need.forEach(i => { if (!byRecipe[i.fromRecipe||'Other']) byRecipe[i.fromRecipe||'Other'] = []; byRecipe[i.fromRecipe||'Other'].push(i) })
+
   return '<div class="tab-content">' +
     '<div class="shop-header">' +
       '<div class="section-title">Shopping List</div>' +
@@ -668,7 +661,7 @@ function renderShop() {
         '<div class="shop-got-it-text">' + need.length + ' item' + (need.length!==1?'s':'') + ' to buy</div>' +
         '<button class="shop-got-it-btn" id="shop-got-it">Got it all!</button>' +
       '</div>' +
-      renderShopGroups(byRecipe)
+      renderShopItems(need)
     : '') +
     '<div class="shop-add-row">' +
       '<input id="shop-manual-input" placeholder="Add item manually..." />' +
@@ -692,7 +685,14 @@ function renderLog() {
   const goal = state.goals.calories
   const rem = goal - cals
   const search = state.logSearch || ''
-  const recipeResults = search ? state.recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase())).slice(0,6) : []
+  const logTagFilter = state.logTagFilter || null
+  const recipeTags = getTagsForNamespace('recipe')
+  const recipeResults = search || logTagFilter
+    ? state.recipes.filter(r =>
+        (!search || r.name.toLowerCase().includes(search.toLowerCase())) &&
+        (!logTagFilter || (r.tags||[]).includes(logTagFilter))
+      ).slice(0, 6)
+    : []
 
   // Build week data from historyLog + today's log
   const now = new Date()
@@ -781,10 +781,16 @@ function renderLog() {
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
-          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + '</button>'
+          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
         ).join('') +
       '</div>' : '') +
     '</div>' +
+    (recipeTags.length > 0 ?
+      '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">' +
+        '<button class="tag-filter-chip ' + (!logTagFilter ? 'active' : '') + '" data-log-tag="">All</button>' +
+        recipeTags.map(t => '<button class="tag-filter-chip ' + (logTagFilter === t.name ? 'active' : '') + '" data-log-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>').join('') +
+      '</div>'
+    : '') +
     '<div class="log-add-row">' +
       '<input id="log-food" placeholder="Or type food name manually..." />' +
       '<input id="log-cals" type="number" placeholder="Cal" style="max-width:70px" />' +
@@ -1622,8 +1628,7 @@ function bindEvents() {
   })
   document.getElementById('shop-copy-btn')?.addEventListener('click', () => {
     const need = state.shopList.filter(i => !i.have)
-    const text = Object.entries(need.reduce((g,i) => { const k=i.fromRecipe||'Other'; if(!g[k])g[k]=[]; g[k].push(i.name); return g }, {}))
-      .map(([r,items]) => r + ':\n' + items.map(n => '• ' + n).join('\n')).join('\n\n')
+    const text = need.map(i => '• ' + i.name).join('\n')
     navigator.clipboard.writeText(text).then(() => alert('Shopping list copied!'))
   })
   document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
@@ -2053,6 +2058,13 @@ function bindEvents() {
   document.getElementById('log-search')?.addEventListener('input', e => {
     state.logSearch = e.target.value
     render()
+  })
+  document.querySelectorAll('[data-log-tag]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.logTagFilter = el.dataset.logTag || null
+      render()
+    })
   })
 
   // Log from recipe search result
