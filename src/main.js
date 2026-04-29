@@ -688,11 +688,11 @@ function renderLog() {
   const search = state.logSearch || ''
   const logTagFilter = state.logTagFilter || null
   const recipeTags = getTagsForNamespace('recipe')
-  const recipeResults = search || logTagFilter
+  const recipeResults = (search || logTagFilter)
     ? state.recipes.filter(r =>
         (!search || r.name.toLowerCase().includes(search.toLowerCase())) &&
         (!logTagFilter || (r.tags||[]).includes(logTagFilter))
-      ).slice(0, 6)
+      ).slice(0, 8)
     : []
 
   // Build week data from historyLog + today's log
@@ -780,10 +780,11 @@ function renderLog() {
     // Log new food
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
-      (state.logSearchFocused && recipeResults.length ? '<div class="log-search-results">' +
+      (recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
           '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
         ).join('') +
+        '<button class="log-search-result" id="log-search-clear" style="color:var(--ink3);font-style:italic">Clear search</button>' +
       '</div>' : '') +
     '</div>' +
     (recipeTags.length > 0 ?
@@ -2058,15 +2059,13 @@ function bindEvents() {
 
   document.getElementById('log-search')?.addEventListener('input', e => {
     state.logSearch = e.target.value
-    state.logSearchFocused = true
     render()
   })
-  document.getElementById('log-search')?.addEventListener('focus', () => {
-    state.logSearchFocused = true
+  document.getElementById('log-search-clear')?.addEventListener('click', () => {
+    state.logSearch = ''
+    state.logTagFilter = null
+    state.logSearchFocused = false
     render()
-  })
-  document.getElementById('log-search')?.addEventListener('blur', () => {
-    setTimeout(() => { state.logSearchFocused = false; render() }, 150)
   })
   document.querySelectorAll('[data-log-tag]').forEach(el => {
     el.addEventListener('click', e => {
