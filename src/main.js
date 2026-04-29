@@ -1592,7 +1592,7 @@ function bindEvents() {
       const r = state.recipes.find(x => x.id === el.dataset.shop)
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
-        .map(l => l.replace(/^[•\-\d\.]+\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
+        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
       const items = ingLines.map(raw => {
         const name = parseIngredientLine(raw)
         const stripped = stripMeasurements(raw)
@@ -2047,7 +2047,7 @@ function bindEvents() {
       const r = state.recipes.find(x => String(x.id) === String(rid))
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
-        .map(l => l.replace(/^[*\-\d.]+\s*/, '').trim())
+        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim())
         .filter(l => l.length > 2 && l.length < 120)
       const items = ingLines.map(raw => {
         const name = parseIngredientLine(raw)
