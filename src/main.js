@@ -689,12 +689,44 @@ function renderShop() {
 
 function renderLog() {
   const cals = todayCalories()
-  const rem = state.goals.calories - cals
+  const goal = state.goals.calories
+  const rem = goal - cals
   const search = state.logSearch || ''
   const recipeResults = search ? state.recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase())).slice(0,6) : []
 
+  // Build week data from historyLog + today's log
+  const now = new Date()
+  const weekDays = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    weekDays.push(d.toISOString().slice(0, 10))
+  }
+  const today = now.toISOString().slice(0, 10)
+
+  // Group history by date
+  const byDate = {}
+  ;(state.historyLog || []).forEach(e => {
+    const d = new Date(e.logged_at).toLocaleDateString('sv') // sv locale gives YYYY-MM-DD in local time
+    if (!byDate[d]) byDate[d] = []
+    byDate[d].push(e)
+  })
+  // Today's log overrides history for today
+  byDate[today] = state.log
+
+  // Weekly totals
+  const weeklyGoal = goal * 7
+  const weeklyActual = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s, e) => s + (e.calories || 0), 0), 0)
+  const completeDays = weekDays.filter(d => d < today && (byDate[d] || []).length > 0).length
+  const weeklyDiff = weeklyActual - (goal * (completeDays + 1)) // +1 for today partial
+  const diffLabel = weeklyDiff === 0 ? 'On target'
+    : weeklyDiff < 0 ? Math.abs(weeklyDiff) + ' cal deficit this week'
+    : weeklyDiff + ' cal surplus this week'
+  const diffColor = weeklyDiff < -100 ? 'var(--forest2)' : weeklyDiff > 100 ? 'var(--terra)' : 'var(--gold)'
+
+  // Today entries
   const logEntries = state.log.length === 0
-    ? '<div class="empty-state">Nothing logged yet today!</div>'
+    ? '<div class="empty-state" style="padding:16px 0">Nothing logged yet today!</div>'
     : state.log.map(e =>
         '<div class="log-entry">' +
           '<div>' +
@@ -705,21 +737,48 @@ function renderLog() {
                 : e.calories + ' kcal') +
             '</div>' +
           '</div>' +
-          (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">📖</button>' : '') +
-          '<button class="remove-btn" data-log-del="' + e.id + '">×</button>' +
+          (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">recipe</button>' : '') +
+          '<button class="remove-btn" data-log-del="' + e.id + '">x</button>' +
         '</div>'
       ).join('')
 
+  // Weekly breakdown rows
+  const weekRows = weekDays.map(d => {
+    const entries = byDate[d] || []
+    const dayCals = entries.reduce((s, e) => s + (e.calories || 0), 0)
+    const isToday = d === today
+    const diff = dayCals - goal
+    const dayLabel = isToday ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    const foods = entries.slice(0, 3).map(e => esc(e.food)).join(', ') + (entries.length > 3 ? ' +' + (entries.length - 3) + ' more' : '')
+    const barPct = Math.min((dayCals / goal) * 100, 100)
+    const barColor = diff > 200 ? 'var(--terra)' : diff > 0 ? 'var(--gold)' : 'var(--forest2)'
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
+        '<span style="font-size:12px;font-weight:' + (isToday ? '700' : '500') + ';color:' + (isToday ? 'var(--forest)' : 'var(--ink)') + '">' + dayLabel + '</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCals > 0 ? dayCals + ' cal' : '--') + '</span>' +
+      '</div>' +
+      (dayCals > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
+      (foods ? '<div style="font-size:10px;color:var(--ink3)">' + foods + '</div>' : '') +
+    '</div>'
+  }).join('')
+
   return '<div class="tab-content">' +
+    // Today summary
     '<div class="log-total">' +
       '<div>' +
-        '<div class="log-total-label">Calories today</div>' +
+        '<div class="log-total-label">Today</div>' +
         '<div class="log-total-sub">' + (rem > 0 ? rem + ' remaining' : Math.abs(rem) + ' over goal') + '</div>' +
       '</div>' +
-      '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + state.goals.calories + '</span></div>' +
+      '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>' +
     '</div>' +
+    // Weekly deficit/surplus banner
+    '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">' +
+      '<span style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">This week</span>' +
+      '<span style="font-size:13px;font-weight:700;color:' + diffColor + '">' + diffLabel + '</span>' +
+    '</div>' +
+    // Log new food
     '<div class="log-search-wrap">' +
-      '<input id="log-search" class="log-search-input" placeholder="&#128269; Search recipes to log..." value="' + esc(search) + '" />' +
+      '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
           '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + '</button>'
@@ -731,13 +790,15 @@ function renderLog() {
       '<input id="log-cals" type="number" placeholder="Cal" style="max-width:70px" />' +
       '<button class="add-btn" id="log-add-btn">+ Add</button>' +
     '</div>' +
+    // Today's entries
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">Today\'s meals</div>' +
     logEntries +
+    // Weekly breakdown
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">This week</div>' +
+    weekRows +
   '</div>'
 }
 
-
-
-// ── WEEK HELPERS ─────────────────────────────────────────────────────────────
 function getWeekDates(offset) {
   const now = new Date()
   const day = now.getDay()

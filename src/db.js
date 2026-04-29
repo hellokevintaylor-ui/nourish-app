@@ -92,8 +92,10 @@ export async function markAllGotIt(items, pantryItems) {
 
 // ── FOOD LOG ──────────────────────────────────────────────────────────────────
 export async function fetchLog() {
-  const today = new Date().toISOString().slice(0, 10)
-  const { data } = await supabase.from('food_log').select('*').eq('user_id', uid()).gte('logged_at', today).order('logged_at')
+  // Use local midnight to avoid timezone issues where yesterday's entries bleed into today
+  const now = new Date()
+  const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  const { data } = await supabase.from('food_log').select('*').eq('user_id', uid()).gte('logged_at', localMidnight.toISOString()).order('logged_at')
   return data || []
 }
 export async function addLogEntry(food, calories, recipeId) {
