@@ -35,6 +35,7 @@ const state = {
   mealPlan: [],         // loaded meal plan entries
   calendarSlot: null,   // { date, slot } when picker is open
   calendarTagFilter: null,
+  addToWeekModal: null,
   logSearch: '',        // search query in log tab
   logRecipeResults: [], // recipe search results in log
   editingNotes: null,
@@ -357,6 +358,7 @@ function render() {
       ${state.pasteModal    ? renderPasteModal()    : ''}
       ${state.clipUrlModal  ? renderClipUrlModal()  : ''}
       ${state.shopReview    ? renderShopReview()    : ''}
+      ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
     </div>
   `
@@ -498,10 +500,11 @@ function renderRecipeCard(r) {
     notesSection +
     '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
     '<div class="recipe-actions">' +
-      '<button class="ra-btn ra-shop" data-shop="' + r.id + '">🛒 Add to list</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">&#127373; Log meal</button>' +
-      '<button class="ra-btn ra-ask" data-ask="' + r.id + '">💬 Ask AI</button>' +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '">🗑</button>' +
+      '<button class="ra-btn ra-shop" data-shop="' + r.id + '">Add to list</button>' +
+      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">Log meal</button>' +
+      '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
+      '<button class="ra-btn ra-ask" data-ask="' + r.id + '">Ask AI</button>' +
+      '<button class="ra-btn ra-del" data-del="' + r.id + '">Del</button>' +
     '</div>' +
   '</div>'
 
@@ -871,9 +874,12 @@ function renderCalendar() {
 
       entries.forEach(entry => {
         html += '<div class="cal-entry">'
-        html += '<span class="cal-entry-name">' + esc(entry.recipe_name || 'Unnamed') + '</span>'
+        html += (entry.recipe_id
+          ? '<button class="cal-entry-name" data-go-recipe="' + entry.recipe_id + '" style="background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:var(--forest);font-weight:600;font-size:13px;padding:0;text-decoration:underline dotted">' + esc(entry.recipe_name || 'Unnamed') + '</button>'
+          : '<span class="cal-entry-name">' + esc(entry.recipe_name || 'Unnamed') + '</span>')
         html += '<div class="cal-entry-actions">'
         html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
+        if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--sage4);color:var(--forest)">+ List</button>'
         html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">&times;</button>'
         html += '</div>'
         html += '</div>'
@@ -927,6 +933,12 @@ function renderCalendar() {
     }
     html += '</div>'
     html += '<div class="modal-btns"><button class="modal-cancel" id="cal-picker-cancel">Cancel</button></div>'
+    html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--cream3)">'
+    html += '<div style="font-size:11px;color:var(--ink3);margin-bottom:6px">Or type anything (e.g. Chips, Protein bar):</div>'
+    html += '<div style="display:flex;gap:7px">'
+    html += '<input id="cal-manual-input" placeholder="e.g. Chips" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />'
+    html += '<button class="add-btn" id="cal-manual-add">Add</button>'
+    html += '</div></div>'
     html += '</div></div>'
   }
 
@@ -1075,6 +1087,42 @@ function renderChat() {
   '</div>'
 }
 
+
+function renderAddToWeekModal() {
+  const m = state.addToWeekModal
+  const slots = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
+  // Generate next 7 days
+  const days = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i)
+    const iso = d.toISOString().slice(0, 10)
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    days.push({ iso, label })
+  }
+  const selectedDay = m.selectedDay || days[0].iso
+  return '<div class="modal-bg" id="add-week-bg">' +
+    '<div class="modal-sheet">' +
+      '<div class="modal-title">+ Week</div>' +
+      '<div class="modal-sub">' + esc(m.recipeName) + '</div>' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Day</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">' +
+        days.map(d =>
+          '<button class="tag-filter-chip ' + (selectedDay === d.iso ? 'active' : '') + '" data-week-day="' + d.iso + '">' + d.label + '</button>'
+        ).join('') +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Meal</div>' +
+      '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px">' +
+        slots.map(s =>
+          '<button class="tag-filter-chip ' + (m.selectedSlot === s ? 'active' : '') + '" data-week-slot="' + s + '">' + s + '</button>'
+        ).join('') +
+      '</div>' +
+      '<div class="modal-btns">' +
+        '<button class="modal-cancel" id="add-week-cancel">Cancel</button>' +
+        '<button class="modal-save" id="add-week-save" ' + (!m.selectedSlot ? 'disabled style="opacity:0.5"' : '') + '>Add to ' + (m.selectedSlot || 'Week') + '</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
+}
 
 function renderClipUrlModal() {
   return '<div class="modal-bg" id="clip-url-modal-bg">' +
@@ -1880,6 +1928,31 @@ function bindEvents() {
     })
   })
 
+  // Add planned meal's ingredients to shopping list from calendar
+  document.querySelectorAll('[data-shop-plan]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.shopPlan
+      if (!rid) return
+      const r = state.recipes.find(x => String(x.id) === String(rid))
+      if (!r) return
+      const ingLines = (r.ingredients || r.text || '').split('\n')
+        .map(l => l.replace(/^[*\-\d.]+\s*/, '').trim())
+        .filter(l => l.length > 2 && l.length < 120)
+      const items = ingLines.map(raw => {
+        const name = parseIngredientLine(raw)
+        const stripped = stripMeasurements(raw)
+        const match = state.pantry.find(p => {
+          const pl = p.name.toLowerCase()
+          return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
+        })
+        return { name, pantryQty: match ? (match.qty || 'v in pantry') : null, checked: !match }
+      })
+      state.shopReview = { recipeId: r.id, recipeName: r.name, items }
+      render()
+    })
+  })
+
   // Log today's meals button
   document.getElementById('log-today-btn')?.addEventListener('click', async () => {
     const today = new Date().toISOString().slice(0,10)
@@ -1933,6 +2006,64 @@ function bindEvents() {
       state.expandedRecipe = el.dataset.goRecipe
       render()
     })
+  })
+
+  // Click recipe name in calendar to view it
+  document.querySelectorAll('[data-go-recipe]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.tab = 'recipes'
+      state.expandedRecipe = el.dataset.goRecipe
+      render()
+    })
+  })
+
+  // Add to Week from recipe card
+  document.querySelectorAll('[data-add-to-week]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.addToWeekModal = { recipeId: el.dataset.addToWeek, recipeName: el.dataset.addName, selectedDay: null, selectedSlot: null }
+      const d = new Date(); state.addToWeekModal.selectedDay = d.toISOString().slice(0, 10)
+      render()
+    })
+  })
+  document.querySelectorAll('[data-week-day]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      if (state.addToWeekModal) { state.addToWeekModal.selectedDay = el.dataset.weekDay; render() }
+    })
+  })
+  document.querySelectorAll('[data-week-slot]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      if (state.addToWeekModal) { state.addToWeekModal.selectedSlot = el.dataset.weekSlot; render() }
+    })
+  })
+  document.getElementById('add-week-cancel')?.addEventListener('click', () => { state.addToWeekModal = null; render() })
+  document.getElementById('add-week-bg')?.addEventListener('click', e => { if (e.target.id === 'add-week-bg') { state.addToWeekModal = null; render() } })
+  document.getElementById('add-week-save')?.addEventListener('click', async () => {
+    const m = state.addToWeekModal
+    if (!m || !m.selectedSlot) return
+    const saved = await db.saveMealPlanEntry(m.selectedDay, m.selectedSlot, m.recipeId, m.recipeName)
+    if (saved) {
+      if (!state.mealPlan) state.mealPlan = []
+      state.mealPlan.push(saved)
+    }
+    state.addToWeekModal = null
+    render()
+  })
+
+  // Manual text entry in calendar picker
+  document.getElementById('cal-manual-add')?.addEventListener('click', async () => {
+    const val = document.getElementById('cal-manual-input')?.value?.trim()
+    if (!val || !state.calendarSlot) return
+    const { date, slot } = state.calendarSlot
+    const saved = await db.saveMealPlanEntry(date, slot, null, val)
+    if (saved) state.mealPlan.push(saved)
+    state.calendarSlot = null; state.calendarTagFilter = null; render()
+  })
+  document.getElementById('cal-manual-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('cal-manual-add')?.click()
   })
 
 
