@@ -1489,10 +1489,14 @@ function bindEvents() {
   })
 
   // Tab search handlers
-  document.getElementById('recipe-search')?.addEventListener('input', e => { state.recipeSearch = e.target.value; render() })
-  document.getElementById('pantry-search')?.addEventListener('input', e => { state.pantrySearch = e.target.value; render() })
-  document.getElementById('shop-search')?.addEventListener('input', e => { state.shopSearch = e.target.value; render() })
-  document.getElementById('tag-search')?.addEventListener('input', e => { state.tagSearch = e.target.value; render() })
+  function refocusSearch(id) {
+    const el = document.getElementById(id)
+    if (el) { const pos = el.value.length; el.focus(); el.setSelectionRange(pos, pos) }
+  }
+  document.getElementById('recipe-search')?.addEventListener('input', e => { state.recipeSearch = e.target.value; render(); refocusSearch('recipe-search') })
+  document.getElementById('pantry-search')?.addEventListener('input', e => { state.pantrySearch = e.target.value; render(); refocusSearch('pantry-search') })
+  document.getElementById('shop-search')?.addEventListener('input', e => { state.shopSearch = e.target.value; render(); refocusSearch('shop-search') })
+  document.getElementById('tag-search')?.addEventListener('input', e => { state.tagSearch = e.target.value; render(); refocusSearch('tag-search') })
   document.querySelectorAll('[data-clear-search]').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.clearSearch
