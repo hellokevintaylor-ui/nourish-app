@@ -39,6 +39,10 @@ const state = {
   logSearch: '',        // search query in log tab
   logTagFilter: null,
   logSearchFocused: false,
+  recipeSearch: '',
+  pantrySearch: '',
+  shopSearch: '',
+  tagSearch: '',
   logRecipeResults: [], // recipe search results in log
   editingNotes: null,
   editingRecipeId: null,
@@ -553,14 +557,24 @@ function renderRecipeCard(r) {
   return header + body + '</div>'
 }
 
+function renderSearchBar(id, value, placeholder) {
+  return '<div class="tab-search-wrap">' +
+    '<input class="tab-search-input" id="' + id + '" placeholder="' + placeholder + '" value="' + esc(value) + '" />' +
+    (value ? '<button class="tab-search-clear" data-clear-search="' + id + '">×</button>' : '') +
+  '</div>'
+}
+
 function renderRecipes() {
-  const filtered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe') ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
+  const search = (state.recipeSearch || '').toLowerCase()
+  let filtered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe') ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
+  if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
   return `
     <div class="tab-content">
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <button class="add-btn" id="add-recipe-btn">+ Add Recipe</button>
       </div>
+      ${renderSearchBar('recipe-search', state.recipeSearch || '', 'Search recipes...')}
       ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
       ${state.addRecipeModal ? `
         <div class="recipe-add-box">
@@ -589,8 +603,13 @@ function renderRecipes() {
 
 function renderPantry() {
   const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
-  const filtered = state.pantry.filter(item => !activeTag || (item.tags||[]).includes(activeTag))
+  const search = (state.pantrySearch || '').toLowerCase()
+  const filtered = state.pantry.filter(item =>
+    (!activeTag || (item.tags||[]).includes(activeTag)) &&
+    (!search || item.name.toLowerCase().includes(search))
+  )
   return '<div class="tab-content">' +
+    renderSearchBar('pantry-search', state.pantrySearch || '', 'Search pantry...') +
     '<div class="section-title">My Pantry</div>' +
     (state.allTags.some(t => t.namespace === 'location') ? renderTagFilterChips('location', 'Pantry') : '') +
     '<div class="pantry-hint">Add items with quantities - tap name to edit, or use Move to List.</div>' +
@@ -669,13 +688,19 @@ function renderShopItems(items) {
 
 function renderShop() {
   const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
-  const need = state.shopList.filter(i => !i.have && (!activeTag || (i.tags||[]).includes(activeTag)))
+  const search = (state.shopSearch || '').toLowerCase()
+  const need = state.shopList.filter(i =>
+    !i.have &&
+    (!activeTag || (i.tags||[]).includes(activeTag)) &&
+    (!search || i.name.toLowerCase().includes(search))
+  )
 
   return '<div class="tab-content">' +
     '<div class="shop-header">' +
       '<div class="section-title">Shopping List</div>' +
       (state.shopList.length > 0 ? '<div style="display:flex;gap:6px"><button class="icon-btn" id="shop-copy-btn">Copy</button><button class="clear-pantry-btn" id="shop-clear">Clear</button></div>' : '') +
     '</div>' +
+    renderSearchBar('shop-search', state.shopSearch || '', 'Search list...') +
     (state.shopList.length === 0 ? '<div class="empty-state">Your list is empty.<br>Open a recipe and tap <strong>Add to list</strong>!</div>' : '') +
     (state.allTags.some(t => t.namespace === 'location') ? renderTagFilterChips('location', 'Store') : '') +
     (need.length > 0 ?
@@ -1143,14 +1168,16 @@ function renderHistory() {
 }
 
 function renderTags() {
+  const search = (state.tagSearch || '').toLowerCase()
   const namespaces = [
     { key: 'recipe', label: 'Recipe Tags', hint: 'For recipes - meal type, occasion, cooking method, main ingredient' },
     { key: 'location', label: 'Pantry/Store Tags', hint: 'For pantry items and shopping list - store aisle or home storage location' },
   ]
   return '<div class="tab-content">' +
     '<div class="section-title">Tag Library</div>' +
+    renderSearchBar('tag-search', state.tagSearch || '', 'Search tags...') +
     namespaces.map(ns => {
-      const tags = getTagsForNamespace(ns.key)
+      const tags = getTagsForNamespace(ns.key).filter(t => !search || t.name.toLowerCase().includes(search))
       return '<div class="tags-section">' +
         '<div class="tags-section-title">' + ns.label + '</div>' +
         '<div class="tags-section-hint">' + ns.hint + '</div>' +
@@ -1458,6 +1485,22 @@ function bindEvents() {
       e.stopPropagation()
       const r = state.recipes.find(x => String(x.id) === String(el.dataset.catRecipe))
       if (r) { r.category = el.value; await db.updateRecipe(r.id, { category: el.value }); render() }
+    })
+  })
+
+  // Tab search handlers
+  document.getElementById('recipe-search')?.addEventListener('input', e => { state.recipeSearch = e.target.value; render() })
+  document.getElementById('pantry-search')?.addEventListener('input', e => { state.pantrySearch = e.target.value; render() })
+  document.getElementById('shop-search')?.addEventListener('input', e => { state.shopSearch = e.target.value; render() })
+  document.getElementById('tag-search')?.addEventListener('input', e => { state.tagSearch = e.target.value; render() })
+  document.querySelectorAll('[data-clear-search]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.clearSearch
+      if (id === 'recipe-search') state.recipeSearch = ''
+      else if (id === 'pantry-search') state.pantrySearch = ''
+      else if (id === 'shop-search') state.shopSearch = ''
+      else if (id === 'tag-search') state.tagSearch = ''
+      render()
     })
   })
 

@@ -490,3 +490,9 @@ html, body {
 .chat-send-btn { padding:11px 18px; background:var(--forest); color:var(--cream); border:none; border-radius:24px; font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; transition:background 0.15s; }
 .chat-send-btn:hover { background:var(--forest2); }
 .chat-send-btn:disabled { background:var(--cream3); color:var(--ink3); cursor:not-allowed; }
+
+/* ── TAB SEARCH BARS ── */
+.tab-search-wrap { position:relative; margin-bottom:12px; }
+.tab-search-input { width:100%; padding:9px 36px 9px 14px; border:1.5px solid var(--border); border-radius:12px; font-size:13px; font-family:inherit; background:white; box-sizing:border-box; color:var(--ink); }
+.tab-search-input:focus { outline:none; border-color:var(--forest2); }
+.tab-search-clear { position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; font-size:16px; color:var(--ink3); cursor:pointer; padding:0 4px; }
