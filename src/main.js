@@ -463,17 +463,12 @@ function renderTagInput(itemId, namespace, currentTags) {
 function renderTagFilterChips(namespace) {
   const tags = getTagsForNamespace(namespace)
   if (!tags.length) return ''
-  const isOpen = state.showTagFilter && state.activeTagFilterNs === namespace
   const activeTag = state.activeTagFilterNs === namespace ? state.activeTagFilter : null
   return '<div class="tag-filter-wrap">' +
-    '<button class="tag-filter-toggle ' + (activeTag ? 'has-filter' : '') + '" data-filter-toggle="' + namespace + '">' +
-      (activeTag ? '🏷 ' + activeTag : '🏷 Filter by tag') +
-      (isOpen ? ' ▲' : ' ▼') +
-    '</button>' +
-    (isOpen ? '<div class="tag-filter-row">' +
+    '<div class="tag-filter-row">' +
       '<button class="tag-filter-chip ' + (!activeTag ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
       tags.map(t => '<button class="tag-filter-chip ' + (activeTag===t.name ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
-    '</div>' : '') +
+    '</div>' +
   '</div>'
 }
 
@@ -1493,10 +1488,16 @@ function bindEvents() {
     const el = document.getElementById(id)
     if (el) { const pos = el.value.length; el.focus(); el.setSelectionRange(pos, pos) }
   }
-  document.getElementById('recipe-search')?.addEventListener('input', e => { state.recipeSearch = e.target.value; render(); refocusSearch('recipe-search') })
-  document.getElementById('pantry-search')?.addEventListener('input', e => { state.pantrySearch = e.target.value; render(); refocusSearch('pantry-search') })
-  document.getElementById('shop-search')?.addEventListener('input', e => { state.shopSearch = e.target.value; render(); refocusSearch('shop-search') })
-  document.getElementById('tag-search')?.addEventListener('input', e => { state.tagSearch = e.target.value; render(); refocusSearch('tag-search') })
+  function addSearchHandlers(id, stateKey) {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.addEventListener('input', e => { state[stateKey] = e.target.value; render(); refocusSearch(id) })
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); render() } })
+  }
+  addSearchHandlers('recipe-search', 'recipeSearch')
+  addSearchHandlers('pantry-search', 'pantrySearch')
+  addSearchHandlers('shop-search', 'shopSearch')
+  addSearchHandlers('tag-search', 'tagSearch')
   document.querySelectorAll('[data-clear-search]').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.clearSearch
