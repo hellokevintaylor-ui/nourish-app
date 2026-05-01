@@ -468,6 +468,7 @@ function renderTagFilterChips(namespace) {
     '<div class="tag-filter-row">' +
       '<button class="tag-filter-chip ' + (!activeTag ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
       tags.map(t => '<button class="tag-filter-chip ' + (activeTag===t.name ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
+      '<button class="tag-filter-chip ' + (activeTag==='__untagged__' ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
     '</div>' +
   '</div>'
 }
@@ -561,7 +562,7 @@ function renderSearchBar(id, value, placeholder) {
 
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
-  let filtered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe') ? state.recipes.filter(r => (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
+  let filtered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe') ? state.recipes.filter(r => state.activeTagFilter === '__untagged__' ? !(r.tags||[]).length : (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
   return `
     <div class="tab-content">
@@ -600,7 +601,7 @@ function renderPantry() {
   const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
   const search = (state.pantrySearch || '').toLowerCase()
   const filtered = state.pantry.filter(item =>
-    (!activeTag || (item.tags||[]).includes(activeTag)) &&
+    (!activeTag || (activeTag === '__untagged__' ? !(item.tags||[]).length : (item.tags||[]).includes(activeTag))) &&
     (!search || item.name.toLowerCase().includes(search))
   )
   return '<div class="tab-content">' +
@@ -686,7 +687,7 @@ function renderShop() {
   const search = (state.shopSearch || '').toLowerCase()
   const need = state.shopList.filter(i =>
     !i.have &&
-    (!activeTag || (i.tags||[]).includes(activeTag)) &&
+    (!activeTag || (activeTag === '__untagged__' ? !(i.tags||[]).length : (i.tags||[]).includes(activeTag))) &&
     (!search || i.name.toLowerCase().includes(search))
   )
 
@@ -1304,18 +1305,22 @@ function renderShopReview() {
     const pantryInfo = item.pantryQty
       ? '<div class="shop-review-have">You have: ' + esc(item.pantryQty) + '</div>'
       : '<div class="shop-review-none">Not in pantry</div>'
-    return '<label class="shop-review-row">' +
-      '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (item.checked ? 'checked' : '') + ' />' +
+    const inPantry = item.inPantry
+    return '<div class="shop-review-row' + (inPantry ? ' shop-review-row-pantry' : '') + '">' +
+      '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (!inPantry && item.checked ? 'checked' : '') + (inPantry ? 'disabled' : '') + ' />' +
       '<div class="shop-review-info">' +
         '<div class="shop-review-name">' + esc(item.name) + '</div>' +
-        pantryInfo +
+        (inPantry ? '<div class="shop-review-have">Added to pantry</div>' : pantryInfo) +
       '</div>' +
-    '</label>'
+      (!inPantry ?
+        '<button class="shop-review-pantry-btn" data-pantry-idx="' + idx + '" title="I already have this">Got it</button>'
+      : '') +
+    '</div>'
   }).join('')
   return '<div class="modal-bg" id="shop-review-bg"><div class="modal-sheet">' +
     '<div class="modal-title">What do you need?</div>' +
     '<div class="modal-sub">' + esc(s.recipeName) + '</div>' +
-    '<div class="shop-review-hint">Pre-checked items are not in your pantry. Adjust as needed.</div>' +
+    '<div class="shop-review-hint">Check items to add to your list. Tap "Got it" if you already have it.</div>' +
     '<div class="shop-review-list">' + itemsHtml + '</div>' +
     '<div class="modal-btns"><button class="modal-cancel" id="shop-review-cancel">Cancel</button><button class="modal-save" id="shop-review-add">Add to Shopping List</button></div>' +
     '</div></div>'
@@ -1657,11 +1662,29 @@ function bindEvents() {
   document.querySelectorAll('.shop-review-check').forEach(el => {
     el.addEventListener('change', () => { if (state.shopReview) state.shopReview.items[+el.dataset.idx].checked = el.checked })
   })
+  // "Got it" — mark as in pantry, uncheck from list, add to pantry
+  document.querySelectorAll('.shop-review-pantry-btn').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const idx = +el.dataset.pantryIdx
+      if (!state.shopReview) return
+      const item = state.shopReview.items[idx]
+      item.inPantry = true
+      item.checked = false
+      // Add to pantry if not already there
+      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
+      if (!exists) {
+        const saved = await db.addPantryItem(item.name, '')
+        if (saved) state.pantry.push(saved)
+      }
+      render()
+    })
+  })
   document.getElementById('shop-review-cancel')?.addEventListener('click', () => { state.shopReview = null; render() })
   document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
   document.getElementById('shop-review-add')?.addEventListener('click', async () => {
     if (!state.shopReview) return
-    const toAdd = state.shopReview.items.filter(i => i.checked)
+    const toAdd = state.shopReview.items.filter(i => i.checked && !i.inPantry)
     for (const item of toAdd) {
       const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
       if (!already) {
@@ -2048,6 +2071,8 @@ function bindEvents() {
   document.getElementById('cal-search-input')?.addEventListener('input', e => {
     state.calendarSearch = e.target.value
     render()
+    const el = document.getElementById('cal-search-input')
+    if (el) { const p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
   })
 
   // Pick recipe for calendar slot
