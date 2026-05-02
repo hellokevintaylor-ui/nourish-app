@@ -568,7 +568,10 @@ function renderRecipes() {
     <div class="tab-content">
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
-        <button class="add-btn" id="add-recipe-btn">+ Add Recipe</button>
+        <div style="display:flex;gap:6px">
+          <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Clip URL</button>
+          <button class="add-btn" id="add-recipe-btn">+ Add</button>
+        </div>
       </div>
       ${renderSearchBar('recipe-search', state.recipeSearch || '', 'Search recipes...')}
       ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
@@ -627,7 +630,7 @@ function renderPantry() {
     '</div>' +
     (state.pantry.length === 0 ? '<div class="empty-state">Your pantry is empty.<br>Add staples you keep on hand!</div>' :
       '<div class="pantry-list">' +
-      state.pantry.map(function(item) {
+      filtered.map(function(item) {
         const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="location">x</button></span>').join('')
         const pickerId = item.id + '-location'
         const isOpen = state.tagPickerOpen === pickerId
@@ -696,6 +699,20 @@ function renderShop() {
       '<div class="section-title">Shopping List</div>' +
       (state.shopList.length > 0 ? '<div style="display:flex;gap:6px"><button class="icon-btn" id="shop-copy-btn">Copy</button><button class="clear-pantry-btn" id="shop-clear">Clear</button></div>' : '') +
     '</div>' +
+    '<div class="shop-add-row">' +
+      '<input id="shop-manual-input" placeholder="Add item manually..." />' +
+      '<button class="add-btn" id="shop-manual-add">+ Add</button>' +
+    '</div>' +
+    (getTagsForNamespace('location').length > 0 ?
+      '<div style="margin-top:6px;margin-bottom:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
+      getTagsForNamespace('location').map(t =>
+        '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
+        '<input type="checkbox" class="shop-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
+        esc(t.name) + '</label>'
+      ).join('') +
+      '</div>'
+    : '') +
     renderSearchBar('shop-search', state.shopSearch || '', 'Search list...') +
     (state.shopList.length === 0 ? '<div class="empty-state">Your list is empty.<br>Open a recipe and tap <strong>Add to list</strong>!</div>' : '') +
     (state.allTags.some(t => t.namespace === 'location') ? renderTagFilterChips('location', 'Store') : '') +
@@ -705,20 +722,6 @@ function renderShop() {
         '<button class="shop-got-it-btn" id="shop-got-it">Got it all!</button>' +
       '</div>' +
       renderShopItems(need)
-    : '') +
-    '<div class="shop-add-row">' +
-      '<input id="shop-manual-input" placeholder="Add item manually..." />' +
-      '<button class="add-btn" id="shop-manual-add">+ Add</button>' +
-    '</div>' +
-    (getTagsForNamespace('location').length > 0 ?
-      '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
-      getTagsForNamespace('location').map(t =>
-        '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
-        '<input type="checkbox" class="shop-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
-        esc(t.name) + '</label>'
-      ).join('') +
-      '</div>'
     : '') +
   '</div>'
 }
@@ -1515,6 +1518,17 @@ function bindEvents() {
   })
 
   document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
+  document.getElementById('clip-url-btn-recipes')?.addEventListener('click', async () => {
+    state.clipUrlModal = true; render()
+    setTimeout(async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const input = document.getElementById('clip-url-input')
+        if (input && text && text.startsWith('http')) input.value = text
+      } catch(e) {}
+      document.getElementById('clip-url-input')?.focus()
+    }, 100)
+  })
   document.getElementById('r-cancel-btn')?.addEventListener('click', () => { state.addRecipeModal = false; render() })
   document.getElementById('r-save-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('r-name')?.value?.trim()
@@ -2210,8 +2224,13 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       state.tab = 'recipes'
-      state.expandedRecipe = el.dataset.goRecipe
+      state.expandedRecipe = String(el.dataset.goRecipe)
       render()
+      // Scroll to the expanded recipe card
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
     })
   })
 

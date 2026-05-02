@@ -496,3 +496,8 @@ html, body {
 .tab-search-input { width:100%; padding:9px 36px 9px 14px; border:1.5px solid var(--border); border-radius:12px; font-size:13px; font-family:inherit; background:white; box-sizing:border-box; color:var(--ink); }
 .tab-search-input:focus { outline:none; border-color:var(--forest2); }
 .tab-search-clear { position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; font-size:16px; color:var(--ink3); cursor:pointer; padding:0 4px; }
+
+.shop-review-pantry-btn { font-size:11px; padding:3px 8px; background:var(--sage4); color:var(--forest); border:1.5px solid var(--forest2); border-radius:8px; cursor:pointer; white-space:nowrap; margin-left:8px; }
+.shop-review-pantry-btn:hover { background:var(--forest2); color:white; }
+.shop-review-row-pantry { opacity:0.5; }
+.shop-review-row { display:flex; align-items:center; padding:8px 0; border-bottom:1px solid var(--cream2); }
