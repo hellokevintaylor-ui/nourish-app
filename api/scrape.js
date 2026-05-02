@@ -1,4 +1,4 @@
-// api/scrape.js — fetches a URL via multiple strategies and extracts recipe JSON-LD
+// api/scrape.js — fetches a URL and extracts recipe data, with AI fallback
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -8,18 +8,13 @@ export default async function handler(req, res) {
 
   let html = ''
 
-  // Strategy 1: Direct fetch with realistic browser headers
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
     'DNT': '1',
     'Connection': 'keep-alive',
     'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
   }
 
   try {
@@ -27,7 +22,6 @@ export default async function handler(req, res) {
     if (r.ok) html = await r.text()
   } catch (e) {}
 
-  // Strategy 2: allorigins proxy if direct fetch failed or got blocked (Cloudflare page etc.)
   if (!html || html.includes('cf-browser-verification') || html.includes('challenge-platform') || html.length < 500) {
     try {
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
@@ -40,15 +34,13 @@ export default async function handler(req, res) {
   }
 
   if (!html || html.length < 200) {
-    return res.status(422).json({
-      error: 'Could not fetch this page — the site may be blocking automated requests.',
-      partial: false
-    })
+    return res.status(422).json({ error: 'Could not fetch this page — the site may be blocking automated requests.' })
   }
 
-  // Parse JSON-LD
-  const jsonLdMatches = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []
+  const source = (() => { try { return new URL(url).hostname.replace('www.', '') } catch(e) { return '' } })()
 
+  // Try JSON-LD first
+  const jsonLdMatches = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []
   for (const block of jsonLdMatches) {
     const inner = block.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '').trim()
     try {
@@ -72,24 +64,89 @@ export default async function handler(req, res) {
         }).filter(Boolean).join('\n')
 
         if (name && (ingredients || instructions)) {
-          return res.status(200).json({
-            name, ingredients, instructions, url,
-            source: (() => { try { return new URL(url).hostname.replace('www.', '') } catch(e) { return '' } })()
-          })
+          return res.status(200).json({ name, ingredients, instructions, url, source })
         }
       }
     } catch (e) {}
   }
 
-  // Fallback: grab title only
-  const h1 = (html.match(/<h1[^>]*>([^<]+)<\/h1>/i) || [])[1] || ''
-  const title = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || ''
-  const name = (h1 || title).split(/[|\-–]/)[0].trim().replace(/&amp;/g, '&').replace(/&#39;/g, "'")
+  // Strip HTML tags to get readable text for AI
+  const pageText = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s{3,}/g, '\n')
+    .trim()
+    .slice(0, 12000)
 
+  // Get title for fallback
+  const h1 = (html.match(/<h1[^>]*>([^<]+)<\/h1>/i) || [])[1] || ''
+  const titleTag = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || ''
+  const fallbackName = (h1 || titleTag).split(/[|\-–]/)[0].trim().replace(/&amp;/g, '&').replace(/&#39;/g, "'")
+
+  // AI extraction fallback
+  try {
+    const apiKey = process.env.miseenplace_apikey
+    if (!apiKey) throw new Error('No API key')
+
+    const prompt = `Extract the recipe from this webpage text. Return ONLY this exact structure with no extra commentary:
+
+NAME: [recipe name]
+
+INGREDIENTS:
+[one ingredient per line with amounts, e.g. "2 cups flour"]
+
+INSTRUCTIONS:
+[numbered steps, one per line, e.g. "1. Preheat oven to 375F."]
+
+NOTES:
+[any useful tips or notes, or leave blank]
+
+Webpage text:
+${pageText}`
+
+    const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+
+    if (aiResp.ok) {
+      const aiData = await aiResp.json()
+      const text = aiData.content?.[0]?.text || ''
+
+      const nameMatch = text.match(/^NAME:\s*(.+)/im)
+      const ingMatch = text.match(/INGREDIENTS:\s*([\s\S]*?)(?=INSTRUCTIONS:|NOTES:|$)/i)
+      const instMatch = text.match(/INSTRUCTIONS:\s*([\s\S]*?)(?=NOTES:|$)/i)
+      const notesMatch = text.match(/NOTES:\s*([\s\S]*?)$/i)
+
+      const name = (nameMatch?.[1] || fallbackName).trim()
+      const ingredients = (ingMatch?.[1] || '').trim()
+      const instructions = (instMatch?.[1] || '').trim()
+      const notes = (notesMatch?.[1] || '').trim()
+
+      if (name && (ingredients || instructions)) {
+        return res.status(200).json({ name, ingredients, instructions, notes, url, source })
+      }
+    }
+  } catch (e) {}
+
+  // Final fallback — name only
   return res.status(200).json({
-    name, ingredients: '', instructions: '', url,
-    source: (() => { try { return new URL(url).hostname.replace('www.', '') } catch(e) { return '' } })(),
+    name: fallbackName, ingredients: '', instructions: '', url, source,
     partial: true,
-    warning: 'Could not find structured recipe data on this page — please paste the ingredients and instructions manually.'
+    warning: 'Could not automatically extract this recipe — please paste the ingredients and instructions manually.'
   })
 }
