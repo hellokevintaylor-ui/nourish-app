@@ -569,10 +569,12 @@ function renderRecipes() {
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <div style="display:flex;gap:6px">
+          <button class="add-btn" id="scan-recipe-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Scan</button>
           <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Clip URL</button>
           <button class="add-btn" id="add-recipe-btn">+ Add</button>
         </div>
       </div>
+      <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
       ${renderSearchBar('recipe-search', state.recipeSearch || '', 'Search recipes...')}
       ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
       ${state.addRecipeModal ? `
@@ -1517,6 +1519,43 @@ function bindEvents() {
     })
   })
 
+  document.getElementById('scan-recipe-btn')?.addEventListener('click', () => {
+    document.getElementById('scan-file-input')?.click()
+  })
+  document.getElementById('scan-file-input')?.addEventListener('change', async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    state.pasteModal = true
+    state.shareLoading = true
+    render()
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const resp = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, mediaType: file.type })
+      })
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false
+      state.sharedRecipe = { ...recipe, source: 'Scanned from photo' }
+      render()
+    } catch (err) {
+      state.shareLoading = false
+      state.sharedRecipe = null
+      render()
+      setTimeout(() => {
+        const nameEl = document.getElementById('paste-name')
+        if (nameEl) nameEl.placeholder = "Could not read photo -- paste recipe manually"
+      }, 50)
+    }
+    e.target.value = ''
+  })
   document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
   document.getElementById('clip-url-btn-recipes')?.addEventListener('click', async () => {
     state.clipUrlModal = true; render()
