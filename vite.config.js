@@ -30,7 +30,12 @@ export default defineConfig({
         }
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [{
+          urlPattern: /^https:\/\/nourish-app-tau\.vercel\.app\/api\//,
+          handler: 'NetworkOnly'
+        }]
       }
     })
   ]
