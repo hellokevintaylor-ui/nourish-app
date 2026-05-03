@@ -36,6 +36,7 @@ const state = {
   calendarSlot: null,   // { date, slot } when picker is open
   calendarTagFilter: null,
   addToWeekModal: null,
+  scanPickerOpen: false,
   logSearch: '',        // search query in log tab
   logTagFilter: null,
   logSearchFocused: false,
@@ -403,6 +404,7 @@ function render() {
       ${state.clipUrlModal  ? renderClipUrlModal()  : ''}
       ${state.shopReview    ? renderShopReview()    : ''}
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
+      ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
     </div>
   `
@@ -1225,6 +1227,20 @@ function renderChat() {
 }
 
 
+function renderScanPicker() {
+  return '<div class="modal-bg" id="scan-picker-bg">' +
+    '<div class="modal-sheet" style="text-align:center">' +
+      '<div class="modal-title">Scan Recipe</div>' +
+      '<div class="modal-sub">Choose how to get your recipe photo</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;margin:16px 0">' +
+        '<button class="modal-save" id="scan-use-camera" style="font-size:15px;padding:14px">Take Photo</button>' +
+        '<button class="modal-save" id="scan-use-library" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2);font-size:15px;padding:14px">Choose from Library</button>' +
+      '</div>' +
+      '<button class="modal-cancel" id="scan-picker-cancel">Cancel</button>' +
+    '</div>' +
+  '</div>'
+}
+
 function renderAddToWeekModal() {
   const m = state.addToWeekModal
   const slots = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
@@ -1294,12 +1310,24 @@ function renderPasteModal() {
     '<div class="clip-field-label">Instructions</div><textarea id="paste-instructions" style="min-height:80px" placeholder="Step by step...">' + esc(r.instructions || '') + '</textarea>'
   :
     '<textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving."></textarea>'
+  const recipeTags = getTagsForNamespace('recipe')
+  const tagSection = recipeTags.length > 0 ?
+    '<div class="clip-field-label">Tags</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+      recipeTags.map(t =>
+        '<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:4px 8px">' +
+        '<input type="checkbox" class="paste-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
+        esc(t.name) + '</label>'
+      ).join('') +
+    '</div>'
+  : ''
   return '<div class="modal-bg" id="paste-modal-bg"><div class="modal-sheet">' +
     '<div class="modal-title">' + title + '</div>' +
     '<div class="modal-sub">' + sub + '</div>' +
     warning +
     '<input id="paste-name" placeholder="Recipe name" value="' + nameVal + '" />' +
     bodyFields +
+    tagSection +
     '<div class="modal-btns"><button class="modal-cancel" id="paste-cancel">Cancel</button><button class="modal-save" id="paste-save">Save to Recipe Box</button></div>' +
     '</div></div>'
 }
@@ -1520,7 +1548,19 @@ function bindEvents() {
   })
 
   document.getElementById('scan-recipe-btn')?.addEventListener('click', () => {
-    document.getElementById('scan-file-input')?.click()
+    state.scanPickerOpen = true; render()
+  })
+  document.getElementById('scan-picker-cancel')?.addEventListener('click', () => { state.scanPickerOpen = false; render() })
+  document.getElementById('scan-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'scan-picker-bg') { state.scanPickerOpen = false; render() } })
+  document.getElementById('scan-use-camera')?.addEventListener('click', () => {
+    state.scanPickerOpen = false; render()
+    const input = document.getElementById('scan-file-input')
+    if (input) { input.removeAttribute('capture'); input.setAttribute('capture', 'environment'); input.click() }
+  })
+  document.getElementById('scan-use-library')?.addEventListener('click', () => {
+    state.scanPickerOpen = false; render()
+    const input = document.getElementById('scan-file-input')
+    if (input) { input.removeAttribute('capture'); input.click() }
   })
   document.getElementById('scan-file-input')?.addEventListener('change', async e => {
     const file = e.target.files?.[0]
@@ -1928,7 +1968,11 @@ function bindEvents() {
       const item = state.pantry.find(p => String(p.id) === String(id))
       if (!item) return
       const saved = await db.addShopItem(item.name, 'Pantry')
-      if (saved) state.shopList.push({ ...saved, fromRecipe: 'Pantry' })
+      if (saved) {
+        const tags = item.tags || []
+        if (tags.length) await db.updateShopItemTags(saved.id, tags)
+        state.shopList.push({ ...saved, fromRecipe: 'Pantry', tags })
+      }
       await db.deletePantryItem(id)
       state.pantry = state.pantry.filter(p => String(p.id) !== String(id))
       render()
@@ -1965,7 +2009,11 @@ function bindEvents() {
       const item = state.shopList.find(i => String(i.id) === String(id))
       if (!item) return
       const saved = await db.addPantryItem(item.name, '')
-      if (saved) state.pantry.push(saved)
+      if (saved) {
+        const tags = item.tags || []
+        if (tags.length) await db.updatePantryTags(saved.id, tags)
+        state.pantry.push({ ...saved, tags })
+      }
       await db.deleteShopItem(id)
       state.shopList = state.shopList.filter(i => String(i.id) !== String(id))
       render()
@@ -1987,9 +2035,14 @@ function bindEvents() {
       const splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
       if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
     }
+    const tags = Array.from(document.querySelectorAll('.paste-tag-check:checked')).map(el => el.dataset.tag)
     const clippedFrom = state.sharedRecipe?.url || ''
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom })
-    if (saved) state.recipes.unshift(normalizeRecipe(saved))
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom, tags })
+    if (saved) {
+      const recipe = normalizeRecipe(saved)
+      if (tags.length) await db.updateRecipeTags(recipe.id, tags)
+      state.recipes.unshift(recipe)
+    }
     state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.tab = 'recipes'; render()
   })
 
