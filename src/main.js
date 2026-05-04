@@ -40,6 +40,7 @@ const state = {
   logSearch: '',        // search query in log tab
   logTagFilter: null,
   logSearchFocused: false,
+  logBreakdownId: null,
   recipeSearch: '',
   pantrySearch: '',
   shopSearch: '',
@@ -779,13 +780,18 @@ function renderLog() {
     ? '<div class="empty-state" style="padding:16px 0">Nothing logged yet today!</div>'
     : state.log.map(e =>
         '<div class="log-entry">' +
-          '<div>' +
+          '<div style="flex:1">' +
             '<div class="log-food">' + esc(e.food) + '</div>' +
-            '<div class="log-cal ' + (e.calories === 0 ? 'log-cal-zero' : '') + '">' +
-              (e.calories === 0
-                ? '<button class="log-add-cals-btn" data-add-cals-id="' + e.id + '">+ Add calories</button>'
-                : e.calories + ' kcal') +
+            '<div class="log-cal-row-entry">' +
+              '<span class="log-cal ' + (e.calories === 0 ? 'log-cal-zero' : '') + '">' +
+                (e.calories === 0
+                  ? '<button class="log-add-cals-btn" data-add-cals-id="' + e.id + '">+ Add calories</button>'
+                  : e.calories + ' kcal') +
+              '</span>' +
+              (e.calories > 0 ? '<button class="log-breakdown-btn" data-breakdown-id="' + e.id + '" title="How was this calculated?">?</button>' : '') +
             '</div>' +
+            (state.logBreakdownId === e.id && e.breakdown ?
+              '<div class="log-breakdown-text">' + esc(e.breakdown) + '</div>' : '') +
           '</div>' +
           (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">recipe</button>' : '') +
           '<button class="remove-btn" data-log-del="' + e.id + '">x</button>' +
@@ -812,9 +818,7 @@ function renderLog() {
     '</div>'
   }).join('')
 
-  return '<div class="tab-content">' +
-    // Today summary
-    '<div class="log-total">' +
+  return '<div class="tab-content" id="log-tab-content">' +
       '<div>' +
         '<div class="log-total-label">Today</div>' +
         '<div class="log-total-sub">' + (rem > 0 ? rem + ' remaining' : Math.abs(rem) + ' over goal') + '</div>' +
@@ -843,8 +847,7 @@ function renderLog() {
       '</div>'
     : '') +
     '<div class="log-add-row">' +
-      '<input id="log-food" placeholder="Or type food name manually..." />' +
-      '<input id="log-cals" type="number" placeholder="Cal" style="max-width:70px" />' +
+      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
       '<button class="add-btn" id="log-add-btn">+ Add</button>' +
     '</div>' +
     // Today's entries
@@ -1367,12 +1370,20 @@ function renderLogModal() {
     '<div class="modal-sheet">' +
       '<div class="modal-title">Log a serving</div>' +
       '<div class="modal-sub">' + esc(m.recipeName) + '</div>' +
-      '<input id="lm-portion" placeholder="How much? (e.g. 1 cup, 2 servings)" />' +
+      '<input id="lm-portion" placeholder="How much? (e.g. 1 serving, half portion, 2 cups)" value="' + esc(m.portion || '') + '" />' +
+      (recipe ?
+        '<input id="lm-notes" placeholder="Any changes? (e.g. no cheese, extra chicken)" value="' + esc(m.notes || '') + '" style="margin-top:6px" />'
+      : '') +
       '<div class="lm-cal-row">' +
-        '<input id="lm-cals" type="number" placeholder="Calories" style="flex:1" />' +
-        (recipe ? '<button class="lm-estimate-btn" id="lm-estimate">Ask Claude</button>' : '') +
+        (estimating ?
+          '<div style="flex:1;font-size:13px;color:var(--ink3);font-style:italic;padding:8px">Estimating calories...</div>'
+        :
+          '<input id="lm-cals" type="number" placeholder="Calories (auto-filled)" style="flex:1" value="' + (m.calories || '') + '" />' +
+          '<button class="lm-estimate-btn" id="lm-estimate">Estimate</button>'
+        ) +
       '</div>' +
-      (m.estimateMsg ? '<div class="modal-note">' + esc(m.estimateMsg) + '</div>' : '<div class="modal-note">Enter portion, tap Ask Claude for a calorie estimate, then come back and type the number.</div>') +
+      (m.estimateMsg ? '<div class="modal-note">' + esc(m.estimateMsg) + '</div>' : '') +
+      (m.breakdown ? '<div class="log-breakdown-text" style="margin:8px 0">' + esc(m.breakdown) + '</div>' : '') +
       '<div class="modal-btns">' +
         '<button class="modal-cancel" id="lm-cancel">Cancel</button>' +
         '<button class="modal-save" id="lm-save">Add to Log</button>' +
@@ -1836,14 +1847,60 @@ function bindEvents() {
   document.getElementById('shop-manual-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('shop-manual-add')?.click() })
 
   // Log
+  // Manual add with AI calorie estimation
+  async function estimateCaloriesAI(description) {
+    try {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          messages: [{ role: 'user', content:
+            'Estimate the calories for: "' + description + '"\n\n' +
+            'Reply with ONLY this format:\nCALORIES: [number]\nBREAKDOWN: [brief per-item breakdown, e.g. "Cheerios 1/2 cup: 55 cal, Whole milk 1/2 cup: 75 cal"]\n\nNo other text.'
+          }]
+        })
+      })
+      const data = await resp.json()
+      const text = data.content?.[0]?.text || ''
+      const calMatch = text.match(/CALORIES:\s*(\d+)/i)
+      const breakdownMatch = text.match(/BREAKDOWN:\s*(.+)/i)
+      return {
+        calories: calMatch ? parseInt(calMatch[1]) : 0,
+        breakdown: breakdownMatch ? breakdownMatch[1].trim() : ''
+      }
+    } catch(e) { return { calories: 0, breakdown: '' } }
+  }
+
   document.getElementById('log-add-btn')?.addEventListener('click', async () => {
     const food = document.getElementById('log-food')?.value?.trim()
-    const cals = parseInt(document.getElementById('log-cals')?.value)
     if (!food) return
-    const saved = await db.addLogEntry(food, cals||0)
-    if (saved) state.log.push(saved); render()
+    const btn = document.getElementById('log-add-btn')
+    if (btn) { btn.textContent = '...'; btn.disabled = true }
+    const { calories, breakdown } = await estimateCaloriesAI(food)
+    const saved = await db.addLogEntry(food, calories)
+    if (saved) {
+      saved.breakdown = breakdown
+      state.log.push(saved)
+    }
+    const input = document.getElementById('log-food')
+    if (input) input.value = ''
+    if (btn) { btn.textContent = '+ Add'; btn.disabled = false }
+    render()
   })
-  document.getElementById('log-food')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('log-add-btn')?.click() })
+  document.getElementById('log-food')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-add-btn')?.click() } })
+
+  // ? breakdown button
+  document.querySelectorAll('[data-breakdown-id]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const id = el.dataset.breakdownId
+      state.logBreakdownId = state.logBreakdownId === id ? null : id
+      render()
+    })
+  })
+
   document.querySelectorAll('[data-log-del]').forEach(el => {
     el.addEventListener('click', async () => {
       state.log = state.log.filter(x => x.id !== el.dataset.logDel)
@@ -1859,34 +1916,56 @@ function bindEvents() {
   })
   document.getElementById('lm-cancel')?.addEventListener('click', () => { state.logModal = null; render() })
 
-  // Ask Claude for calorie estimate (in-app chat)
-  document.getElementById('lm-estimate')?.addEventListener('click', () => {
+  // Estimate button in log modal
+  document.getElementById('lm-estimate')?.addEventListener('click', async () => {
+    if (!state.logModal) return
     const portion = document.getElementById('lm-portion')?.value?.trim()
+    const notes = document.getElementById('lm-notes')?.value?.trim()
     const recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
-    if (!recipe) return
-    const q = portion
-      ? "How many calories in " + portion + " of this recipe? Just give me a single number.\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
-      : "How many calories per serving of this recipe?\n\nRecipe: " + recipe.name + "\nIngredients: " + (recipe.ingredients || "")
-    state.logModal = null
-    state.tab = 'chat'
-    sendChatMessage(q)
+    state.logModal = { ...state.logModal, portion, notes, estimating: true }
     render()
+    let description = ''
+    if (recipe) {
+      description = (portion || '1 serving') + ' of ' + recipe.name
+      if (notes) description += ', modifications: ' + notes
+      description += '\nIngredients: ' + (recipe.ingredients || '')
+    } else {
+      description = portion || state.logModal.recipeName
+    }
+    const { calories, breakdown } = await estimateCaloriesAI(description)
+    state.logModal = { ...state.logModal, estimating: false, calories, breakdown,
+      estimateMsg: 'Estimated ' + calories + ' kcal. You can adjust before saving.' }
+    render()
+    document.getElementById('lm-cals')?.focus()
   })
+
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
+
+  // Dismiss recipe search on outside tap
+  document.getElementById('log-tab-content')?.addEventListener('click', e => {
+    if (!e.target.closest('.log-search-wrap') && state.logSearch) {
+      state.logSearch = ''; render()
+    }
+  })
+
   document.getElementById('lm-save')?.addEventListener('click', async () => {
     const portionEl = document.getElementById('lm-portion')
     const calsEl = document.getElementById('lm-cals')
+    const notesEl = document.getElementById('lm-notes')
     const portion = portionEl?.value?.trim()
-    const cals = parseInt(calsEl?.value) || 0
+    const cals = parseInt(calsEl?.value) || state.logModal?.calories || 0
+    const notes = notesEl?.value?.trim()
     if (!portion) {
       if (portionEl) portionEl.placeholder = 'Please enter portion!'
       portionEl?.focus()
       return
     }
-    const food = (state.logModal?.recipeName || 'Food') + ' (' + portion + ')'
+    let food = (state.logModal?.recipeName || 'Food') + ' (' + portion + ')'
+    if (notes) food += ' — ' + notes
     const saved = await db.addLogEntry(food, cals)
     if (saved) {
       if (state.logModal?.recipeId) saved.recipe_id = state.logModal.recipeId
+      saved.breakdown = state.logModal?.breakdown || ''
       state.log.push(saved)
     }
     state.logModal = null; state.tab = 'log'; render()
@@ -1967,12 +2046,9 @@ function bindEvents() {
       const id = el.dataset.moveToList
       const item = state.pantry.find(p => String(p.id) === String(id))
       if (!item) return
-      const saved = await db.addShopItem(item.name, 'Pantry')
-      if (saved) {
-        const tags = item.tags || []
-        if (tags.length) await db.updateShopItemTags(saved.id, tags)
-        state.shopList.push({ ...saved, fromRecipe: 'Pantry', tags })
-      }
+      const tags = item.tags || []
+      const saved = await db.addShopItem(item.name, 'Pantry', tags)
+      if (saved) state.shopList.push({ ...saved, fromRecipe: 'Pantry', tags })
       await db.deletePantryItem(id)
       state.pantry = state.pantry.filter(p => String(p.id) !== String(id))
       render()
@@ -2008,12 +2084,9 @@ function bindEvents() {
       const id = el.dataset.moveToPantry
       const item = state.shopList.find(i => String(i.id) === String(id))
       if (!item) return
-      const saved = await db.addPantryItem(item.name, '')
-      if (saved) {
-        const tags = item.tags || []
-        if (tags.length) await db.updatePantryTags(saved.id, tags)
-        state.pantry.push({ ...saved, tags })
-      }
+      const tags = item.tags || []
+      const saved = await db.addPantryItem(item.name, '', tags)
+      if (saved) state.pantry.push({ ...saved, tags })
       await db.deleteShopItem(id)
       state.shopList = state.shopList.filter(i => String(i.id) !== String(id))
       render()
