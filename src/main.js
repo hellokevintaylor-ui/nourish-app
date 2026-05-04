@@ -81,7 +81,7 @@ async function sendChatMessage(userMessage) {
     // Build system context
     const context = buildClaudeContext()
     const agentCtx = buildAgentContext(state.agentProfile)
-    const systemPrompt = 'You are a personal food and meal planning coach for this user. You know their recipes, pantry, eating habits and goals intimately. Be warm, specific, and actionable. Reference their actual recipes and patterns by name when relevant. Keep responses concise and practical.' + context + agentCtx
+    const systemPrompt = 'You are a personal food and meal planning coach for this user. You know their recipes, pantry, eating habits and goals intimately. Be warm, specific, and actionable. Reference their actual recipes and patterns by name when relevant. Keep responses concise and practical.\n\nWhen asked to build a grocery list: look at THIS WEEK\'S MEAL PLAN to see what recipes are planned, then check each recipe\'s ingredients against the PANTRY (skip anything already there) and CURRENT SHOPPING LIST (skip anything already on it), and suggest only what\'s missing. List items grouped by recipe.\n\n' + context + agentCtx
 
     // Build message history for API
     const messages = state.chatMessages.map(m => ({ role: m.role, content: m.content }))
@@ -246,7 +246,36 @@ function buildClaudeContext() {
     : state.recipes.map((r,i) => (i+1) + ". " + r.name + "\nINGREDIENTS:\n" + (r.ingredients||"") + "\nINSTRUCTIONS:\n" + (r.instructions||r.text||"") + (r.cookingNotes ? "\nMY NOTES: " + r.cookingNotes : "")).join("\n\n")
   const pantryList = state.pantry.length === 0 ? "Empty."
     : state.pantry.map(p => p.name + (p.qty ? " (" + p.qty + ")" : "")).join(", ")
+  const shopList = state.shopList.filter(i => !i.have).length === 0 ? "Empty."
+    : state.shopList.filter(i => !i.have).map(i => i.name).join(", ")
   const logList = state.log.length === 0 ? "Nothing logged." : state.log.map(e => "- " + e.food + ": " + e.calories + " cal").join("\n")
+
+  // Meal plan for this week
+  const now = new Date()
+  const day = now.getDay()
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1))
+  monday.setHours(0,0,0,0)
+  const weekDates = Array.from({length: 7}, (_, i) => {
+    const d = new Date(monday); d.setDate(monday.getDate() + i)
+    return d.toISOString().slice(0,10)
+  })
+  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+  let mealPlanText = "No meals planned this week."
+  if (state.mealPlan && state.mealPlan.length > 0) {
+    const weekEntries = state.mealPlan.filter(e => weekDates.includes(e.date))
+    if (weekEntries.length > 0) {
+      const byDay = {}
+      weekEntries.forEach(e => {
+        if (!byDay[e.date]) byDay[e.date] = []
+        byDay[e.date].push(e.meal_slot + ": " + e.recipe_name)
+      })
+      mealPlanText = weekDates.map((d, i) => {
+        const entries = byDay[d]
+        return entries ? dayNames[i] + " " + d + "\n" + entries.map(e => "  - " + e).join("\n") : null
+      }).filter(Boolean).join("\n")
+    }
+  }
 
   // Build history summary from historyLog
   let historySummary = "No history yet."
@@ -275,8 +304,10 @@ function buildClaudeContext() {
   return "My Mise en Place Data:\n\n" +
     "GOALS: " + state.goals.calories + " cal/day | Protein " + state.goals.protein + "g | Carbs " + state.goals.carbs + "g | Fat " + state.goals.fat + "g | Goal: " + goalLabel + "\n\n" +
     "TODAY'S LOG:\n" + logList + "\nTotal: " + todayCalories() + " / " + state.goals.calories + " cal\n\n" +
-    "EATING HISTORY (last 90 days):\n" + historySummary + "\n\n" +
+    "THIS WEEK'S MEAL PLAN:\n" + mealPlanText + "\n\n" +
+    "CURRENT SHOPPING LIST: " + shopList + "\n\n" +
     "PANTRY: " + pantryList + "\n\n" +
+    "EATING HISTORY (last 90 days):\n" + historySummary + "\n\n" +
     "SAVED RECIPES (" + state.recipes.length + "):\n" + recipeList
 }
 
