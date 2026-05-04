@@ -443,7 +443,7 @@ function render() {
 
         <div class="goal-field" style="margin-top:8px">
           <label>Activity Level</label>
-          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:13px">
+          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:var(--forest);color:white;font-size:13px">
             <option value="sedentary" ${state.goals.activity_level==='sedentary'?'selected':''}>Sedentary (desk job, little exercise)</option>
             <option value="light" ${state.goals.activity_level==='light'?'selected':''}>Lightly Active (1-3 days/week)</option>
             <option value="moderate" ${state.goals.activity_level==='moderate'?'selected':''}>Moderately Active (3-5 days/week)</option>
