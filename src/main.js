@@ -4,7 +4,7 @@ import { getUserId } from './supabase.js'
 // ── STATE ─────────────────────────────────────────────────────────────────────
 const state = {
   tab: 'recipes',
-  recipes: [], pantry: [], shopList: [], log: [],
+  recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [],
   goals: { calories: 2000, goal: 'maintain' },
   loading: true,
   showGoals: false,
@@ -174,19 +174,20 @@ async function removeTagFromItem(name, namespace, itemId) {
 async function init() {
   render()
   const weekDates = getWeekDates(0)
-  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog] = await Promise.all([
+  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog] = await Promise.all([
     db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags(),
-    db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90)
+    db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90), db.fetchExerciseLog()
   ])
   state.allTags = allTags || []
   state.mealPlan = mealPlan || []
   state.historyLog = historyLog || []
+  state.exerciseLog = exerciseLog || []
   state.agentProfile = buildAgentProfile(state.historyLog, [])
   state.recipes  = recipes.map(normalizeRecipe)
   state.pantry   = pantry
   state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }))
   state.log      = log
-  if (goals) state.goals = { calories: goals.calories, goal: goals.goal_type }
+  if (goals) state.goals = { calories: goals.calories, goal: goals.goal_type, protein: goals.protein || state.goals.protein, carbs: goals.carbs || state.goals.carbs, fat: goals.fat || state.goals.fat, weight: goals.weight || '', age: goals.age || '' }
   state.loading  = false
   render()
 }
@@ -198,6 +199,7 @@ function normalizeRecipe(r) {
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
 function todayCalories() { return state.log.reduce((s,e) => s + (e.calories||0), 0) }
+function todayBurned() { return (state.exerciseLog || []).reduce((s,e) => s + (e.calories_burned||0), 0) }
 
 
 // Strip measurements from ingredient lines for pantry matching
@@ -249,6 +251,8 @@ function buildClaudeContext() {
   const shopList = state.shopList.filter(i => !i.have).length === 0 ? "Empty."
     : state.shopList.filter(i => !i.have).map(i => i.name).join(", ")
   const logList = state.log.length === 0 ? "Nothing logged." : state.log.map(e => "- " + e.food + ": " + e.calories + " cal").join("\n")
+  const exerciseList = (state.exerciseLog || []).length === 0 ? "None." : state.exerciseLog.map(e => "- " + e.activity + ": " + e.calories_burned + " cal burned").join("\n")
+  const netCals = todayCalories() - todayBurned()
 
   // Meal plan for this week
   const now = new Date()
@@ -302,8 +306,11 @@ function buildClaudeContext() {
 
   const goalLabel = (GOAL_PRESETS[state.goals.goal] && GOAL_PRESETS[state.goals.goal].label) || state.goals.goal
   return "My Mise en Place Data:\n\n" +
-    "GOALS: " + state.goals.calories + " cal/day | Protein " + state.goals.protein + "g | Carbs " + state.goals.carbs + "g | Fat " + state.goals.fat + "g | Goal: " + goalLabel + "\n\n" +
-    "TODAY'S LOG:\n" + logList + "\nTotal: " + todayCalories() + " / " + state.goals.calories + " cal\n\n" +
+    "GOALS: " + state.goals.calories + " cal/day | Protein " + state.goals.protein + "g | Carbs " + state.goals.carbs + "g | Fat " + state.goals.fat + "g | Goal: " + goalLabel +
+    (state.goals.weight ? " | Weight: " + state.goals.weight + " lbs" : "") +
+    (state.goals.age ? " | Age: " + state.goals.age : "") + "\n\n" +
+    "TODAY'S LOG:\n" + logList + "\nTotal in: " + todayCalories() + " cal\n\n" +
+    "TODAY'S EXERCISE:\n" + exerciseList + "\nTotal burned: " + todayBurned() + " cal\nNet calories: " + netCals + " / " + state.goals.calories + " goal\n\n" +
     "THIS WEEK'S MEAL PLAN:\n" + mealPlanText + "\n\n" +
     "CURRENT SHOPPING LIST: " + shopList + "\n\n" +
     "PANTRY: " + pantryList + "\n\n" +
@@ -378,6 +385,17 @@ function render() {
             </div>
           `).join('')}
         </div>
+        <div class="goals-grid" style="margin-top:8px">
+          <div class="goal-field">
+            <label>Weight (lbs)</label>
+            <input type="number" data-goal="weight" value="${state.goals.weight||''}" placeholder="e.g. 165" />
+          </div>
+          <div class="goal-field">
+            <label>Age</label>
+            <input type="number" data-goal="age" value="${state.goals.age||''}" placeholder="e.g. 35" />
+          </div>
+        </div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:6px">Weight and age help estimate calories burned during exercise.</div>
       </div>` : ''}
 
       <!-- SYNC PANEL -->
@@ -764,8 +782,10 @@ function renderShop() {
 
 function renderLog() {
   const cals = todayCalories()
+  const burned = todayBurned()
+  const net = cals - burned
   const goal = state.goals.calories
-  const rem = goal - cals
+  const rem = goal - net
   const search = state.logSearch || ''
   const logTagFilter = state.logTagFilter || null
   const recipeTags = getTagsForNamespace('recipe')
@@ -850,11 +870,19 @@ function renderLog() {
   }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
+    '<div class="log-total">' +
       '<div>' +
         '<div class="log-total-label">Today</div>' +
         '<div class="log-total-sub">' + (rem > 0 ? rem + ' remaining' : Math.abs(rem) + ' over goal') + '</div>' +
       '</div>' +
-      '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>' +
+      '<div style="text-align:right">' +
+        (burned > 0 ?
+          '<div style="font-size:11px;color:var(--ink3)">&#127859; ' + cals + ' in &nbsp;&#127939; ' + burned + ' out</div>' +
+          '<div><span class="log-total-val">' + net + '</span><span class="log-total-goal"> net / ' + goal + '</span></div>'
+        :
+          '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>'
+        ) +
+      '</div>' +
     '</div>' +
     // Weekly deficit/surplus banner
     '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">' +
@@ -881,9 +909,31 @@ function renderLog() {
       '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
       '<button class="add-btn" id="log-add-btn">+ Add</button>' +
     '</div>' +
-    // Today's entries
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">Today\'s meals</div>' +
+    // Today's food entries
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127859; Today\'s meals</div>' +
     logEntries +
+    // Exercise section
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
+    '<div class="log-add-row">' +
+      '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
+      '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
+    '</div>' +
+    (state.exerciseLog && state.exerciseLog.length > 0 ?
+      state.exerciseLog.map(e =>
+        '<div class="log-entry">' +
+          '<div style="flex:1">' +
+            '<div class="log-food">' + esc(e.activity) + '</div>' +
+            '<div class="log-cal-row-entry">' +
+              '<span class="log-cal" style="color:var(--forest)">-' + e.calories_burned + ' kcal burned</span>' +
+              (e.calories_burned > 0 ? '<button class="log-breakdown-btn" data-ex-breakdown-id="' + e.id + '">?</button>' : '') +
+            '</div>' +
+            (state.logBreakdownId === 'ex-' + e.id && e.breakdown ?
+              '<div class="log-breakdown-text">' + esc(e.breakdown) + '</div>' : '') +
+          '</div>' +
+          '<button class="remove-btn" data-ex-del="' + e.id + '">x</button>' +
+        '</div>'
+      ).join('')
+    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged today</div>') +
     // Weekly breakdown
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">This week</div>' +
     weekRows +
@@ -1543,7 +1593,8 @@ function bindEvents() {
   })
   document.querySelectorAll('input[data-goal]').forEach(el => {
     el.addEventListener('change', async () => {
-      state.goals[el.dataset.goal] = parseInt(el.value) || 0
+      const f = el.dataset.goal
+      state.goals[f] = (f === 'weight' || f === 'age') ? (parseInt(el.value) || '') : (parseInt(el.value) || 0)
       await db.saveGoals(state.goals)
     })
   })
@@ -1878,7 +1929,50 @@ function bindEvents() {
   document.getElementById('shop-manual-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('shop-manual-add')?.click() })
 
   // Log
-  // Manual add with AI calorie estimation
+  // Exercise log
+  document.getElementById('log-exercise-btn')?.addEventListener('click', async () => {
+    const activity = document.getElementById('log-exercise')?.value?.trim()
+    if (!activity) return
+    const btn = document.getElementById('log-exercise-btn')
+    if (btn) { btn.textContent = '...'; btn.disabled = true }
+    const weight = state.goals.weight || 155
+    const age = state.goals.age || 35
+    const { calories, breakdown } = await estimateCaloriesAI(
+      'Calories BURNED (not consumed) during: "' + activity + '" for a person weighing ' + weight + ' lbs, age ' + age + '. ' +
+      'Reply with ONLY:\nCALORIES: [number]\nBREAKDOWN: [brief explanation]\nNo other text.'
+    )
+    const saved = await db.addExerciseEntry(activity, calories, breakdown)
+    if (saved) {
+      saved.breakdown = breakdown
+      state.exerciseLog = state.exerciseLog || []
+      state.exerciseLog.push(saved)
+    }
+    const input = document.getElementById('log-exercise')
+    if (input) input.value = ''
+    if (btn) { btn.textContent = '+ Add'; btn.disabled = false }
+    render()
+  })
+  document.getElementById('log-exercise')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-exercise-btn')?.click() } })
+
+  // Exercise ? breakdown
+  document.querySelectorAll('[data-ex-breakdown-id]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const id = 'ex-' + el.dataset.exBreakdownId
+      state.logBreakdownId = state.logBreakdownId === id ? null : id
+      render()
+    })
+  })
+
+  // Exercise delete
+  document.querySelectorAll('[data-ex-del]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const id = el.dataset.exDel
+      state.exerciseLog = (state.exerciseLog || []).filter(x => String(x.id) !== String(id))
+      await db.deleteExerciseEntry(id)
+      render()
+    })
+  })
   async function estimateCaloriesAI(description) {
     try {
       const resp = await fetch('/api/chat', {

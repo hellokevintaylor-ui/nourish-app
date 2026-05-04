@@ -45,8 +45,8 @@ export async function fetchPantry() {
   const { data } = await supabase.from('pantry').select('*').eq('user_id', uid()).order('name')
   return data || []
 }
-export async function addPantryItem(name, qty) {
-  const { data } = await supabase.from('pantry').insert({ user_id: uid(), name, qty: qty || '', tags: [] }).select()
+export async function addPantryItem(name, qty, tags) {
+  const { data } = await supabase.from('pantry').insert({ user_id: uid(), name, qty: qty || '', tags: tags || [] }).select()
   return data?.[0]
 }
 export async function updatePantryItem(id, fields) {
@@ -65,8 +65,8 @@ export async function fetchShopList() {
   const { data } = await supabase.from('shop_list').select('*').eq('user_id', uid()).order('created_at')
   return data || []
 }
-export async function addShopItem(name, fromRecipe) {
-  const { data } = await supabase.from('shop_list').insert({ user_id: uid(), name, from_recipe: fromRecipe || '', have: false, tags: [] }).select()
+export async function addShopItem(name, fromRecipe, tags) {
+  const { data } = await supabase.from('shop_list').insert({ user_id: uid(), name, from_recipe: fromRecipe || '', have: false, tags: tags || [] }).select()
   return data?.[0]
 }
 export async function updateShopItem(id, fields) {
@@ -90,7 +90,20 @@ export async function markAllGotIt(items, pantryItems) {
   }
 }
 
-// ── FOOD LOG ──────────────────────────────────────────────────────────────────
+// ── EXERCISE LOG ──────────────────────────────────────────────────────────────
+export async function fetchExerciseLog() {
+  const now = new Date()
+  const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  const { data } = await supabase.from('exercise_log').select('*').eq('user_id', uid()).gte('logged_at', localMidnight.toISOString()).order('logged_at')
+  return data || []
+}
+export async function addExerciseEntry(activity, calories_burned, breakdown) {
+  const { data } = await supabase.from('exercise_log').insert({ user_id: uid(), activity, calories_burned: calories_burned || 0, breakdown: breakdown || '', logged_at: new Date().toISOString() }).select()
+  return data?.[0]
+}
+export async function deleteExerciseEntry(id) {
+  await supabase.from('exercise_log').delete().eq('id', id).eq('user_id', uid())
+}
 export async function fetchLog() {
   // Use local midnight to avoid timezone issues where yesterday's entries bleed into today
   const now = new Date()
@@ -114,7 +127,7 @@ export async function fetchGoals() {
   return data?.[0] || null
 }
 export async function saveGoals(goals) {
-  const row = { user_id: uid(), calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat, goal_type: goals.goal, updated_at: new Date().toISOString() }
+  const row = { user_id: uid(), calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat, goal_type: goals.goal, weight: goals.weight || null, age: goals.age || null, updated_at: new Date().toISOString() }
   const { data: existing } = await supabase.from('goals').select('id').eq('user_id', uid())
   if (existing?.length) {
     await supabase.from('goals').update(row).eq('user_id', uid())
