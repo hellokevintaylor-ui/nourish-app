@@ -2335,6 +2335,8 @@ function bindEvents() {
   document.getElementById('log-search')?.addEventListener('input', e => {
     state.logSearch = e.target.value
     render()
+    const el = document.getElementById('log-search')
+    if (el) { const p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
   })
   document.getElementById('log-search-clear')?.addEventListener('click', () => {
     state.logSearch = ''
