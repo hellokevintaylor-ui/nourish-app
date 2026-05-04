@@ -90,6 +90,19 @@ export async function markAllGotIt(items, pantryItems) {
   }
 }
 
+// ── WEIGHT LOG ────────────────────────────────────────────────────────────────
+export async function fetchWeightLog() {
+  const { data } = await supabase.from('weight_log').select('*').eq('user_id', uid()).order('logged_at', { ascending: true })
+  return data || []
+}
+export async function addWeightEntry(weight, notes) {
+  const { data } = await supabase.from('weight_log').insert({ user_id: uid(), weight, notes: notes || '', logged_at: new Date().toISOString() }).select()
+  return data?.[0]
+}
+export async function deleteWeightEntry(id) {
+  await supabase.from('weight_log').delete().eq('id', id).eq('user_id', uid())
+}
+
 // ── EXERCISE LOG ──────────────────────────────────────────────────────────────
 export async function fetchExerciseLog() {
   const now = new Date()
@@ -127,7 +140,21 @@ export async function fetchGoals() {
   return data?.[0] || null
 }
 export async function saveGoals(goals) {
-  const row = { user_id: uid(), calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat, goal_type: goals.goal, weight: goals.weight || null, age: goals.age || null, updated_at: new Date().toISOString() }
+  const row = {
+    user_id: uid(),
+    calories: goals.calories,
+    protein: goals.protein,
+    carbs: goals.carbs,
+    fat: goals.fat,
+    goal_type: goals.goal,
+    weight: goals.weight || null,
+    age: goals.age || null,
+    height_inches: goals.height_inches || null,
+    activity_level: goals.activity_level || 'moderate',
+    target_weight: goals.target_weight || null,
+    loss_pace: goals.loss_pace || 'moderate',
+    updated_at: new Date().toISOString()
+  }
   const { data: existing } = await supabase.from('goals').select('id').eq('user_id', uid())
   if (existing?.length) {
     await supabase.from('goals').update(row).eq('user_id', uid())

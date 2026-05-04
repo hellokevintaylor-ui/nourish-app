@@ -4,7 +4,7 @@ import { getUserId } from './supabase.js'
 // ── STATE ─────────────────────────────────────────────────────────────────────
 const state = {
   tab: 'recipes',
-  recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [],
+  recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [], weightLog: [],
   goals: { calories: 2000, goal: 'maintain' },
   loading: true,
   showGoals: false,
@@ -174,20 +174,33 @@ async function removeTagFromItem(name, namespace, itemId) {
 async function init() {
   render()
   const weekDates = getWeekDates(0)
-  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog] = await Promise.all([
+  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog, weightLog] = await Promise.all([
     db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags(),
-    db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90), db.fetchExerciseLog()
+    db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90), db.fetchExerciseLog(), db.fetchWeightLog()
   ])
   state.allTags = allTags || []
   state.mealPlan = mealPlan || []
   state.historyLog = historyLog || []
   state.exerciseLog = exerciseLog || []
+  state.weightLog = weightLog || []
   state.agentProfile = buildAgentProfile(state.historyLog, [])
   state.recipes  = recipes.map(normalizeRecipe)
   state.pantry   = pantry
   state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }))
   state.log      = log
-  if (goals) state.goals = { calories: goals.calories, goal: goals.goal_type, protein: goals.protein || state.goals.protein, carbs: goals.carbs || state.goals.carbs, fat: goals.fat || state.goals.fat, weight: goals.weight || '', age: goals.age || '' }
+  if (goals) state.goals = {
+    calories: goals.calories || 2000,
+    goal: goals.goal_type || 'maintain',
+    protein: goals.protein || 150,
+    carbs: goals.carbs || 200,
+    fat: goals.fat || 65,
+    weight: goals.weight || '',
+    age: goals.age || '',
+    height_inches: goals.height_inches || '',
+    activity_level: goals.activity_level || 'moderate',
+    target_weight: goals.target_weight || '',
+    loss_pace: goals.loss_pace || 'moderate'
+  }
   state.loading  = false
   render()
 }
@@ -198,6 +211,42 @@ function normalizeRecipe(r) {
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+function calcTDEE(weight_lbs, height_inches, age, activity_level) {
+  if (!weight_lbs || !height_inches || !age) return null
+  // Mifflin-St Jeor (male default — we can add sex later)
+  const weight_kg = weight_lbs * 0.453592
+  const height_cm = height_inches * 2.54
+  const bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age) + 5
+  const multipliers = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 }
+  return Math.round(bmr * (multipliers[activity_level] || 1.55))
+}
+
+function calcProjection(tdee, current_weight, target_weight, daily_calories) {
+  if (!tdee || !current_weight || !target_weight || !daily_calories) return null
+  const daily_deficit = tdee - daily_calories
+  if (daily_deficit <= 0) return null
+  const lbs_to_lose = current_weight - target_weight
+  if (lbs_to_lose <= 0) return null
+  const days_needed = Math.round((lbs_to_lose * 3500) / daily_deficit)
+  const target_date = new Date()
+  target_date.setDate(target_date.getDate() + days_needed)
+  return {
+    days: days_needed,
+    weeks: Math.round(days_needed / 7),
+    date: target_date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+    lbs_per_week: Math.round((daily_deficit * 7 / 3500) * 10) / 10
+  }
+}
+
+function buildGoalsSuggestions() {
+  const { weight, age, height_inches, activity_level, target_weight } = state.goals
+  const tdee = calcTDEE(weight, height_inches, age, activity_level)
+  if (!tdee || !target_weight || target_weight >= weight) return null
+  const moderate = calcProjection(tdee, weight, target_weight, tdee - 500)
+  const faster = calcProjection(tdee, weight, target_weight, tdee - 750)
+  return { tdee, moderate: { calories: tdee - 500, ...moderate }, faster: { calories: tdee - 750, ...faster } }
+}
+
 function todayCalories() { return state.log.reduce((s,e) => s + (e.calories||0), 0) }
 function todayBurned() { return (state.exerciseLog || []).reduce((s,e) => s + (e.calories_burned||0), 0) }
 
@@ -371,31 +420,64 @@ function render() {
       <!-- GOALS PANEL -->
       ${state.showGoals ? `
       <div class="goals-panel">
-        <div class="goals-title">Your Goals</div>
-        <div class="goal-presets">
-          ${Object.entries(GOAL_PRESETS).map(([k,p]) => `
-            <button class="preset-btn ${state.goals.goal===k?'active':''}" data-preset="${k}">${p.label}</button>
-          `).join('')}
-        </div>
+        <div class="goals-title">Your Profile & Goals</div>
+
         <div class="goals-grid">
-          ${['calories','protein','carbs','fat'].map(f => `
-            <div class="goal-field">
-              <label>${f}${f!=='calories'?' (g)':' (kcal)'}</label>
-              <input type="number" data-goal="${f}" value="${state.goals[f]}" />
-            </div>
-          `).join('')}
-        </div>
-        <div class="goals-grid" style="margin-top:8px">
           <div class="goal-field">
-            <label>Weight (lbs)</label>
-            <input type="number" data-goal="weight" value="${state.goals.weight||''}" placeholder="e.g. 165" />
+            <label>Current Weight (lbs)</label>
+            <input type="number" data-goal="weight" value="${state.goals.weight||''}" placeholder="e.g. 185" />
+          </div>
+          <div class="goal-field">
+            <label>Target Weight (lbs)</label>
+            <input type="number" data-goal="target_weight" value="${state.goals.target_weight||''}" placeholder="e.g. 170" />
+          </div>
+          <div class="goal-field">
+            <label>Height (inches)</label>
+            <input type="number" data-goal="height_inches" value="${state.goals.height_inches||''}" placeholder="e.g. 70" />
           </div>
           <div class="goal-field">
             <label>Age</label>
             <input type="number" data-goal="age" value="${state.goals.age||''}" placeholder="e.g. 35" />
           </div>
         </div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:6px">Weight and age help estimate calories burned during exercise.</div>
+
+        <div class="goal-field" style="margin-top:8px">
+          <label>Activity Level</label>
+          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:13px">
+            <option value="sedentary" ${state.goals.activity_level==='sedentary'?'selected':''}>Sedentary (desk job, little exercise)</option>
+            <option value="light" ${state.goals.activity_level==='light'?'selected':''}>Lightly Active (1-3 days/week)</option>
+            <option value="moderate" ${state.goals.activity_level==='moderate'?'selected':''}>Moderately Active (3-5 days/week)</option>
+            <option value="active" ${state.goals.activity_level==='active'?'selected':''}>Very Active (6-7 days/week)</option>
+            <option value="very_active" ${state.goals.activity_level==='very_active'?'selected':''}>Extremely Active (physical job + exercise)</option>
+          </select>
+        </div>
+
+        ${(() => {
+          const s = buildGoalsSuggestions()
+          if (!s) return state.goals.weight && state.goals.target_weight
+            ? '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px">Fill in height and age to see projections.</div>'
+            : '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px">Fill in your profile above to see calorie targets and projected dates.</div>'
+          return `
+          <div style="margin-top:12px;font-size:11px;color:rgba(255,255,255,0.5)">Your maintenance calories (TDEE): ~${s.tdee} cal/day</div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+            <div class="goal-pace-card ${state.goals.loss_pace==='moderate'?'active':''}" data-pace="moderate" data-calories="${s.moderate.calories}">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-weight:700">Moderate</span>
+                <span style="font-size:15px;font-weight:800">${s.moderate.calories} cal/day</span>
+              </div>
+              <div style="font-size:11px;opacity:0.8">~${s.moderate.lbs_per_week} lbs/week · Reach ${state.goals.target_weight} lbs by ${s.moderate.date}</div>
+            </div>
+            <div class="goal-pace-card ${state.goals.loss_pace==='faster'?'active':''}" data-pace="faster" data-calories="${s.faster.calories}">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-weight:700">Faster</span>
+                <span style="font-size:15px;font-weight:800">${s.faster.calories} cal/day</span>
+              </div>
+              <div style="font-size:11px;opacity:0.8">~${s.faster.lbs_per_week} lbs/week · Reach ${state.goals.target_weight} lbs by ${s.faster.date}</div>
+            </div>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
+        })()}
+
       </div>` : ''}
 
       <!-- SYNC PANEL -->
@@ -937,6 +1019,111 @@ function renderLog() {
     // Weekly breakdown
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">This week</div>' +
     weekRows +
+    // Weight progress
+    renderWeightProgress() +
+  '</div>'
+}
+
+function renderWeightProgress() {
+  const { weight: startWeight, target_weight, loss_pace, calories: dailyCals } = state.goals
+  if (!startWeight || !target_weight || startWeight <= target_weight) return ''
+
+  const tdee = calcTDEE(startWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
+  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
+  const weightLog = state.weightLog || []
+
+  // Build projected line
+  let projectedPoints = []
+  if (projection && projection.weeks > 0) {
+    const weeksToShow = Math.min(projection.weeks, 52)
+    const lbsPerWeek = (startWeight - target_weight) / projection.weeks
+    projectedPoints = Array.from({length: weeksToShow + 1}, (_, i) => ({
+      week: i,
+      weight: Math.max(parseFloat((startWeight - lbsPerWeek * i).toFixed(1)), target_weight)
+    }))
+  }
+
+  // Build actual points from weight log
+  const firstLogDate = weightLog.length > 0 ? new Date(weightLog[0].logged_at) : new Date()
+  const actualPoints = weightLog.map(e => {
+    const days = Math.round((new Date(e.logged_at) - firstLogDate) / (1000 * 60 * 60 * 24))
+    return { week: Math.round(days / 7), weight: parseFloat(e.weight) }
+  })
+
+  // SVG graph
+  const allWeights = [...projectedPoints.map(p => p.weight), ...actualPoints.map(p => p.weight), target_weight]
+  const minW = Math.floor(Math.min(...allWeights) - 2)
+  const maxW = Math.ceil(Math.max(...allWeights) + 2)
+  const totalWeeks = projectedPoints.length > 0 ? projectedPoints[projectedPoints.length-1].week : 12
+  const W = 300, H = 120, padL = 30, padR = 10, padT = 10, padB = 20
+  const xScale = w => padL + (w / totalWeeks) * (W - padL - padR)
+  const yScale = w => padT + ((maxW - w) / (maxW - minW)) * (H - padT - padB)
+
+  const projPath = projectedPoints.length > 1
+    ? projectedPoints.map((p, i) => (i === 0 ? 'M' : 'L') + xScale(p.week).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
+    : ''
+  const actualPath = actualPoints.length > 1
+    ? actualPoints.map((p, i) => (i === 0 ? 'M' : 'L') + xScale(p.week).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
+    : ''
+
+  // Latest weight
+  const latestWeight = weightLog.length > 0 ? parseFloat(weightLog[weightLog.length-1].weight) : parseFloat(startWeight)
+  const lostSoFar = parseFloat(startWeight) - latestWeight
+  const toGo = latestWeight - parseFloat(target_weight)
+
+  return '<div style="margin-top:16px">' +
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#9878; Weight Progress</div>' +
+    '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;margin-bottom:10px">' +
+        '<div style="text-align:center">' +
+          '<div style="font-size:18px;font-weight:800;color:var(--forest)">' + latestWeight + '</div>' +
+          '<div style="font-size:10px;color:var(--ink3)">Current</div>' +
+        '</div>' +
+        (lostSoFar > 0 ? '<div style="text-align:center">' +
+          '<div style="font-size:18px;font-weight:800;color:var(--forest2)">-' + lostSoFar.toFixed(1) + '</div>' +
+          '<div style="font-size:10px;color:var(--ink3)">Lost</div>' +
+        '</div>' : '') +
+        '<div style="text-align:center">' +
+          '<div style="font-size:18px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div>' +
+          '<div style="font-size:10px;color:var(--ink3)">To go</div>' +
+        '</div>' +
+        '<div style="text-align:center">' +
+          '<div style="font-size:18px;font-weight:800;color:var(--ink2)">' + target_weight + '</div>' +
+          '<div style="font-size:10px;color:var(--ink3)">Target</div>' +
+        '</div>' +
+      '</div>' +
+      (projPath ? '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;overflow:visible">' +
+        // Target line
+        '<line x1="' + padL + '" y1="' + yScale(target_weight).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + yScale(target_weight).toFixed(1) + '" stroke="var(--forest2)" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>' +
+        // Y axis labels
+        '<text x="' + (padL-4) + '" y="' + (padT+4) + '" text-anchor="end" font-size="8" fill="var(--ink3)">' + maxW + '</text>' +
+        '<text x="' + (padL-4) + '" y="' + (H-padB+4) + '" text-anchor="end" font-size="8" fill="var(--ink3)">' + minW + '</text>' +
+        // Projected line
+        '<path d="' + projPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.6"/>' +
+        // Actual line
+        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2.5"/>' : '') +
+        // Actual dots
+        actualPoints.map(p => '<circle cx="' + xScale(p.week).toFixed(1) + '" cy="' + yScale(p.weight).toFixed(1) + '" r="3" fill="var(--forest)"/>').join('') +
+      '</svg>' : '') +
+      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:6px;text-align:center">On track to reach ' + target_weight + ' lbs by <strong>' + projection.date + '</strong></div>' : '') +
+    '</div>' +
+    // Log weigh-in
+    '<div class="log-add-row">' +
+      '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" />' +
+      '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Log</button>' +
+    '</div>' +
+    // Recent weigh-ins
+    (weightLog.length > 0 ?
+      '<div style="margin-top:8px">' +
+        weightLog.slice(-5).reverse().map(e =>
+          '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
+            '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
+            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short',day:'numeric'}) + '</span>' +
+            '<button class="remove-btn" data-weight-del="' + e.id + '">x</button>' +
+          '</div>'
+        ).join('') +
+      '</div>'
+    : '') +
   '</div>'
 }
 
@@ -1594,8 +1781,23 @@ function bindEvents() {
   document.querySelectorAll('input[data-goal]').forEach(el => {
     el.addEventListener('change', async () => {
       const f = el.dataset.goal
-      state.goals[f] = (f === 'weight' || f === 'age') ? (parseInt(el.value) || '') : (parseInt(el.value) || 0)
+      state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+        ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
       await db.saveGoals(state.goals)
+      render()
+    })
+  })
+  document.querySelector('select[data-goal="activity_level"]')?.addEventListener('change', async e => {
+    state.goals.activity_level = e.target.value
+    await db.saveGoals(state.goals)
+    render()
+  })
+  document.querySelectorAll('[data-pace]').forEach(el => {
+    el.addEventListener('click', async () => {
+      state.goals.loss_pace = el.dataset.pace
+      state.goals.calories = parseInt(el.dataset.calories)
+      await db.saveGoals(state.goals)
+      render()
     })
   })
 
@@ -1929,7 +2131,31 @@ function bindEvents() {
   document.getElementById('shop-manual-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('shop-manual-add')?.click() })
 
   // Log
-  // Exercise log
+  // Weight log
+  document.getElementById('log-weight-btn')?.addEventListener('click', async () => {
+    const val = parseFloat(document.getElementById('log-weight-input')?.value)
+    if (!val || isNaN(val)) return
+    const saved = await db.addWeightEntry(val, '')
+    if (saved) {
+      state.weightLog = state.weightLog || []
+      state.weightLog.push(saved)
+      // Update current weight in goals
+      state.goals.weight = val
+      await db.saveGoals(state.goals)
+    }
+    const input = document.getElementById('log-weight-input')
+    if (input) input.value = ''
+    render()
+  })
+  document.getElementById('log-weight-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-weight-btn')?.click() } })
+  document.querySelectorAll('[data-weight-del]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const id = el.dataset.weightDel
+      state.weightLog = (state.weightLog || []).filter(x => String(x.id) !== String(id))
+      await db.deleteWeightEntry(id)
+      render()
+    })
+  })
   document.getElementById('log-exercise-btn')?.addEventListener('click', async () => {
     const activity = document.getElementById('log-exercise')?.value?.trim()
     if (!activity) return
