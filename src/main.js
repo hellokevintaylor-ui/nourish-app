@@ -1025,107 +1025,200 @@ function renderLog() {
 }
 
 function renderWeightProgress() {
-  const { weight: startWeight, target_weight, loss_pace, calories: dailyCals } = state.goals
+  const { weight: startWeight, target_weight, calories: dailyCals } = state.goals
   if (!startWeight || !target_weight || startWeight <= target_weight) return ''
 
   const tdee = calcTDEE(startWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
   const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
   const weightLog = state.weightLog || []
 
-  // Build projected line
-  let projectedPoints = []
-  if (projection && projection.weeks > 0) {
-    const weeksToShow = Math.min(projection.weeks, 52)
-    const lbsPerWeek = (startWeight - target_weight) / projection.weeks
-    projectedPoints = Array.from({length: weeksToShow + 1}, (_, i) => ({
-      week: i,
-      weight: Math.max(parseFloat((startWeight - lbsPerWeek * i).toFixed(1)), target_weight)
-    }))
+  // Start date = first weigh-in or today
+  const startDate = weightLog.length > 0 ? new Date(weightLog[0].logged_at) : new Date()
+  startDate.setHours(0,0,0,0)
+
+  // End date = projected target date or 6 months out
+  let endDate
+  if (projection) {
+    endDate = new Date(startDate)
+    endDate.setDate(startDate.getDate() + projection.days)
+  } else {
+    endDate = new Date(startDate)
+    endDate.setMonth(startDate.getMonth() + 6)
   }
 
-  // Build actual points from weight log
-  const firstLogDate = weightLog.length > 0 ? new Date(weightLog[0].logged_at) : new Date()
-  const actualPoints = weightLog.map(e => {
-    const days = Math.round((new Date(e.logged_at) - firstLogDate) / (1000 * 60 * 60 * 24))
-    return { week: Math.round(days / 7), weight: parseFloat(e.weight) }
-  })
+  const totalDays = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24))
 
-  // SVG graph
-  const allWeights = [...projectedPoints.map(p => p.weight), ...actualPoints.map(p => p.weight), target_weight]
-  const minW = Math.floor(Math.min(...allWeights) - 2)
-  const maxW = Math.ceil(Math.max(...allWeights) + 2)
-  const totalWeeks = projectedPoints.length > 0 ? projectedPoints[projectedPoints.length-1].week : 12
-  const W = 300, H = 120, padL = 30, padR = 10, padT = 10, padB = 20
-  const xScale = w => padL + (w / totalWeeks) * (W - padL - padR)
+  // Projected line — daily points
+  const lbsPerDay = projection ? (parseFloat(startWeight) - parseFloat(target_weight)) / projection.days : 0
+  const projPoints = projection ? Array.from({length: totalDays + 1}, (_, i) => ({
+    day: i,
+    weight: Math.max(parseFloat((parseFloat(startWeight) - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
+  })) : []
+
+  // Actual points
+  const actualPoints = weightLog.map(e => ({
+    day: Math.round((new Date(e.logged_at) - startDate) / (1000 * 60 * 60 * 24)),
+    weight: parseFloat(e.weight),
+    id: e.id,
+    date: new Date(e.logged_at)
+  }))
+
+  // Month labels along bottom
+  const monthLabels = []
+  const cursor = new Date(startDate)
+  cursor.setDate(1)
+  if (cursor < startDate) cursor.setMonth(cursor.getMonth() + 1)
+  while (cursor <= endDate) {
+    const day = Math.round((cursor - startDate) / (1000 * 60 * 60 * 24))
+    monthLabels.push({
+      day,
+      label: cursor.toLocaleDateString('en-US', { month: 'short' })
+    })
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+
+  // SVG dimensions
+  const allWeights = [
+    parseFloat(startWeight) + 2,
+    parseFloat(target_weight) - 2,
+    ...actualPoints.map(p => p.weight)
+  ]
+  const minW = Math.floor(Math.min(...allWeights))
+  const maxW = Math.ceil(Math.max(...allWeights))
+  const W = 320, H = 140, padL = 32, padR = 12, padT = 12, padB = 28
+
+  const xScale = d => padL + (d / totalDays) * (W - padL - padR)
   const yScale = w => padT + ((maxW - w) / (maxW - minW)) * (H - padT - padB)
 
-  const projPath = projectedPoints.length > 1
-    ? projectedPoints.map((p, i) => (i === 0 ? 'M' : 'L') + xScale(p.week).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
+  // Paths
+  const projPath = projPoints.length > 1
+    ? projPoints.filter((_,i) => i % 3 === 0 || i === projPoints.length-1)
+        .map((p, i) => (i === 0 ? 'M' : 'L') + xScale(p.day).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
     : ''
   const actualPath = actualPoints.length > 1
-    ? actualPoints.map((p, i) => (i === 0 ? 'M' : 'L') + xScale(p.week).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
+    ? actualPoints.map((p, i) => (i === 0 ? 'M' : 'L') + xScale(p.day).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
     : ''
 
-  // Latest weight
+  // Latest weight stats
   const latestWeight = weightLog.length > 0 ? parseFloat(weightLog[weightLog.length-1].weight) : parseFloat(startWeight)
   const lostSoFar = parseFloat(startWeight) - latestWeight
   const toGo = latestWeight - parseFloat(target_weight)
 
+  // Y axis grid lines
+  const yStep = (maxW - minW) <= 10 ? 2 : 5
+  const yGridLines = []
+  for (let w = Math.ceil(minW / yStep) * yStep; w <= maxW; w += yStep) {
+    yGridLines.push(w)
+  }
+
   return '<div style="margin-top:16px">' +
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#9878; Weight Progress</div>' +
     '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
-      '<div style="display:flex;justify-content:space-between;margin-bottom:10px">' +
+
+      // Stats row
+      '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
         '<div style="text-align:center">' +
           '<div style="font-size:18px;font-weight:800;color:var(--forest)">' + latestWeight + '</div>' +
           '<div style="font-size:10px;color:var(--ink3)">Current</div>' +
         '</div>' +
-        (lostSoFar > 0 ? '<div style="text-align:center">' +
+        (lostSoFar > 0.1 ? '<div style="text-align:center">' +
           '<div style="font-size:18px;font-weight:800;color:var(--forest2)">-' + lostSoFar.toFixed(1) + '</div>' +
           '<div style="font-size:10px;color:var(--ink3)">Lost</div>' +
         '</div>' : '') +
         '<div style="text-align:center">' +
-          '<div style="font-size:18px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:var(--ink2)">' + Math.max(toGo, 0).toFixed(1) + '</div>' +
           '<div style="font-size:10px;color:var(--ink3)">To go</div>' +
         '</div>' +
         '<div style="text-align:center">' +
-          '<div style="font-size:18px;font-weight:800;color:var(--ink2)">' + target_weight + '</div>' +
+          '<div style="font-size:18px;font-weight:800;color:var(--terra)">' + target_weight + '</div>' +
           '<div style="font-size:10px;color:var(--ink3)">Target</div>' +
         '</div>' +
       '</div>' +
-      (projPath ? '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;overflow:visible">' +
-        // Target line
-        '<line x1="' + padL + '" y1="' + yScale(target_weight).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + yScale(target_weight).toFixed(1) + '" stroke="var(--forest2)" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>' +
-        // Y axis labels
-        '<text x="' + (padL-4) + '" y="' + (padT+4) + '" text-anchor="end" font-size="8" fill="var(--ink3)">' + maxW + '</text>' +
-        '<text x="' + (padL-4) + '" y="' + (H-padB+4) + '" text-anchor="end" font-size="8" fill="var(--ink3)">' + minW + '</text>' +
-        // Projected line
-        '<path d="' + projPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.6"/>' +
-        // Actual line
-        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2.5"/>' : '') +
-        // Actual dots
-        actualPoints.map(p => '<circle cx="' + xScale(p.week).toFixed(1) + '" cy="' + yScale(p.weight).toFixed(1) + '" r="3" fill="var(--forest)"/>').join('') +
-      '</svg>' : '') +
-      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:6px;text-align:center">On track to reach ' + target_weight + ' lbs by <strong>' + projection.date + '</strong></div>' : '') +
+
+      // SVG Graph
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block">' +
+
+        // Grid lines
+        yGridLines.map(w =>
+          '<line x1="' + padL + '" y1="' + yScale(w).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(w).toFixed(1) + '" stroke="var(--cream3)" stroke-width="1"/>' +
+          '<text x="' + (padL-4) + '" y="' + (yScale(w)+3).toFixed(1) + '" text-anchor="end" font-size="7" fill="var(--ink3)">' + w + '</text>'
+        ).join('') +
+
+        // Target weight line
+        '<line x1="' + padL + '" y1="' + yScale(target_weight).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(target_weight).toFixed(1) + '" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>' +
+
+        // Month labels on X axis
+        monthLabels.map(m =>
+          '<line x1="' + xScale(m.day).toFixed(1) + '" y1="' + padT + '" x2="' + xScale(m.day).toFixed(1) + '" y2="' + (H-padB) + '" stroke="var(--cream3)" stroke-width="1" stroke-dasharray="2,3"/>' +
+          '<text x="' + xScale(m.day).toFixed(1) + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" fill="var(--ink3)">' + m.label + '</text>'
+        ).join('') +
+
+        // Projected line (dashed)
+        (projPath ? '<path d="' + projPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.5"/>' : '') +
+
+        // Actual line (solid)
+        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2.5" stroke-linejoin="round"/>' : '') +
+
+        // Start dot
+        (actualPoints.length > 0 ? '<circle cx="' + xScale(actualPoints[0].day).toFixed(1) + '" cy="' + yScale(actualPoints[0].weight).toFixed(1) + '" r="4" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' : '') +
+
+        // All actual dots
+        actualPoints.map(p =>
+          '<circle cx="' + xScale(p.day).toFixed(1) + '" cy="' + yScale(p.weight).toFixed(1) + '" r="3.5" fill="var(--forest)" stroke="white" stroke-width="1.5"/>'
+        ).join('') +
+
+        // Latest weight label
+        (actualPoints.length > 0 ? (() => {
+          const last = actualPoints[actualPoints.length-1]
+          const lx = xScale(last.day)
+          const ly = yScale(last.weight)
+          const labelX = lx > W - 60 ? lx - 6 : lx + 6
+          const anchor = lx > W - 60 ? 'end' : 'start'
+          return '<text x="' + labelX.toFixed(1) + '" y="' + (ly - 6).toFixed(1) + '" text-anchor="' + anchor + '" font-size="8" font-weight="bold" fill="var(--forest)">' + last.weight + '</text>'
+        })() : '') +
+
+      '</svg>' +
+
+      // Target date
+      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">&#127937; Projected to reach <strong>' + target_weight + ' lbs</strong> by <strong style="color:var(--forest)">' + projection.date + '</strong></div>' : '') +
+
+      // Legend
+      '<div style="display:flex;gap:14px;justify-content:center;margin-top:8px">' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)">' +
+          '<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2.5"/></svg>Actual' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)">' +
+          '<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Projected' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)">' +
+          '<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target' +
+        '</div>' +
+      '</div>' +
+
     '</div>' +
+
     // Log weigh-in
     '<div class="log-add-row">' +
       '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" />' +
       '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Log</button>' +
     '</div>' +
+
     // Recent weigh-ins
     (weightLog.length > 0 ?
       '<div style="margin-top:8px">' +
         weightLog.slice(-5).reverse().map(e =>
           '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
             '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
-            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short',day:'numeric'}) + '</span>' +
+            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) + '</span>' +
             '<button class="remove-btn" data-weight-del="' + e.id + '">x</button>' +
           '</div>'
         ).join('') +
       '</div>'
-    : '') +
+    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 4px">Log your first weigh-in to start tracking!</div>') +
+
   '</div>'
 }
+
 
 function getWeekDates(offset) {
   const now = new Date()
