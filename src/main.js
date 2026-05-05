@@ -41,6 +41,8 @@ const state = {
   logTagFilter: null,
   logSearchFocused: false,
   logBreakdownId: null,
+  editingLogId: null,
+  scaleModal: null,
   recipeSearch: '',
   pantrySearch: '',
   shopSearch: '',
@@ -546,6 +548,11 @@ function render() {
   if (activePicker && state.tagPickerPos) {
     activePicker.style.top = state.tagPickerPos.top + 'px'
     activePicker.style.left = Math.min(state.tagPickerPos.left, window.innerWidth - 220) + 'px'
+    // Scroll into view if still off screen
+    const rect = activePicker.getBoundingClientRect()
+    if (rect.bottom > window.innerHeight) {
+      activePicker.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
   }
 }
 
@@ -651,8 +658,25 @@ function renderRecipeCard(r) {
   ) : ''
 
   const isEditingRecipe = state.editingRecipeId === r.id
+  const isScaling = state.scaleModal?.recipeId === r.id
+  const scaleButtons = '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">' +
+    '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Scale:</span>' +
+    ['½x', '2x', '3x'].map(s => '<button class="scale-btn" data-scale="' + s + '" data-recipe-id="' + r.id + '">' + s + '</button>').join('') +
+  '</div>'
+  const scaleResult = isScaling ? ('<div class="scale-result-box">' +
+    (state.scaleModal.loading ? '<div style="color:var(--ink3);font-style:italic;font-size:12px">Scaling ingredients...</div>' :
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:6px">Scaled ingredients (' + state.scaleModal.label + '):</div>' +
+      '<div class="recipe-text" style="background:var(--cream2);border-radius:8px;padding:8px">' + formatRecipeText(state.scaleModal.ingredients) + '</div>' +
+      '<div style="display:flex;gap:6px;margin-top:8px">' +
+        '<button class="add-btn" data-save-scaled="' + r.id + '">Save as new recipe</button>' +
+        '<button class="modal-cancel" data-close-scale="' + r.id + '">Close</button>' +
+      '</div>'
+    ) + '</div>') : ''
+
   const body = '<div class="recipe-body">' +
     (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original</a></div>' : '') +
+    scaleButtons +
+    scaleResult +
     '<div class="recipe-section-label cooking-notes-label">Ingredients' +
       '<button class="notes-edit-btn" data-recipe-edit="' + r.id + '">' + (isEditingRecipe ? 'Done' : 'Edit') + '</button>' +
     '</div>' +
@@ -911,17 +935,29 @@ function renderLog() {
   // Today entries
   const logEntries = state.log.length === 0
     ? '<div class="empty-state" style="padding:16px 0">Nothing logged yet today!</div>'
-    : state.log.map(e =>
-        '<div class="log-entry">' +
-          '<div style="flex:1">' +
-            '<div class="log-food">' + esc(e.food) + '</div>' +
+    : state.log.map(e => {
+        const isEditing = state.editingLogId === e.id
+        if (isEditing) {
+          return '<div class="log-entry" style="flex-direction:column;align-items:stretch;gap:6px">' +
+            '<input id="edit-log-food-' + e.id + '" value="' + esc(e.food) + '" style="font-size:13px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit" />' +
+            '<div style="display:flex;gap:6px;align-items:center">' +
+              '<input id="edit-log-cals-' + e.id + '" type="number" value="' + (e.calories||0) + '" style="width:80px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit;font-size:13px" />' +
+              '<span style="font-size:11px;color:var(--ink3)">kcal</span>' +
+              '<button class="add-btn" data-save-log="' + e.id + '" style="flex:1">Save</button>' +
+              '<button class="modal-cancel" data-cancel-log="' + e.id + '" style="padding:6px 10px">Cancel</button>' +
+            '</div>' +
+          '</div>'
+        }
+        return '<div class="log-entry">' +
+          '<div style="flex:1" data-edit-log="' + e.id + '" style="cursor:pointer">' +
+            '<div class="log-food" style="cursor:pointer" data-edit-log="' + e.id + '">' + esc(e.food) + '</div>' +
             '<div class="log-cal-row-entry">' +
               '<span class="log-cal ' + (e.calories === 0 ? 'log-cal-zero' : '') + '">' +
                 (e.calories === 0
                   ? '<button class="log-add-cals-btn" data-add-cals-id="' + e.id + '">+ Add calories</button>'
                   : e.calories + ' kcal') +
               '</span>' +
-              (e.calories > 0 ? '<button class="log-breakdown-btn" data-breakdown-id="' + e.id + '" title="How was this calculated?">?</button>' : '') +
+              (e.calories > 0 ? '<button class="log-breakdown-btn" data-breakdown-id="' + e.id + '">?</button>' : '') +
             '</div>' +
             (state.logBreakdownId === e.id && e.breakdown ?
               '<div class="log-breakdown-text">' + esc(e.breakdown) + '</div>' : '') +
@@ -929,7 +965,7 @@ function renderLog() {
           (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">recipe</button>' : '') +
           '<button class="remove-btn" data-log-del="' + e.id + '">x</button>' +
         '</div>'
-      ).join('')
+      }).join('')
 
   // Weekly breakdown rows
   const weekRows = weekDays.map(d => {
@@ -2374,7 +2410,86 @@ function bindEvents() {
   })
   document.getElementById('log-food')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-add-btn')?.click() } })
 
-  // ? breakdown button
+  // Recipe scaling
+  document.querySelectorAll('.scale-btn[data-scale]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const rid = el.dataset.recipeId
+      const scale = el.dataset.scale
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe || !recipe.ingredients) return
+      state.scaleModal = { recipeId: rid, label: scale, loading: true, ingredients: '' }
+      render()
+      try {
+        const multiplier = scale === '½x' ? '0.5' : scale === '2x' ? '2' : '3'
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 800,
+            messages: [{ role: 'user', content:
+              'Scale these recipe ingredients by ' + multiplier + 'x. Return ONLY the scaled ingredient list, one per line, with updated amounts. No extra text, no explanation.\n\nIngredients:\n' + recipe.ingredients
+            }]
+          })
+        })
+        const data = await resp.json()
+        const scaled = data.content?.[0]?.text?.trim() || ''
+        state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: scaled }
+      } catch(e) {
+        state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: 'Error scaling — try again.' }
+      }
+      render()
+    })
+  })
+  document.querySelectorAll('[data-close-scale]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); state.scaleModal = null; render() })
+  })
+  document.querySelectorAll('[data-save-scaled]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      if (!state.scaleModal) return
+      const rid = el.dataset.saveScaled
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe) return
+      const name = recipe.name + ' (' + state.scaleModal.label + ')'
+      const saved = await db.saveRecipe({ name, ingredients: state.scaleModal.ingredients, instructions: recipe.instructions || '', notes: '', clippedFrom: '', tags: recipe.tags || [] })
+      if (saved) state.recipes.unshift(normalizeRecipe(saved))
+      state.scaleModal = null
+      render()
+    })
+  })
+  document.querySelectorAll('[data-edit-log]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingLogId = el.dataset.editLog
+      render()
+      setTimeout(() => document.getElementById('edit-log-food-' + el.dataset.editLog)?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-save-log]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.saveLog
+      const entry = state.log.find(x => x.id === id)
+      if (!entry) return
+      const food = document.getElementById('edit-log-food-' + id)?.value?.trim()
+      const cals = parseInt(document.getElementById('edit-log-cals-' + id)?.value) || 0
+      if (!food) return
+      entry.food = food
+      entry.calories = cals
+      await db.updateLogEntry(id, { food, calories: cals })
+      state.editingLogId = null
+      render()
+    })
+  })
+  document.querySelectorAll('[data-cancel-log]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingLogId = null
+      render()
+    })
+  })
   document.querySelectorAll('[data-breakdown-id]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
@@ -2647,11 +2762,14 @@ function bindEvents() {
         state.tagPickerPos = null
       } else {
         state.tagPickerOpen = key
-        // Position relative to button
         const rect = el.getBoundingClientRect()
+        const pickerHeight = 220 // estimated picker height
+        const spaceBelow = window.innerHeight - rect.bottom
+        const flipUp = spaceBelow < pickerHeight && rect.top > pickerHeight
         state.tagPickerPos = {
-          top: rect.bottom + 6,
-          left: Math.min(rect.left, window.innerWidth - 220)
+          top: flipUp ? rect.top - pickerHeight - 4 : rect.bottom + 6,
+          left: Math.min(rect.left, window.innerWidth - 220),
+          flipUp
         }
       }
       render()

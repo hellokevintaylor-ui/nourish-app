@@ -512,3 +512,8 @@ html, body {
 .goal-pace-card { background:rgba(255,255,255,0.1); border:1.5px solid rgba(255,255,255,0.2); border-radius:10px; padding:10px 12px; cursor:pointer; transition:all 0.15s; }
 .goal-pace-card:hover { background:rgba(255,255,255,0.15); }
 .goal-pace-card.active { background:rgba(255,255,255,0.25); border-color:white; }
+
+/* ── RECIPE SCALING ── */
+.scale-btn { font-size:11px; padding:3px 9px; background:var(--sage4); color:var(--forest); border:1.5px solid var(--forest2); border-radius:8px; cursor:pointer; font-weight:600; }
+.scale-btn:hover { background:var(--forest2); color:white; }
+.scale-result-box { background:var(--cream2); border-radius:10px; padding:10px 12px; margin-bottom:12px; }
