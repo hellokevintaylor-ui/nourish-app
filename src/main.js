@@ -937,7 +937,7 @@ function renderLogInner() {
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   // Build week data from historyLog + today's log
   const weekDays = []
-  for (let i = 6; i >= 0; i--) {
+  for (let i = 0; i <= 6; i++) {
     const d = new Date(now)
     d.setDate(now.getDate() - i)
     weekDays.push(d.toLocaleDateString('sv'))
@@ -1029,24 +1029,17 @@ function renderLogInner() {
 
   return '<div class="tab-content" id="log-tab-content">' +
 
-    // Weekly summary bar
-    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
-      '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
-      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
-    '</div>' +
-
-    // Day navigation
+    // 1. Day navigation
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
-      '<button class="cal-nav" id="log-prev-day">‹</button>' +
+      '<button class="cal-nav" id="log-prev-day">&#8249;</button>' +
       '<div style="text-align:center">' +
         '<div style="font-size:15px;font-weight:700;color:var(--forest)">' + dayLabel + '</div>' +
         (!isToday ? '<div style="font-size:11px;color:var(--ink3)">' + viewedDate.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</div>' : '') +
       '</div>' +
-      '<button class="cal-nav" id="log-next-day" ' + (isToday ? 'disabled style="opacity:0.3"' : '') + '>›</button>' +
+      '<button class="cal-nav" id="log-next-day" ' + (isToday ? 'disabled style="opacity:0.3"' : '') + '>&#8250;</button>' +
     '</div>' +
 
-    // Daily summary
+    // 2. Daily summary
     '<div class="log-total">' +
       '<div>' +
         '<div class="log-total-label">' + (isToday ? 'Today' : dayLabel) + '</div>' +
@@ -1054,14 +1047,23 @@ function renderLogInner() {
       '</div>' +
       '<div style="text-align:right">' +
         (burned > 0 ?
-          '<div style="font-size:11px;color:var(--ink3)">🍽 ' + cals + ' in &nbsp;🏊 ' + burned + ' out</div>' +
+          '<div style="font-size:11px;color:var(--ink3)">&#127869; ' + cals + ' in &nbsp;&#127939; ' + burned + ' out</div>' +
           '<div><span class="log-total-val">' + net + '</span><span class="log-total-goal"> net / ' + goal + '</span></div>'
         :
           '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>'
         ) +
       '</div>' +
     '</div>' +
-    // Add inputs — search and manual food entry
+
+    // 3. Log weight (only if weight goal is set)
+    (state.goals.target_weight ? (
+      '<div class="log-add-row" style="margin-bottom:10px">' +
+        '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" />' +
+        '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">&#9881; Log Weight</button>' +
+      '</div>'
+    ) : '') +
+
+    // 4. Search recipes + tags + add food
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
@@ -1082,11 +1084,13 @@ function renderLogInner() {
       '<button class="add-btn" id="log-add-btn">+ Add</button>' +
     '</div>' +
     (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">🍽 ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
+
+    // 5. Today's meals
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
-    // Exercise section
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">🏊 Exercise</div>' +
+    // 6. Exercise
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
     '<div class="log-add-row">' +
       '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
       '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
@@ -1108,20 +1112,35 @@ function renderLogInner() {
       ).join('')
     : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
 
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">This week</div>' +
-    weekRows +
-    // Weight progress
+    // 7. Weight progress graph
     renderWeightProgress() +
+
+    // 8. Last 7 days summary bar
+    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-top:16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
+      '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
+      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
+    '</div>' +
+
+    // 9. This week day-by-day breakdown
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">This week</div>' +
+    weekRows +
+
   '</div>'
 }
 
 function renderWeightProgress() {
-  const { weight: startWeight, target_weight, calories: dailyCals } = state.goals
-  if (!startWeight || !target_weight || startWeight <= target_weight) return ''
+  const { weight: currentGoalWeight, target_weight, calories: dailyCals } = state.goals
+  if (!currentGoalWeight || !target_weight) return ''
 
-  const tdee = calcTDEE(startWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
-  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : nullnull
   const weightLog = state.weightLog || []
+
+  // Start weight = first weigh-in if available, otherwise goals weight
+  const startWeight = weightLog.length > 0 ? parseFloat(weightLog[0].weight) : parseFloat(currentGoalWeight)
+  if (startWeight <= parseFloat(target_weight)) return ''
+
+  const tdee = calcTDEE(currentGoalWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
+  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
 
   // Start date = goal start date (fixed) or first weigh-in
   const startDate = state.goals.goal_start_date
@@ -1255,13 +1274,14 @@ function renderWeightProgress() {
     '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
 
       // Stats
+      // Stats
       '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
-        '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--forest)">' + latestWeight + '</div><div style="font-size:10px;color:var(--ink3)">Current</div></div>' +
-        (lostSoFar > 0.1 ? '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--forest2)">-' + lostSoFar.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">Lost</div></div>' : '') +
-        '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">To go</div></div>' +
-        '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--ink3)">Target</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink3)">' + startWeight + '</div><div style="font-size:10px;color:var(--ink3)">Start</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest)">' + latestWeight + '</div><div style="font-size:10px;color:var(--ink3)">Current</div></div>' +
+        (lostSoFar > 0.1 ? '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest2)">-' + lostSoFar.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">Lost</div></div>' : '') +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">To go</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--ink3)">Target</div></div>' +
       '</div>' +
-
       // Graph
       '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block">' +
 
