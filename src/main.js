@@ -2371,8 +2371,9 @@ function bindEvents() {
   document.getElementById('log-weight-btn')?.addEventListener('click', async () => {
     const val = parseFloat(document.getElementById('log-weight-input')?.value)
     if (!val || isNaN(val)) return
-    const isToday = (state.logDayOffset || 0) === 0
-    const dateStr = isToday ? null : state._viewedDateStr
+    const isViewingToday = (state.logDayOffset || 0) === 0
+    const dateStr = isViewingToday ? null : state._viewedDateStr
+    console.log('Log weight:', val, 'offset:', state.logDayOffset, 'isToday:', isViewingToday, 'dateStr:', dateStr, '_viewedDateStr:', state._viewedDateStr)
     const saved = await db.addWeightEntry(val, '', dateStr)
     if (saved) {
       state.weightLog = state.weightLog || []
