@@ -1123,25 +1123,30 @@ function renderLogInner() {
 }
 
 function renderWeightProgress() {
-  const { target_weight, calories: dailyCals } = state.goals
+  const { target_weight, calories: dailyCals, weight: goalsWeight, goal_start_date } = state.goals
   const weightLog = state.weightLog || []
 
-  // Start weight = always from first weigh-in entry
-  const startWeight = weightLog.length > 0 ? parseFloat(weightLog[0].weight) : parseFloat(state.goals.weight || 0)
+  // Start weight = goals weight field (what user entered as their starting weight)
+  // Fall back to first weigh-in if goals weight not set
+  const startWeight = parseFloat(goalsWeight || (weightLog.length > 0 ? weightLog[0].weight : 0))
   if (!startWeight || !target_weight || startWeight <= parseFloat(target_weight)) return ''
 
-  // Use latest weigh-in for TDEE (more accurate with current weight)
-  const currentWeight = weightLog.length > 0 ? parseFloat(weightLog[weightLog.length-1].weight) : startWeight
-  const tdee = calcTDEE(currentWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
-  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
+  // Latest weigh-in
+  const latestWeight = weightLog.length > 0 ? parseFloat(weightLog[weightLog.length-1].weight) : startWeight
+  const lostSoFar = startWeight - latestWeight
+  const toGo = Math.max(latestWeight - parseFloat(target_weight), 0)
 
-  // Start date = goal start date (fixed) or first weigh-in
-  const startDate = state.goals.goal_start_date
-    ? new Date(state.goals.goal_start_date + 'T12:00:00')
+  // Start date from goals
+  const startDate = goal_start_date
+    ? new Date(goal_start_date + 'T12:00:00')
     : (weightLog.length > 0 ? new Date(weightLog[0].logged_at) : new Date())
   startDate.setHours(0, 0, 0, 0)
 
-  // Original projected end date
+  // Projection
+  const tdee = calcTDEE(latestWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
+  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
+
+  // End date = projected finish or 6 months
   let endDate = new Date(startDate)
   if (projection) {
     endDate.setDate(startDate.getDate() + projection.days)
@@ -1149,125 +1154,101 @@ function renderWeightProgress() {
     endDate.setMonth(startDate.getMonth() + 6)
   }
 
-  // Actual trajectory — based on real weigh-ins
+  // Actual trajectory from latest weigh-in
   let actualTrajectoryDate = null
-  let actualLbsPerDay = null
-  let nudgeMsg = ''
-  let nudgeColor = 'var(--ink3)'
-
+  let nudgeMsg = '', nudgeColor = 'var(--ink3)'
   if (weightLog.length >= 2) {
-    const first = weightLog[0]
-    const last = weightLog[weightLog.length - 1]
-    const daysBetween = Math.round((new Date(last.logged_at) - new Date(first.logged_at)) / (1000 * 60 * 60 * 24))
+    const first = weightLog[0], last = weightLog[weightLog.length-1]
+    const daysBetween = Math.round((new Date(last.logged_at) - new Date(first.logged_at)) / (1000*60*60*24))
     if (daysBetween > 0) {
-      actualLbsPerDay = (parseFloat(first.weight) - parseFloat(last.weight)) / daysBetween
+      const actualLbsPerDay = (parseFloat(first.weight) - parseFloat(last.weight)) / daysBetween
       if (actualLbsPerDay > 0) {
         const daysToGoal = (parseFloat(last.weight) - parseFloat(target_weight)) / actualLbsPerDay
         actualTrajectoryDate = new Date(new Date(last.logged_at))
         actualTrajectoryDate.setDate(actualTrajectoryDate.getDate() + Math.round(daysToGoal))
-
-        // Extend graph to show actual trajectory if ahead/behind
         if (actualTrajectoryDate > endDate) endDate = new Date(actualTrajectoryDate)
-
-        // Nudge message
-        const projDaysLeft = projection ? Math.round((endDate - new Date()) / (1000 * 60 * 60 * 24)) : null
-        const actualDaysLeft = Math.round(daysToGoal)
-        const diffDays = projection ? (projection.days - Math.round((actualTrajectoryDate - startDate) / (1000 * 60 * 60 * 24))) : 0
+        const projEndDate = projection ? new Date(startDate.getTime() + projection.days * 86400000) : null
+        const diffDays = projEndDate ? Math.round((projEndDate - actualTrajectoryDate) / 86400000) : 0
         const diffWeeks = Math.round(Math.abs(diffDays) / 7)
-
-        if (diffDays > 14) {
-          nudgeMsg = '🎉 You\'re crushing it — ' + diffWeeks + ' week' + (diffWeeks !== 1 ? 's' : '') + ' ahead of schedule!'
-          nudgeColor = 'var(--forest)'
-        } else if (diffDays > 0) {
-          nudgeMsg = '✅ Slightly ahead of pace — keep it up!'
-          nudgeColor = 'var(--forest2)'
-        } else if (diffDays < -14) {
-          nudgeMsg = '💪 ' + diffWeeks + ' week' + (diffWeeks !== 1 ? 's' : '') + ' behind — a little tightening up this week will help.'
-          nudgeColor = 'var(--terra)'
-        } else if (diffDays < 0) {
-          nudgeMsg = '📊 Slightly behind pace — keep going!'
-          nudgeColor = 'var(--gold)'
-        } else {
-          nudgeMsg = '🎯 Right on track!'
-          nudgeColor = 'var(--forest)'
-        }
+        if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of schedule!'; nudgeColor = 'var(--forest)' }
+        else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead!'; nudgeColor = 'var(--forest2)' }
+        else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind — tighten up a bit.'; nudgeColor = 'var(--terra)' }
+        else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind — keep going!'; nudgeColor = 'var(--gold)' }
+        else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
       }
     }
   }
 
-  const totalDays = Math.max(Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)), 30)
-  const lbsPerDay = projection ? (parseFloat(startWeight) - parseFloat(target_weight)) / projection.days : 0
+  const totalDays = Math.max(Math.round((endDate - startDate) / 86400000), 30)
+  const lbsPerDay = projection ? (startWeight - parseFloat(target_weight)) / projection.days : 0
 
-  // Original projected points
+  // Projected line — starts at startWeight on startDate, goes to target
   const projPoints = projection ? Array.from({length: Math.min(totalDays, projection.days) + 1}, (_, i) => ({
     day: i,
-    weight: Math.max(parseFloat((parseFloat(startWeight) - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
+    weight: Math.max(parseFloat((startWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
   })) : []
 
-  // Actual trajectory line from last weigh-in to predicted finish
-  const trajPoints = (actualLbsPerDay && actualLbsPerDay > 0 && weightLog.length >= 2) ? (() => {
-    const last = weightLog[weightLog.length - 1]
-    const lastDay = Math.round((new Date(last.logged_at) - startDate) / (1000 * 60 * 60 * 24))
-    const daysToGoal = (parseFloat(last.weight) - parseFloat(target_weight)) / actualLbsPerDay
-    const points = []
-    for (let i = 0; i <= Math.ceil(daysToGoal); i += Math.max(1, Math.floor(daysToGoal / 30))) {
-      points.push({
-        day: lastDay + i,
-        weight: Math.max(parseFloat(last.weight) - actualLbsPerDay * i, parseFloat(target_weight))
-      })
-    }
-    return points
-  })() : []
-
-  // Actual weigh-in points
+  // Actual weigh-in points plotted by date
   const actualPoints = weightLog.map(e => ({
-    day: Math.round((new Date(e.logged_at) - startDate) / (1000 * 60 * 60 * 24)),
+    day: Math.round((new Date(e.logged_at) - startDate) / 86400000),
     weight: parseFloat(e.weight),
-    id: e.id
-  }))
+    id: e.id,
+    date: new Date(e.logged_at)
+  })).filter(p => p.day >= 0)
+
+  // Current trajectory line from latest actual point
+  const trajPoints = (actualPoints.length >= 1 && weightLog.length >= 2) ? (() => {
+    const last = actualPoints[actualPoints.length-1]
+    const first = actualPoints[0]
+    const daysBetween = last.day - first.day
+    if (daysBetween <= 0) return []
+    const actualLbsPerDay = (first.weight - last.weight) / daysBetween
+    if (actualLbsPerDay <= 0) return [last]
+    const daysToGoal = (last.weight - parseFloat(target_weight)) / actualLbsPerDay
+    const pts = []
+    const steps = Math.min(Math.ceil(daysToGoal), totalDays - last.day)
+    for (let i = 0; i <= steps; i += Math.max(1, Math.floor(steps/20))) {
+      pts.push({ day: last.day + i, weight: Math.max(last.weight - actualLbsPerDay * i, parseFloat(target_weight)) })
+    }
+    return pts
+  })() : []
 
   // Month labels
   const monthLabels = []
   const cursor = new Date(startDate)
-  cursor.setDate(1)
-  cursor.setMonth(cursor.getMonth() + 1)
+  cursor.setDate(1); cursor.setMonth(cursor.getMonth() + 1)
   while (cursor <= endDate) {
-    monthLabels.push({
-      day: Math.round((cursor - startDate) / (1000 * 60 * 60 * 24)),
-      label: cursor.toLocaleDateString('en-US', { month: 'short' })
-    })
+    monthLabels.push({ day: Math.round((cursor - startDate) / 86400000), label: cursor.toLocaleDateString('en-US', {month:'short'}) })
     cursor.setMonth(cursor.getMonth() + 1)
   }
 
   // SVG
-  const allW = [parseFloat(startWeight) + 2, parseFloat(target_weight) - 1, ...actualPoints.map(p => p.weight)]
+  const allW = [startWeight + 2, parseFloat(target_weight) - 1, ...actualPoints.map(p => p.weight)]
   const minW = Math.floor(Math.min(...allW))
   const maxW = Math.ceil(Math.max(...allW))
-  const W = 320, H = 150, padL = 32, padR = 12, padT = 12, padB = 28
-  const xScale = d => padL + (Math.min(d, totalDays) / totalDays) * (W - padL - padR)
+  const W = 320, H = 155, padL = 32, padR = 12, padT = 12, padB = 28
+  const xScale = d => padL + (Math.min(Math.max(d,0), totalDays) / totalDays) * (W - padL - padR)
   const yScale = w => padT + ((maxW - w) / (maxW - minW)) * (H - padT - padB)
 
   const yStep = (maxW - minW) <= 10 ? 2 : 5
   const yGridLines = []
   for (let w = Math.ceil(minW / yStep) * yStep; w <= maxW; w += yStep) yGridLines.push(w)
 
-  const mkPath = (pts, skip) => pts.filter((_,i) => !skip || i % skip === 0 || i === pts.length-1)
-    .map((p, i) => (i === 0 ? 'M' : 'L') + xScale(p.day).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
+  const mkPath = pts => pts.map((p,i) => (i===0?'M':'L') + xScale(p.day).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
 
-  const projPath = projPoints.length > 1 ? mkPath(projPoints, 3) : ''
-  const trajPath = trajPoints.length > 1 ? mkPath(trajPoints, 1) : ''
-  const actualPath = actualPoints.length > 1 ? mkPath(actualPoints, 0) : ''
+  const projPath = projPoints.length > 1 ? mkPath(projPoints.filter((_,i)=>i%3===0||i===projPoints.length-1)) : ''
+  const actualPath = actualPoints.length > 1 ? mkPath(actualPoints) : ''
+  const trajPath = trajPoints.length > 1 ? mkPath(trajPoints) : ''
 
-  const latestWeight = weightLog.length > 0 ? parseFloat(weightLog[weightLog.length-1].weight) : parseFloat(startWeight)
-  const lostSoFar = parseFloat(startWeight) - latestWeight
-  const toGo = Math.max(latestWeight - parseFloat(target_weight), 0)
+  // Start dot (at startWeight on startDate)
+  const startDotY = yScale(startWeight)
+  const startDotX = xScale(0)
 
   return '<div style="margin-top:16px">' +
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#9878; Weight Progress</div>' +
     '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
 
-      // Stats
-      // Stats
+      // Stats: Start · Current · Lost · To go · Target
       '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
         '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink3)">' + startWeight + '</div><div style="font-size:10px;color:var(--ink3)">Start</div></div>' +
         '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest)">' + latestWeight + '</div><div style="font-size:10px;color:var(--ink3)">Current</div></div>' +
@@ -1275,17 +1256,18 @@ function renderWeightProgress() {
         '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">To go</div></div>' +
         '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--ink3)">Target</div></div>' +
       '</div>' +
-      // Graph
+
+      // SVG Graph
       '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block">' +
 
+        // Grid lines + Y labels
         yGridLines.map(w =>
           '<line x1="' + padL + '" y1="' + yScale(w).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(w).toFixed(1) + '" stroke="var(--cream3)" stroke-width="1"/>' +
           '<text x="' + (padL-4) + '" y="' + (yScale(w)+3).toFixed(1) + '" text-anchor="end" font-size="7" fill="var(--ink3)">' + w + '</text>'
         ).join('') +
 
         // Target line
-        '<line x1="' + padL + '" y1="' + yScale(target_weight).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(target_weight).toFixed(1) + '" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>' +
-
+        '<line x1="' + padL + '" y1="' + yScale(parseFloat(target_weight)).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(parseFloat(target_weight)).toFixed(1) + '" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>' +
 
         // Start date marker
         '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (H-padB) + '" stroke="var(--forest2)" stroke-width="1" opacity="0.4"/>' +
@@ -1297,41 +1279,41 @@ function renderWeightProgress() {
           '<text x="' + xScale(m.day).toFixed(1) + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" fill="var(--ink3)">' + m.label + '</text>'
         ).join('') +
 
-        // Original projection (faint dashed)
+        // Start weight dot (anchor of the projected line)
+        '<circle cx="' + startDotX.toFixed(1) + '" cy="' + startDotY.toFixed(1) + '" r="4" fill="var(--ink3)" stroke="white" stroke-width="1.5"/>' +
+        '<text x="' + (startDotX+7).toFixed(1) + '" y="' + (startDotY-5).toFixed(1) + '" font-size="8" font-weight="bold" fill="var(--ink3)">' + startWeight + '</text>' +
+
+        // Projected line (grey dashed — from startWeight to target)
         (projPath ? '<path d="' + projPath + '" fill="none" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="5,4"/>' : '') +
 
-        // Actual trajectory (colored dashed)
+        // Actual trajectory (colored dashed — from latest weigh-in forward)
         (trajPath ? '<path d="' + trajPath + '" fill="none" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.8"/>' : '') +
 
-        // Actual weigh-in line
+        // Actual weigh-in line (solid colored — connects your logged weights)
         (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2.5" stroke-linejoin="round"/>' : '') +
 
-        // Dots with date labels
+        // Actual dots with date labels
         actualPoints.map((p, i) => {
           const cx = xScale(p.day), cy = yScale(p.weight)
-          const dateLabel = new Date(weightLog[i].logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone})
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+          const dateLabel = p.date.toLocaleDateString('en-US', {month:'short', day:'numeric', timeZone: tz})
           const labelX = cx > W - 50 ? cx - 6 : cx + 6
           const anchor = cx > W - 50 ? 'end' : 'start'
           const labelY = cy > H - padB - 20 ? cy - 10 : cy + 14
-          return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="3.5" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' +
-            '<text x="' + labelX.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="' + anchor + '" font-size="7" fill="var(--ink3)">' + dateLabel + '</text>'
+          const isLatest = i === actualPoints.length - 1
+          return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (isLatest ? 4.5 : 3.5) + '" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' +
+            '<text x="' + labelX.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="' + anchor + '" font-size="7" fill="var(--ink3)">' + dateLabel + '</text>' +
+            (isLatest ? '<text x="' + (cx > W-60 ? cx-6 : cx+6).toFixed(1) + '" y="' + (cy-7).toFixed(1) + '" text-anchor="' + (cx>W-60?'end':'start') + '" font-size="8" font-weight="bold" fill="var(--forest)">' + p.weight + '</text>' : '')
         }).join('') +
-
-        // Latest weight label
-        (actualPoints.length > 0 ? (() => {
-          const last = actualPoints[actualPoints.length-1]
-          const lx = xScale(last.day), ly = yScale(last.weight)
-          return '<text x="' + (lx > W-60 ? lx-6 : lx+6).toFixed(1) + '" y="' + (ly-6).toFixed(1) + '" text-anchor="' + (lx > W-60 ? 'end' : 'start') + '" font-size="8" font-weight="bold" fill="var(--forest)">' + last.weight + '</text>'
-        })() : '') +
 
       '</svg>' +
 
-      // Projected finish date
-      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">Original target: <strong>' + projection.date + '</strong>' +
-        (actualTrajectoryDate ? ' &nbsp;·&nbsp; At current pace: <strong style="color:' + nudgeColor + '">' + actualTrajectoryDate.toLocaleDateString('en-US', {month:'long', day:'numeric'}) + '</strong>' : '') +
+      // Dates line
+      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
+        (actualTrajectoryDate ? ' &nbsp;·&nbsp; At your pace: <strong style="color:' + nudgeColor + '">' + actualTrajectoryDate.toLocaleDateString('en-US', {month:'long', day:'numeric'}) + '</strong>' : '') +
       '</div>' : '') +
 
-      // Nudge message
+      // Nudge
       (nudgeMsg ? '<div style="font-size:12px;font-weight:600;color:' + nudgeColor + ';margin-top:8px;text-align:center;padding:6px 10px;background:var(--cream2);border-radius:8px">' + nudgeMsg + '</div>' : '') +
 
       // Legend
@@ -1344,9 +1326,10 @@ function renderWeightProgress() {
 
     '</div>' +
 
+    // Recent weigh-ins list
     (weightLog.length > 0 ?
       '<div style="margin-top:8px">' +
-        weightLog.slice(-5).reverse().map(e =>
+        weightLog.slice().reverse().slice(0, 5).map(e =>
           '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
             '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
             '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}) + '</span>' +
@@ -1358,7 +1341,6 @@ function renderWeightProgress() {
 
   '</div>'
 }
-
 
 function getWeekDates(offset) {
   const now = new Date()
