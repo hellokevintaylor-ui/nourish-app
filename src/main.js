@@ -996,15 +996,15 @@ function renderLog() {
   const weekRows = weekDays.map(d => {
     const entries = byDate[d] || []
     const dayCals = entries.reduce((s, e) => s + (e.calories || 0), 0)
-    const isToday = d === today
+    const isDayToday = d === today
     const diff = dayCals - goal
-    const dayLabel = isToday ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    const wDayLabel = isDayToday ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     const foods = entries.slice(0, 3).map(e => esc(e.food)).join(', ') + (entries.length > 3 ? ' +' + (entries.length - 3) + ' more' : '')
     const barPct = Math.min((dayCals / goal) * 100, 100)
     const barColor = diff > 200 ? 'var(--terra)' : diff > 0 ? 'var(--gold)' : 'var(--forest2)'
-    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
-        '<span style="font-size:12px;font-weight:' + (isToday ? '700' : '500') + ';color:' + (isToday ? 'var(--forest)' : 'var(--ink)') + '">' + dayLabel + '</span>' +
+        '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--forest)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
         '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCals > 0 ? dayCals + ' cal' : '--') + '</span>' +
       '</div>' +
       (dayCals > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
