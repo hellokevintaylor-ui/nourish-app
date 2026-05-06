@@ -897,6 +897,15 @@ function renderShop() {
 }
 
 function renderLog() {
+  try {
+    return renderLogInner()
+  } catch(e) {
+    console.error('renderLog error:', e)
+    return '<div class="tab-content"><div style="padding:20px;color:red">Log tab error: ' + e.message + '</div></div>'
+  }
+}
+
+function renderLogInner() {
   const offset = state.logDayOffset || 0
   const now = new Date()
   const viewedDate = new Date(now)
