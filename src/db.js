@@ -95,8 +95,9 @@ export async function fetchWeightLog() {
   const { data } = await supabase.from('weight_log').select('*').eq('user_id', uid()).order('logged_at', { ascending: true })
   return data || []
 }
-export async function addWeightEntry(weight, notes) {
-  const { data } = await supabase.from('weight_log').insert({ user_id: uid(), weight, notes: notes || '', logged_at: new Date().toISOString() }).select()
+export async function addWeightEntry(weight, notes, dateStr) {
+  const logged_at = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString()
+  const { data } = await supabase.from('weight_log').insert({ user_id: uid(), weight, notes: notes || '', logged_at }).select()
   return data?.[0]
 }
 export async function deleteWeightEntry(id) {

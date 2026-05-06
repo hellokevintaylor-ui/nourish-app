@@ -2371,11 +2371,14 @@ function bindEvents() {
   document.getElementById('log-weight-btn')?.addEventListener('click', async () => {
     const val = parseFloat(document.getElementById('log-weight-input')?.value)
     if (!val || isNaN(val)) return
-    const saved = await db.addWeightEntry(val, '')
+    const isToday = (state.logDayOffset || 0) === 0
+    const dateStr = isToday ? null : state._viewedDateStr
+    const saved = await db.addWeightEntry(val, '', dateStr)
     if (saved) {
       state.weightLog = state.weightLog || []
       state.weightLog.push(saved)
-      // DO NOT update goals.weight — that is the fixed start weight
+      // Re-sort by date so graph renders correctly
+      state.weightLog.sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
     }
     const input = document.getElementById('log-weight-input')
     if (input) input.value = ''
