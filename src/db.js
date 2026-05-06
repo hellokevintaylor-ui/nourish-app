@@ -104,6 +104,20 @@ export async function deleteWeightEntry(id) {
 }
 
 // ── EXERCISE LOG ──────────────────────────────────────────────────────────────
+export async function fetchLogForDate(dateStr) {
+  const start = new Date(dateStr + 'T00:00:00')
+  const end = new Date(dateStr + 'T23:59:59')
+  const { data } = await supabase.from('food_log').select('*').eq('user_id', uid())
+    .gte('logged_at', start.toISOString()).lte('logged_at', end.toISOString()).order('logged_at')
+  return data || []
+}
+export async function fetchExerciseForDate(dateStr) {
+  const start = new Date(dateStr + 'T00:00:00')
+  const end = new Date(dateStr + 'T23:59:59')
+  const { data } = await supabase.from('exercise_log').select('*').eq('user_id', uid())
+    .gte('logged_at', start.toISOString()).lte('logged_at', end.toISOString()).order('logged_at')
+  return data || []
+}
 export async function fetchExerciseLog() {
   const now = new Date()
   const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
@@ -133,6 +147,9 @@ export async function addLogEntry(food, calories, recipeId) {
 export async function deleteLogEntry(id) {
   await supabase.from('food_log').delete().eq('id', id)
 }
+export async function updateLogEntry(id, fields) {
+  await supabase.from('food_log').update(fields).eq('id', id)
+}
 
 // ── GOALS ─────────────────────────────────────────────────────────────────────
 export async function fetchGoals() {
@@ -152,7 +169,7 @@ export async function saveGoals(goals) {
     height_inches: goals.height_inches || null,
     activity_level: goals.activity_level || 'moderate',
     target_weight: goals.target_weight || null,
-    loss_pace: goals.loss_pace || 'moderate',
+    goal_start_date: goals.goal_start_date || null,
     updated_at: new Date().toISOString()
   }
   const { data: existing } = await supabase.from('goals').select('id').eq('user_id', uid())
@@ -210,9 +227,6 @@ export async function saveMealPlanEntry(date, mealSlot, recipeId, recipeName, no
 }
 export async function deleteMealPlanEntry(id) {
   await supabase.from('meal_plan').delete().eq('id', id)
-}
-export async function updateLogEntry(id, calories) {
-  await supabase.from('food_log').update({ calories }).eq('id', id)
 }
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────

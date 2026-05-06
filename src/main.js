@@ -43,6 +43,9 @@ const state = {
   logBreakdownId: null,
   editingLogId: null,
   scaleModal: null,
+  logDayOffset: 0,
+  viewedDayLog: null,       // null = use today's state.log
+  viewedDayExercise: null,  // null = use today's state.exerciseLog
   recipeSearch: '',
   pantrySearch: '',
   shopSearch: '',
@@ -201,7 +204,8 @@ async function init() {
     height_inches: goals.height_inches || '',
     activity_level: goals.activity_level || 'moderate',
     target_weight: goals.target_weight || '',
-    loss_pace: goals.loss_pace || 'moderate'
+    loss_pace: goals.loss_pace || 'moderate',
+    goal_start_date: goals.goal_start_date || null
   }
   state.loading  = false
   render()
@@ -479,6 +483,13 @@ function render() {
           </div>
           <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
         })()}
+
+        ${state.goals.goal_start_date ? `
+          <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px;display:flex;justify-content:space-between;align-items:center">
+            <span>Goal started: <strong style="color:white">${new Date(state.goals.goal_start_date + 'T12:00:00').toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}</strong></span>
+            <button id="reset-goal-start" style="font-size:10px;padding:2px 8px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer">Reset start date</button>
+          </div>
+        ` : ''}
 
       </div>` : ''}
 
@@ -887,11 +898,54 @@ function renderShop() {
 }
 
 function renderLog() {
-  const cals = todayCalories()
-  const burned = todayBurned()
+  const offset = state.logDayOffset || 0
+  const now = new Date()
+  const viewedDate = new Date(now)
+  viewedDate.setDate(now.getDate() + offset)
+  const viewedDateStr = viewedDate.toLocaleDateString('sv') // YYYY-MM-DD in local time
+  const isToday = offset === 0
+
+  // Get the log and exercise for the viewed day
+  const viewedLog = isToday ? state.log : (state.viewedDayLog || [])
+  const viewedExercise = isToday ? state.exerciseLog : (state.viewedDayExercise || [])
+
+  const cals = viewedLog.reduce((s,e) => s + (e.calories||0), 0)
+  const burned = viewedExercise.reduce((s,e) => s + (e.calories_burned||0), 0)
   const net = cals - burned
   const goal = state.goals.calories
   const rem = goal - net
+
+  // Day label
+  const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
+    : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  // Build week data from historyLog + today's log
+  const weekDays = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    weekDays.push(d.toLocaleDateString('sv'))
+  }
+  const today = now.toLocaleDateString('sv')
+
+  const byDate = {}
+  ;(state.historyLog || []).forEach(e => {
+    const d = new Date(e.logged_at).toLocaleDateString('sv')
+    if (!byDate[d]) byDate[d] = []
+    byDate[d].push(e)
+  })
+  byDate[today] = state.log
+
+  const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
+  const weeklyOut = 0 // exercise history not yet stored — today only
+  const weeklyNet = weeklyIn - weeklyOut
+  const weeklyGoal = goal * 7
+  const weeklyDiff = weeklyNet - weeklyGoal
+  const deficitSurplus = weeklyDiff < 0
+    ? { label: Math.abs(weeklyDiff).toLocaleString() + ' cal deficit', color: 'var(--forest)', bg: 'var(--sage4)' }
+    : weeklyDiff > 0
+    ? { label: weeklyDiff.toLocaleString() + ' cal surplus', color: 'var(--terra)', bg: '#fff5f2' }
+    : { label: 'On target', color: 'var(--forest)', bg: 'var(--sage4)' }
+
   const search = state.logSearch || ''
   const logTagFilter = state.logTagFilter || null
   const recipeTags = getTagsForNamespace('recipe')
@@ -901,41 +955,12 @@ function renderLog() {
         (!logTagFilter || (r.tags||[]).includes(logTagFilter))
       ).slice(0, 8)
     : []
-
-  // Build week data from historyLog + today's log
-  const now = new Date()
-  const weekDays = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now)
-    d.setDate(now.getDate() - i)
-    weekDays.push(d.toISOString().slice(0, 10))
-  }
-  const today = now.toISOString().slice(0, 10)
-
-  // Group history by date
-  const byDate = {}
-  ;(state.historyLog || []).forEach(e => {
-    const d = new Date(e.logged_at).toLocaleDateString('sv') // sv locale gives YYYY-MM-DD in local time
-    if (!byDate[d]) byDate[d] = []
-    byDate[d].push(e)
-  })
-  // Today's log overrides history for today
-  byDate[today] = state.log
-
-  // Weekly totals
-  const weeklyGoal = goal * 7
-  const weeklyActual = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s, e) => s + (e.calories || 0), 0), 0)
-  const completeDays = weekDays.filter(d => d < today && (byDate[d] || []).length > 0).length
-  const weeklyDiff = weeklyActual - (goal * (completeDays + 1)) // +1 for today partial
-  const diffLabel = weeklyDiff === 0 ? 'On target'
-    : weeklyDiff < 0 ? Math.abs(weeklyDiff) + ' cal deficit this week'
-    : weeklyDiff + ' cal surplus this week'
   const diffColor = weeklyDiff < -100 ? 'var(--forest2)' : weeklyDiff > 100 ? 'var(--terra)' : 'var(--gold)'
 
   // Today entries
-  const logEntries = state.log.length === 0
-    ? '<div class="empty-state" style="padding:16px 0">Nothing logged yet today!</div>'
-    : state.log.map(e => {
+  const logEntries = viewedLog.length === 0
+    ? '<div class="empty-state" style="padding:16px 0">Nothing logged ' + (isToday ? 'yet today' : 'this day') + '!</div>'
+    : viewedLog.map(e => {
         const isEditing = state.editingLogId === e.id
         if (isEditing) {
           return '<div class="log-entry" style="flex-direction:column;align-items:stretch;gap:6px">' +
@@ -988,14 +1013,33 @@ function renderLog() {
   }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
+
+    // Weekly summary bar
+    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">This week</div>' +
+      '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
+      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
+    '</div>' +
+
+    // Day navigation
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+      '<button class="cal-nav" id="log-prev-day">‹</button>' +
+      '<div style="text-align:center">' +
+        '<div style="font-size:15px;font-weight:700;color:var(--forest)">' + dayLabel + '</div>' +
+        (!isToday ? '<div style="font-size:11px;color:var(--ink3)">' + viewedDate.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</div>' : '') +
+      '</div>' +
+      '<button class="cal-nav" id="log-next-day" ' + (isToday ? 'disabled style="opacity:0.3"' : '') + '>›</button>' +
+    '</div>' +
+
+    // Daily summary
     '<div class="log-total">' +
       '<div>' +
-        '<div class="log-total-label">Today</div>' +
+        '<div class="log-total-label">' + (isToday ? 'Today' : dayLabel) + '</div>' +
         '<div class="log-total-sub">' + (rem > 0 ? rem + ' remaining' : Math.abs(rem) + ' over goal') + '</div>' +
       '</div>' +
       '<div style="text-align:right">' +
         (burned > 0 ?
-          '<div style="font-size:11px;color:var(--ink3)">&#127859; ' + cals + ' in &nbsp;&#127939; ' + burned + ' out</div>' +
+          '<div style="font-size:11px;color:var(--ink3)">🍽 ' + cals + ' in &nbsp;🏊 ' + burned + ' out</div>' +
           '<div><span class="log-total-val">' + net + '</span><span class="log-total-goal"> net / ' + goal + '</span></div>'
         :
           '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>'
@@ -1007,37 +1051,44 @@ function renderLog() {
       '<span style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">This week</span>' +
       '<span style="font-size:13px;font-weight:700;color:' + diffColor + '">' + diffLabel + '</span>' +
     '</div>' +
-    // Log new food
-    '<div class="log-search-wrap">' +
-      '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
-      (recipeResults.length ? '<div class="log-search-results">' +
-        recipeResults.map(r =>
-          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
-        ).join('') +
-        '<button class="log-search-result" id="log-search-clear" style="color:var(--ink3);font-style:italic">Clear search</button>' +
-      '</div>' : '') +
     '</div>' +
-    (recipeTags.length > 0 ?
-      '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">' +
-        '<button class="tag-filter-chip ' + (!logTagFilter ? 'active' : '') + '" data-log-tag="">All</button>' +
-        recipeTags.map(t => '<button class="tag-filter-chip ' + (logTagFilter === t.name ? 'active' : '') + '" data-log-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>').join('') +
+    // Add inputs only for today
+    (isToday ? (
+      '<div class="log-search-wrap">' +
+        '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
+        (recipeResults.length ? '<div class="log-search-results">' +
+          recipeResults.map(r =>
+            '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
+          ).join('') +
+          '<button class="log-search-result" id="log-search-clear" style="color:var(--ink3);font-style:italic">Clear search</button>' +
+        '</div>' : '') +
+      '</div>' +
+      (recipeTags.length > 0 ?
+        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">' +
+          '<button class="tag-filter-chip ' + (!logTagFilter ? 'active' : '') + '" data-log-tag="">All</button>' +
+          recipeTags.map(t => '<button class="tag-filter-chip ' + (logTagFilter === t.name ? 'active' : '') + '" data-log-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>').join('') +
+        '</div>'
+      : '') +
+      '<div class="log-add-row">' +
+        '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
+        '<button class="add-btn" id="log-add-btn">+ Add</button>' +
       '</div>'
-    : '') +
-    '<div class="log-add-row">' +
-      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
-      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
-    '</div>' +
-    // Today's food entries
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127859; Today\'s meals</div>' +
+    ) : '<div style="font-size:11px;color:var(--ink3);padding:6px 0 10px;font-style:italic">Past day — tap › to return to today</div>') +
+
+    // Food entries
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">🍽 ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
+
     // Exercise section
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
-    '<div class="log-add-row">' +
-      '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
-      '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
-    '</div>' +
-    (state.exerciseLog && state.exerciseLog.length > 0 ?
-      state.exerciseLog.map(e =>
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">🏊 Exercise</div>' +
+    (isToday ? (
+      '<div class="log-add-row">' +
+        '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
+        '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
+      '</div>'
+    ) : '') +
+    (viewedExercise && viewedExercise.length > 0 ?
+      viewedExercise.map(e =>
         '<div class="log-entry">' +
           '<div style="flex:1">' +
             '<div class="log-food">' + esc(e.activity) + '</div>' +
@@ -1048,11 +1099,11 @@ function renderLog() {
             (state.logBreakdownId === 'ex-' + e.id && e.breakdown ?
               '<div class="log-breakdown-text">' + esc(e.breakdown) + '</div>' : '') +
           '</div>' +
-          '<button class="remove-btn" data-ex-del="' + e.id + '">x</button>' +
+          (isToday ? '<button class="remove-btn" data-ex-del="' + e.id + '">x</button>' : '') +
         '</div>'
       ).join('')
-    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged today</div>') +
-    // Weekly breakdown
+    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
+
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px">This week</div>' +
     weekRows +
     // Weight progress
@@ -1068,8 +1119,11 @@ function renderWeightProgress() {
   const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
   const weightLog = state.weightLog || []
 
-  const startDate = weightLog.length > 0 ? new Date(weightLog[0].logged_at) : new Date()
-  startDate.setHours(0,0,0,0)
+  // Start date = goal start date (fixed) or first weigh-in
+  const startDate = state.goals.goal_start_date
+    ? new Date(state.goals.goal_start_date + 'T12:00:00')
+    : (weightLog.length > 0 ? new Date(weightLog[0].logged_at) : new Date())
+  startDate.setHours(0, 0, 0, 0)
 
   // Original projected end date
   let endDate = new Date(startDate)
@@ -1238,7 +1292,7 @@ function renderWeightProgress() {
         // Dots with date labels
         actualPoints.map((p, i) => {
           const cx = xScale(p.day), cy = yScale(p.weight)
-          const dateLabel = new Date(weightLog[i].logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric'})
+          const dateLabel = new Date(weightLog[i].logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone})
           const labelX = cx > W - 50 ? cx - 6 : cx + 6
           const anchor = cx > W - 50 ? 'end' : 'start'
           const labelY = cy > H - padB - 20 ? cy - 10 : cy + 14
@@ -1284,7 +1338,7 @@ function renderWeightProgress() {
         weightLog.slice(-5).reverse().map(e =>
           '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
             '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
-            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) + '</span>' +
+            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}) + '</span>' +
             '<button class="remove-btn" data-weight-del="' + e.id + '">x</button>' +
           '</div>'
         ).join('') +
@@ -1951,6 +2005,10 @@ function bindEvents() {
       const f = el.dataset.goal
       state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
         ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
+      // Lock in start date when target weight is first set
+      if (f === 'target_weight' && el.value && !state.goals.goal_start_date) {
+        state.goals.goal_start_date = new Date().toISOString().slice(0, 10)
+      }
       await db.saveGoals(state.goals)
       render()
     })
@@ -1959,6 +2017,13 @@ function bindEvents() {
     state.goals.activity_level = e.target.value
     await db.saveGoals(state.goals)
     render()
+  })
+  document.getElementById('reset-goal-start')?.addEventListener('click', async () => {
+    if (confirm('Reset your goal start date? The graph will restart from today.')) {
+      state.goals.goal_start_date = new Date().toISOString().slice(0, 10)
+      await db.saveGoals(state.goals)
+      render()
+    }
   })
   document.querySelectorAll('[data-pace]').forEach(el => {
     el.addEventListener('click', async () => {
@@ -2409,6 +2474,34 @@ function bindEvents() {
     render()
   })
   document.getElementById('log-food')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-add-btn')?.click() } })
+
+  // Log day navigation
+  document.getElementById('log-prev-day')?.addEventListener('click', async () => {
+    state.logDayOffset = (state.logDayOffset || 0) - 1
+    const now = new Date()
+    const d = new Date(now)
+    d.setDate(now.getDate() + state.logDayOffset)
+    const dateStr = d.toLocaleDateString('sv')
+    state.viewedDayLog = await db.fetchLogForDate(dateStr)
+    state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
+    render()
+  })
+  document.getElementById('log-next-day')?.addEventListener('click', async () => {
+    if ((state.logDayOffset || 0) >= 0) return
+    state.logDayOffset = (state.logDayOffset || 0) + 1
+    if (state.logDayOffset === 0) {
+      state.viewedDayLog = null
+      state.viewedDayExercise = null
+    } else {
+      const now = new Date()
+      const d = new Date(now)
+      d.setDate(now.getDate() + state.logDayOffset)
+      const dateStr = d.toLocaleDateString('sv')
+      state.viewedDayLog = await db.fetchLogForDate(dateStr)
+      state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
+    }
+    render()
+  })
 
   // Recipe scaling
   document.querySelectorAll('.scale-btn[data-scale]').forEach(el => {
