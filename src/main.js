@@ -3,7 +3,7 @@ import { getUserId } from './supabase.js'
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 const state = {
-  tab: 'recipes',
+  tab: localStorage.getItem('mep_tab') || 'recipes',
   recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [], weightLog: [],
   goals: { calories: 2000, goal: 'maintain' },
   loading: true,
@@ -484,20 +484,13 @@ function render() {
           <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
         })()}
 
-        ${state.goals.goal_start_date ? `
-          <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px;display:flex;justify-content:space-between;align-items:center">
-            <span>Goal started: <strong style="color:white">${new Date(state.goals.goal_start_date + 'T12:00:00').toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}</strong></span>
-            <button id="reset-goal-start" style="font-size:10px;padding:2px 8px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer">Reset start date</button>
+        <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px">
+          <div style="margin-bottom:4px">Goal start date:</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="date" id="goal-start-date-input" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:12px" value="${state.goals.goal_start_date || new Date().toISOString().slice(0,10)}" />
+            <button id="save-goal-start" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:8px;cursor:pointer">Set</button>
           </div>
-        ` : `
-          <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px">
-            <div style="margin-bottom:4px">Set your goal start date:</div>
-            <div style="display:flex;gap:6px;align-items:center">
-              <input type="date" id="goal-start-date-input" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:12px" value="${new Date().toISOString().slice(0,10)}" />
-              <button id="save-goal-start" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:8px;cursor:pointer">Set</button>
-            </div>
-          </div>
-        `}
+        </div>
 
       </div>` : ''}
 
@@ -1055,7 +1048,7 @@ function renderLogInner() {
       '</div>' +
     '</div>' +
 
-    // 3. Log weight (only if weight goal is set)
+    // 3. Log weight
     (state.goals.target_weight ? (
       '<div class="log-add-row" style="margin-bottom:10px">' +
         '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" />' +
@@ -1063,7 +1056,11 @@ function renderLogInner() {
       '</div>'
     ) : '') +
 
-    // 4. Search recipes + tags + add food
+    // 4. Today's meals
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
+    logEntries +
+
+    // 5. Search recipes + tags + add food
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
@@ -1084,10 +1081,6 @@ function renderLogInner() {
       '<button class="add-btn" id="log-add-btn">+ Add</button>' +
     '</div>' +
     (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
-
-    // 5. Today's meals
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
-    logEntries +
 
     // 6. Exercise
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
@@ -1122,7 +1115,7 @@ function renderLogInner() {
       '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
     '</div>' +
 
-    // 9. This week day-by-day breakdown
+    // 9. This week day-by-day breakdown (newest first)
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">This week</div>' +
     weekRows +
 
@@ -1130,16 +1123,16 @@ function renderLogInner() {
 }
 
 function renderWeightProgress() {
-  const { weight: currentGoalWeight, target_weight, calories: dailyCals } = state.goals
-  if (!currentGoalWeight || !target_weight) return ''
-
+  const { target_weight, calories: dailyCals } = state.goals
   const weightLog = state.weightLog || []
 
-  // Start weight = first weigh-in if available, otherwise goals weight
-  const startWeight = weightLog.length > 0 ? parseFloat(weightLog[0].weight) : parseFloat(currentGoalWeight)
-  if (startWeight <= parseFloat(target_weight)) return ''
+  // Start weight = always from first weigh-in entry
+  const startWeight = weightLog.length > 0 ? parseFloat(weightLog[0].weight) : parseFloat(state.goals.weight || 0)
+  if (!startWeight || !target_weight || startWeight <= parseFloat(target_weight)) return ''
 
-  const tdee = calcTDEE(currentGoalWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
+  // Use latest weigh-in for TDEE (more accurate with current weight)
+  const currentWeight = weightLog.length > 0 ? parseFloat(weightLog[weightLog.length-1].weight) : startWeight
+  const tdee = calcTDEE(currentWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
   const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
 
   // Start date = goal start date (fixed) or first weigh-in
@@ -1351,12 +1344,6 @@ function renderWeightProgress() {
 
     '</div>' +
 
-    // Weigh-in input
-    '<div class="log-add-row">' +
-      '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" />' +
-      '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Log</button>' +
-    '</div>' +
-
     (weightLog.length > 0 ?
       '<div style="margin-top:8px">' +
         weightLog.slice(-5).reverse().map(e =>
@@ -1391,7 +1378,7 @@ function formatDate(dateStr) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-function isToday(dateStr) {
+function isDateToday(dateStr) {
   return dateStr === new Date().toISOString().slice(0,10)
 }
 
@@ -1514,7 +1501,7 @@ function renderCalendar() {
 
   // Day cards
   dates.forEach((date, idx) => {
-    const today = isToday(date)
+    const today = isDateToday(date)
     html += '<div class="cal-day ' + (today ? 'cal-day-today' : '') + '">'
     html += '<div class="cal-day-header">'
     html += '<span class="cal-day-name">' + DAY_NAMES[idx] + '</span>'
@@ -1910,7 +1897,7 @@ function renderLogModal() {
 function bindEvents() {
   // Tabs
   document.querySelectorAll('.tab[data-tab]').forEach(el => {
-    el.addEventListener('click', () => { state.tab = el.dataset.tab; render() })
+    el.addEventListener('click', () => { state.tab = el.dataset.tab; localStorage.setItem('mep_tab', state.tab); render() })
   })
 
   // Goals
@@ -2048,13 +2035,6 @@ function bindEvents() {
     state.goals.goal_start_date = val
     await db.saveGoals(state.goals)
     render()
-  })
-  document.getElementById('reset-goal-start')?.addEventListener('click', async () => {
-    if (confirm('Reset your goal start date? The graph will restart from today.')) {
-      state.goals.goal_start_date = new Date().toISOString().slice(0, 10)
-      await db.saveGoals(state.goals)
-      render()
-    }
   })
   document.querySelectorAll('[data-pace]').forEach(el => {
     el.addEventListener('click', async () => {
