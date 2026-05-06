@@ -963,8 +963,6 @@ function renderLogInner() {
         (!logTagFilter || (r.tags||[]).includes(logTagFilter))
       ).slice(0, 8)
     : []
-  const diffColor = weeklyDiff < -100 ? 'var(--forest2)' : weeklyDiff > 100 ? 'var(--terra)' : 'var(--gold)'
-
   // Today entries
   const logEntries = viewedLog.length === 0
     ? '<div class="empty-state" style="padding:16px 0">Nothing logged ' + (isToday ? 'yet today' : 'this day') + '!</div>'
@@ -1053,12 +1051,6 @@ function renderLogInner() {
           '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>'
         ) +
       '</div>' +
-    '</div>' +
-    // Weekly deficit/surplus banner
-    '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">' +
-      '<span style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">This week</span>' +
-      '<span style="font-size:13px;font-weight:700;color:' + diffColor + '">' + diffLabel + '</span>' +
-    '</div>' +
     '</div>' +
     // Add inputs only for today
     (isToday ? (
