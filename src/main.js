@@ -1061,7 +1061,10 @@ function renderLogInner() {
     // 3. Log weight
     (state.goals.target_weight ? (
       '<div class="log-add-row" style="margin-bottom:10px">' +
-        '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" />' +
+        '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" value="' + ((() => {
+          const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr)
+          return existing ? existing.weight : ''
+        })()) + '" />' +
         '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">&#9881; Log Weight</button>' +
       '</div>'
     ) : '') +
@@ -1198,13 +1201,15 @@ function renderWeightProgress() {
     weight: Math.max(parseFloat((startWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
   })) : []
 
-  // Actual weigh-in points plotted by date
-  const actualPoints = weightLog.map(e => ({
-    day: Math.round((new Date(e.logged_at) - startDate) / 86400000),
-    weight: parseFloat(e.weight),
-    id: e.id,
-    date: new Date(e.logged_at)
-  })).filter(p => p.day >= 0)
+  // Actual weigh-in points plotted by date — filter out any bad values
+  const actualPoints = weightLog
+    .filter(e => parseFloat(e.weight) > 0)
+    .map(e => ({
+      day: Math.round((new Date(e.logged_at) - startDate) / 86400000),
+      weight: parseFloat(e.weight),
+      id: e.id,
+      date: new Date(e.logged_at)
+    })).filter(p => p.day >= 0)
 
   // Current trajectory line from latest actual point
   const trajPoints = (actualPoints.length >= 1 && weightLog.length >= 2) ? (() => {
@@ -2373,7 +2378,6 @@ function bindEvents() {
     if (!val || isNaN(val)) return
     const isViewingToday = (state.logDayOffset || 0) === 0
     const dateStr = isViewingToday ? null : state._viewedDateStr
-    console.log('Log weight:', val, 'offset:', state.logDayOffset, 'isToday:', isViewingToday, 'dateStr:', dateStr, '_viewedDateStr:', state._viewedDateStr)
     const saved = await db.addWeightEntry(val, '', dateStr)
     if (saved) {
       state.weightLog = state.weightLog || []
