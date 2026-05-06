@@ -100,6 +100,10 @@ export async function addWeightEntry(weight, notes, dateStr) {
   const { data } = await supabase.from('weight_log').insert({ user_id: uid(), weight, notes: notes || '', logged_at }).select()
   return data?.[0]
 }
+export async function updateWeightEntry(id, weight) {
+  const { data } = await supabase.from('weight_log').update({ weight }).eq('id', id).eq('user_id', uid()).select()
+  return data?.[0]
+}
 export async function deleteWeightEntry(id) {
   await supabase.from('weight_log').delete().eq('id', id).eq('user_id', uid())
 }

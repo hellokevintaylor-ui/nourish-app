@@ -1065,7 +1065,7 @@ function renderLogInner() {
           const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr)
           return existing ? existing.weight : ''
         })()) + '" />' +
-        '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">&#9881; Log Weight</button>' +
+        '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">' + ((state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr) ? '&#9998; Update' : '&#9881; Log') + ' Weight</button>' +
       '</div>'
     ) : '') +
 
@@ -2377,16 +2377,28 @@ function bindEvents() {
     const val = parseFloat(document.getElementById('log-weight-input')?.value)
     if (!val || isNaN(val)) return
     const isViewingToday = (state.logDayOffset || 0) === 0
-    const dateStr = isViewingToday ? null : state._viewedDateStr
-    const saved = await db.addWeightEntry(val, '', dateStr)
-    if (saved) {
-      state.weightLog = state.weightLog || []
-      state.weightLog.push(saved)
-      // Re-sort by date so graph renders correctly
-      state.weightLog.sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
+    const dateStr = isViewingToday ? new Date().toLocaleDateString('sv') : state._viewedDateStr
+
+    // Check if there's already an entry for this day
+    const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === dateStr)
+
+    if (existing) {
+      // Update existing entry
+      const saved = await db.updateWeightEntry(existing.id, val)
+      if (saved) {
+        existing.weight = val
+        state.weightLog.sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
+      }
+    } else {
+      // Add new entry
+      const entryDateStr = isViewingToday ? null : state._viewedDateStr
+      const saved = await db.addWeightEntry(val, '', entryDateStr)
+      if (saved) {
+        state.weightLog = state.weightLog || []
+        state.weightLog.push(saved)
+        state.weightLog.sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
+      }
     }
-    const input = document.getElementById('log-weight-input')
-    if (input) input.value = ''
     render()
   })
   document.getElementById('log-weight-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-weight-btn')?.click() } })
