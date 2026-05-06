@@ -426,17 +426,36 @@ function render() {
       <!-- GOALS PANEL -->
       ${state.showGoals ? `
       <div class="goals-panel">
-        <div class="goals-title">Your Profile & Goals</div>
+        <div class="goals-title">Your Goals</div>
 
+        <!-- Row 1: Start date + Start weight -->
         <div class="goals-grid">
           <div class="goal-field">
-            <label>Current Weight (lbs)</label>
-            <input type="number" data-goal="weight" value="${state.goals.weight||''}" placeholder="e.g. 185" />
+            <label>Goal Start Date</label>
+            <input type="date" id="goal-start-date-input" style="padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:13px;width:100%" value="${state.goals.goal_start_date || new Date().toISOString().slice(0,10)}" />
           </div>
           <div class="goal-field">
-            <label>Target Weight (lbs)</label>
-            <input type="number" data-goal="target_weight" value="${state.goals.target_weight||''}" placeholder="e.g. 170" />
+            <label>Goal Start Weight (lbs)</label>
+            <input type="number" data-goal="weight" value="${state.goals.weight||''}" placeholder="e.g. 186" />
           </div>
+        </div>
+
+        <!-- Row 2: Target weight + Current weight (read-only) -->
+        <div class="goals-grid" style="margin-top:8px">
+          <div class="goal-field">
+            <label>Target Weight (lbs)</label>
+            <input type="number" data-goal="target_weight" value="${state.goals.target_weight||''}" placeholder="e.g. 165" />
+          </div>
+          <div class="goal-field">
+            <label>Current Weight (lbs)</label>
+            <div style="padding:8px;background:rgba(255,255,255,0.08);border-radius:8px;border:1px solid rgba(255,255,255,0.15);font-size:13px;color:${state.weightLog&&state.weightLog.length>0?'white':'rgba(255,255,255,0.35)'}">
+              ${state.weightLog&&state.weightLog.length>0 ? state.weightLog[state.weightLog.length-1].weight+' lbs' : 'Log a weigh-in'}
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: Height + Age -->
+        <div class="goals-grid" style="margin-top:8px">
           <div class="goal-field">
             <label>Height (inches)</label>
             <input type="number" data-goal="height_inches" value="${state.goals.height_inches||''}" placeholder="e.g. 70" />
@@ -447,6 +466,7 @@ function render() {
           </div>
         </div>
 
+        <!-- Activity level -->
         <div class="goal-field" style="margin-top:8px">
           <label>Activity Level</label>
           <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:var(--forest);color:white;font-size:13px">
@@ -458,13 +478,12 @@ function render() {
           </select>
         </div>
 
+        <!-- Pace cards -->
         ${(() => {
           const s = buildGoalsSuggestions()
-          if (!s) return state.goals.weight && state.goals.target_weight
-            ? '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px">Fill in height and age to see projections.</div>'
-            : '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px">Fill in your profile above to see calorie targets and projected dates.</div>'
+          if (!s) return '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px">Fill in start weight, target weight, height, and age to see your calorie targets.</div>'
           return `
-          <div style="margin-top:12px;font-size:11px;color:rgba(255,255,255,0.5)">Your maintenance calories (TDEE): ~${s.tdee} cal/day</div>
+          <div style="margin-top:12px;font-size:11px;color:rgba(255,255,255,0.5)">Maintenance calories (TDEE): ~${s.tdee} cal/day</div>
           <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
             <div class="goal-pace-card ${state.goals.loss_pace==='moderate'?'active':''}" data-pace="moderate" data-calories="${s.moderate.calories}">
               <div style="display:flex;justify-content:space-between;align-items:baseline">
@@ -484,16 +503,7 @@ function render() {
           <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
         })()}
 
-        <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px">
-          <div style="margin-bottom:4px">Goal start date:</div>
-          <div style="display:flex;gap:6px;align-items:center">
-            <input type="date" id="goal-start-date-input" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:12px" value="${state.goals.goal_start_date || new Date().toISOString().slice(0,10)}" />
-            <button id="save-goal-start" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:8px;cursor:pointer">Set</button>
-          </div>
-        </div>
-
       </div>` : ''}
-
       <!-- SYNC PANEL -->
       ${state.showSync ? `
       <div class="sync-panel">
@@ -1283,14 +1293,14 @@ function renderWeightProgress() {
         '<circle cx="' + startDotX.toFixed(1) + '" cy="' + startDotY.toFixed(1) + '" r="4" fill="var(--ink3)" stroke="white" stroke-width="1.5"/>' +
         '<text x="' + (startDotX+7).toFixed(1) + '" y="' + (startDotY-5).toFixed(1) + '" font-size="8" font-weight="bold" fill="var(--ink3)">' + startWeight + '</text>' +
 
-        // Projected line (grey dashed — from startWeight to target)
-        (projPath ? '<path d="' + projPath + '" fill="none" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="5,4"/>' : '') +
+        // Plan line (solid grey — the ideal straight path from start to goal)
+        (projPath ? '<path d="' + projPath + '" fill="none" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/>' : '') +
 
-        // Actual trajectory (colored dashed — from latest weigh-in forward)
+        // Actual trajectory forward (colored dashed — extrapolated from your actual pace)
         (trajPath ? '<path d="' + trajPath + '" fill="none" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.8"/>' : '') +
 
-        // Actual weigh-in line (solid colored — connects your logged weights)
-        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2.5" stroke-linejoin="round"/>' : '') +
+        // Actual logged weights (dotted green — your real journey connecting weigh-ins)
+        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
 
         // Actual dots with date labels
         actualPoints.map((p, i) => {
@@ -1318,9 +1328,9 @@ function renderWeightProgress() {
 
       // Legend
       '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2.5"/></svg>Actual</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
         (trajPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="5,3"/></svg>Your pace</div>' : '') +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="5,4"/></svg>Plan</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Plan</div>' +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
       '</div>' +
 
@@ -2011,8 +2021,8 @@ function bindEvents() {
     await db.saveGoals(state.goals)
     render()
   })
-  document.getElementById('save-goal-start')?.addEventListener('click', async () => {
-    const val = document.getElementById('goal-start-date-input')?.value
+  document.getElementById('goal-start-date-input')?.addEventListener('change', async e => {
+    const val = e.target.value
     if (!val) return
     state.goals.goal_start_date = val
     await db.saveGoals(state.goals)
@@ -2365,9 +2375,7 @@ function bindEvents() {
     if (saved) {
       state.weightLog = state.weightLog || []
       state.weightLog.push(saved)
-      // Update current weight in goals
-      state.goals.weight = val
-      await db.saveGoals(state.goals)
+      // DO NOT update goals.weight — that is the fixed start weight
     }
     const input = document.getElementById('log-weight-input')
     if (input) input.value = ''
