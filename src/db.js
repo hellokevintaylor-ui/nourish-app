@@ -16,7 +16,8 @@ export async function saveRecipe(recipe) {
     cooking_notes: recipe.cookingNotes || '',
     clipped_from: recipe.clippedFrom || '',
     notes: recipe.notes || '',
-    tags: recipe.tags || []
+    tags: recipe.tags || [],
+    prep_time: recipe.prep_time || null
   }
   if (recipe.id && typeof recipe.id === 'string' && recipe.id.includes('-')) {
     const { data } = await supabase.from('recipes').update(row).eq('id', recipe.id).select()
@@ -33,6 +34,7 @@ export async function updateRecipe(id, fields) {
   if (fields.instructions !== undefined) mapped.instructions = fields.instructions
   if (fields.cookingNotes !== undefined) mapped.cooking_notes = fields.cookingNotes
   if (fields.notes !== undefined) mapped.notes = fields.notes
+  if (fields.prep_time !== undefined) mapped.prep_time = fields.prep_time
   const { data } = await supabase.from('recipes').update(mapped).eq('id', id).select()
   return data?.[0]
 }

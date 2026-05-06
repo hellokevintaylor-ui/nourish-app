@@ -43,6 +43,8 @@ const state = {
   logBreakdownId: null,
   editingLogId: null,
   scaleModal: null,
+  estimatingPrepId: null,
+  refreshingPrepId: null,
   logDayOffset: 0,
   viewedDayLog: null,       // null = use today's state.log
   viewedDayExercise: null,  // null = use today's state.exerciseLog
@@ -212,7 +214,7 @@ async function init() {
 }
 
 function normalizeRecipe(r) {
-  return { ...r, cookingNotes: r.cooking_notes || '', clippedFrom: r.clipped_from || '', category: r.category || '', tags: r.tags || [], text: [r.ingredients, r.instructions].filter(Boolean).join('\n\n') }
+  return { ...r, cookingNotes: r.cooking_notes || '', clippedFrom: r.clipped_from || '', category: r.category || '', tags: r.tags || [], text: [r.ingredients, r.instructions].filter(Boolean).join('\n\n'), prepTime: r.prep_time || null }
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -637,11 +639,21 @@ function renderTagFilterChips(namespace) {
 
 function renderRecipeCard(r) {
   const isExpanded = state.expandedRecipe === r.id
+  const pt = r.prepTime
+  const prepSummary = pt
+    ? '<div class="recipe-prep-summary">' +
+        '⏱ ' + pt.active_min + ' min active' +
+        (pt.passive_min > 0 ? ' + ' + pt.passive_min + ' min passive' : '') +
+        ' · ' + (pt.difficulty || 'Unknown') +
+        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? ' · Make-ahead ✓' : '') +
+      '</div>'
+    : ''
   const header = '<div class="recipe-card" data-rid="' + r.id + '">' +
     '<div class="recipe-card-header">' +
       '<div>' +
         '<div class="recipe-name">' + esc(r.name) + '</div>' +
         ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
+        prepSummary +
         (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
         (r.clippedFrom ? '<div class="recipe-meta">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
       '</div>' +
@@ -696,6 +708,31 @@ function renderRecipeCard(r) {
 
   const body = '<div class="recipe-body">' +
     (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original</a></div>' : '') +
+    // Prep time full breakdown
+    (pt ? (
+      '<div class="prep-time-box">' +
+        '<div class="prep-time-header">' +
+          '<span>⏱ Prep Time</span>' +
+          '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '" title="Re-estimate">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
+        '</div>' +
+        '<div class="prep-time-grid">' +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
+          (pt.passive_min > 0 ? '<div class="prep-time-stat"><div class="prep-time-val">' + pt.passive_min + ' min</div><div class="prep-time-label">Passive</div></div>' : '') +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
+        '</div>' +
+        (pt.equipment && pt.equipment.length ? '<div class="prep-time-row"><span class="prep-time-key">🍳 Equipment:</span> ' + pt.equipment.join(', ') + '</div>' : '') +
+        (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Multitask:</span> ' + esc(pt.multitask) + '</div>' : '') +
+        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">🗓 Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
+        (pt.quick_version ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Quick version:</span> ' + esc(pt.quick_version) + '</div>' : '') +
+      '</div>'
+    ) : (
+      '<div class="prep-time-box prep-time-empty">' +
+        '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
+          (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
+        '</button>' +
+      '</div>'
+    )) +
     scaleButtons +
     scaleResult +
     '<div class="recipe-section-label cooking-notes-label">Ingredients' +
@@ -2460,7 +2497,32 @@ function bindEvents() {
       render()
     })
   })
-  async function estimateCaloriesAI(description) {
+  async function estimatePrepTime(recipe) {
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        messages: [{ role: 'user', content:
+          'Analyze this recipe and return ONLY a JSON object with prep time details. No other text, no markdown, no backticks.\n\n' +
+          'Recipe: ' + recipe.name + '\n\nIngredients:\n' + (recipe.ingredients||'') + '\n\nInstructions:\n' + (recipe.instructions||'') +
+          '\n\nReturn this exact JSON structure:\n{"active_min":25,"passive_min":0,"difficulty":"Medium","equipment":["skillet","tongs"],"multitask":"what you can do while something cooks","make_ahead":"what can be prepped ahead and how far","quick_version":"fastest shortcut to reduce time"}'
+        }]
+      })
+    })
+    const data = await resp.json()
+    const text = data.content?.[0]?.text?.trim() || ''
+    return JSON.parse(text)
+  } catch(e) { return null }
+}
+
+async function saveRecipePrepTime(recipeId, prepTime) {
+  await db.updateRecipe(recipeId, { prep_time: prepTime })
+}
+
+async function estimateCaloriesAI(description) {
     try {
       const resp = await fetch('/api/chat', {
         method: 'POST',
@@ -2538,7 +2600,38 @@ function bindEvents() {
     render()
   })
 
-  // Recipe scaling
+  // Prep time — estimate button
+  document.querySelectorAll('[data-estimate-prep]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const rid = el.dataset.estimatePrep
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe) return
+      state.estimatingPrepId = rid; render()
+      const pt = await estimatePrepTime(recipe)
+      if (pt) {
+        recipe.prepTime = pt
+        await saveRecipePrepTime(rid, pt)
+      }
+      state.estimatingPrepId = null; render()
+    })
+  })
+
+  // Prep time — refresh button
+  document.querySelectorAll('[data-refresh-prep]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const rid = el.dataset.refreshPrep
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe) return
+      state.refreshingPrepId = rid; render()
+      const pt = await estimatePrepTime(recipe)
+      if (pt) {
+        recipe.prepTime = pt
+        await saveRecipePrepTime(rid, pt)
+      }
+      state.refreshingPrepId = null; render()
+    })
+  })
   document.querySelectorAll('.scale-btn[data-scale]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
@@ -2841,6 +2934,13 @@ function bindEvents() {
       const recipe = normalizeRecipe(saved)
       if (tags.length) await db.updateRecipeTags(recipe.id, tags)
       state.recipes.unshift(recipe)
+      // Auto-estimate prep time in background
+      estimatePrepTime(recipe).then(pt => {
+        if (pt) {
+          recipe.prepTime = pt
+          saveRecipePrepTime(recipe.id, pt).then(() => render())
+        }
+      })
     }
     state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.tab = 'recipes'; render()
   })
