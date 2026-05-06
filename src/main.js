@@ -489,7 +489,15 @@ function render() {
             <span>Goal started: <strong style="color:white">${new Date(state.goals.goal_start_date + 'T12:00:00').toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}</strong></span>
             <button id="reset-goal-start" style="font-size:10px;padding:2px 8px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.2);border-radius:6px;cursor:pointer">Reset start date</button>
           </div>
-        ` : ''}
+        ` : `
+          <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:10px">
+            <div style="margin-bottom:4px">Set your goal start date:</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="date" id="goal-start-date-input" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:12px" value="${new Date().toISOString().slice(0,10)}" />
+              <button id="save-goal-start" style="font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.3);border-radius:8px;cursor:pointer">Set</button>
+            </div>
+          </div>
+        `}
 
       </div>` : ''}
 
@@ -1023,7 +1031,7 @@ function renderLogInner() {
 
     // Weekly summary bar
     '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">This week</div>' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
       '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
       '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
     '</div>' +
@@ -2011,6 +2019,13 @@ function bindEvents() {
   })
   document.querySelector('select[data-goal="activity_level"]')?.addEventListener('change', async e => {
     state.goals.activity_level = e.target.value
+    await db.saveGoals(state.goals)
+    render()
+  })
+  document.getElementById('save-goal-start')?.addEventListener('click', async () => {
+    const val = document.getElementById('goal-start-date-input')?.value
+    if (!val) return
+    state.goals.goal_start_date = val
     await db.saveGoals(state.goals)
     render()
   })
