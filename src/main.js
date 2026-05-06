@@ -655,7 +655,7 @@ function renderRecipeCard(r) {
         ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         prepSummary +
         (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
-        (r.clippedFrom ? '<div class="recipe-meta">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:var(--forest2);text-decoration:none">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
       '</div>' +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
@@ -708,31 +708,6 @@ function renderRecipeCard(r) {
 
   const body = '<div class="recipe-body">' +
     (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original</a></div>' : '') +
-    // Prep time full breakdown
-    (pt ? (
-      '<div class="prep-time-box">' +
-        '<div class="prep-time-header">' +
-          '<span>⏱ Prep Time</span>' +
-          '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '" title="Re-estimate">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
-        '</div>' +
-        '<div class="prep-time-grid">' +
-          '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
-          (pt.passive_min > 0 ? '<div class="prep-time-stat"><div class="prep-time-val">' + pt.passive_min + ' min</div><div class="prep-time-label">Passive</div></div>' : '') +
-          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
-          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
-        '</div>' +
-        (pt.equipment && pt.equipment.length ? '<div class="prep-time-row"><span class="prep-time-key">🍳 Equipment:</span> ' + pt.equipment.join(', ') + '</div>' : '') +
-        (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Multitask:</span> ' + esc(pt.multitask) + '</div>' : '') +
-        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">🗓 Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
-        (pt.quick_version ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Quick version:</span> ' + esc(pt.quick_version) + '</div>' : '') +
-      '</div>'
-    ) : (
-      '<div class="prep-time-box prep-time-empty">' +
-        '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
-          (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
-        '</button>' +
-      '</div>'
-    )) +
     scaleButtons +
     scaleResult +
     '<div class="recipe-section-label cooking-notes-label">Ingredients' +
@@ -757,6 +732,31 @@ function renderRecipeCard(r) {
     '</div>' +
     notesSection +
     '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
+    // Prep time at bottom
+    (pt ? (
+      '<div class="prep-time-box">' +
+        '<div class="prep-time-header">' +
+          '<span>⏱ Prep Time</span>' +
+          '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '" title="Re-estimate">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
+        '</div>' +
+        '<div class="prep-time-grid">' +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
+          (pt.passive_min > 0 ? '<div class="prep-time-stat"><div class="prep-time-val">' + pt.passive_min + ' min</div><div class="prep-time-label">Passive</div></div>' : '') +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
+        '</div>' +
+        (pt.equipment && pt.equipment.length ? '<div class="prep-time-row"><span class="prep-time-key">🍳 Equipment:</span> ' + pt.equipment.join(', ') + '</div>' : '') +
+        (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Multitask:</span> ' + esc(pt.multitask) + '</div>' : '') +
+        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">🗓 Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
+        (pt.quick_version ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Quick version:</span> ' + esc(pt.quick_version) + '</div>' : '') +
+      '</div>'
+    ) : (
+      '<div class="prep-time-box prep-time-empty">' +
+        '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
+          (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
+        '</button>' +
+      '</div>'
+    )) +
     '<div class="recipe-actions">' +
       '<button class="ra-btn ra-shop" data-shop="' + r.id + '">Add to list</button>' +
       '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">Log meal</button>' +
