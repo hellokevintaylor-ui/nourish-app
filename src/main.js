@@ -539,7 +539,6 @@ function render() {
         ${!state.loading && state.tab === 'shop'    ? renderShop()    : ''}
         ${!state.loading && state.tab === 'log'     ? renderLog()     : ''}
         ${!state.loading && state.tab === 'calendar' ? renderCalendar() : ''}
-        ${!state.loading && state.tab === 'history'  ? renderHistory()  : ''}
         ${!state.loading && state.tab === 'tags'    ? renderTags()    : ''}
         ${!state.loading && state.tab === 'chat'    ? renderChat()    : ''}
       </div>
