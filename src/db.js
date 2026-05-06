@@ -124,8 +124,9 @@ export async function fetchExerciseLog() {
   const { data } = await supabase.from('exercise_log').select('*').eq('user_id', uid()).gte('logged_at', localMidnight.toISOString()).order('logged_at')
   return data || []
 }
-export async function addExerciseEntry(activity, calories_burned, breakdown) {
-  const { data } = await supabase.from('exercise_log').insert({ user_id: uid(), activity, calories_burned: calories_burned || 0, breakdown: breakdown || '', logged_at: new Date().toISOString() }).select()
+export async function addExerciseEntry(activity, calories_burned, breakdown, dateStr) {
+  const logged_at = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString()
+  const { data } = await supabase.from('exercise_log').insert({ user_id: uid(), activity, calories_burned: calories_burned || 0, breakdown: breakdown || '', logged_at }).select()
   return data?.[0]
 }
 export async function deleteExerciseEntry(id) {
@@ -138,9 +139,14 @@ export async function fetchLog() {
   const { data } = await supabase.from('food_log').select('*').eq('user_id', uid()).gte('logged_at', localMidnight.toISOString()).order('logged_at')
   return data || []
 }
-export async function addLogEntry(food, calories, recipeId) {
+export async function addLogEntry(food, calories, recipeId, dateStr) {
   const row = { user_id: uid(), food, calories }
   if (recipeId) row.recipe_id = recipeId
+  if (dateStr) {
+    // Set logged_at to noon on the specified date in local time
+    const d = new Date(dateStr + 'T12:00:00')
+    row.logged_at = d.toISOString()
+  }
   const { data } = await supabase.from('food_log').insert(row).select()
   return data?.[0]
 }

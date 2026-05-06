@@ -912,6 +912,7 @@ function renderLogInner() {
   viewedDate.setDate(now.getDate() + offset)
   const viewedDateStr = viewedDate.toLocaleDateString('sv') // YYYY-MM-DD in local time
   const isToday = offset === 0
+  state._viewedDateStr = viewedDateStr // expose for handlers
 
   // Get the log and exercise for the viewed day
   const viewedLog = isToday ? state.log : (state.viewedDayLog || [])
@@ -1052,41 +1053,36 @@ function renderLogInner() {
         ) +
       '</div>' +
     '</div>' +
-    // Add inputs only for today
-    (isToday ? (
-      '<div class="log-search-wrap">' +
-        '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
-        (recipeResults.length ? '<div class="log-search-results">' +
-          recipeResults.map(r =>
-            '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
-          ).join('') +
-          '<button class="log-search-result" id="log-search-clear" style="color:var(--ink3);font-style:italic">Clear search</button>' +
-        '</div>' : '') +
-      '</div>' +
-      (recipeTags.length > 0 ?
-        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">' +
-          '<button class="tag-filter-chip ' + (!logTagFilter ? 'active' : '') + '" data-log-tag="">All</button>' +
-          recipeTags.map(t => '<button class="tag-filter-chip ' + (logTagFilter === t.name ? 'active' : '') + '" data-log-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>').join('') +
-        '</div>'
-      : '') +
-      '<div class="log-add-row">' +
-        '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
-        '<button class="add-btn" id="log-add-btn">+ Add</button>' +
+    // Add inputs — search and manual food entry
+    '<div class="log-search-wrap">' +
+      '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
+      (recipeResults.length ? '<div class="log-search-results">' +
+        recipeResults.map(r =>
+          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
+        ).join('') +
+        '<button class="log-search-result" id="log-search-clear" style="color:var(--ink3);font-style:italic">Clear search</button>' +
+      '</div>' : '') +
+    '</div>' +
+    (recipeTags.length > 0 ?
+      '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">' +
+        '<button class="tag-filter-chip ' + (!logTagFilter ? 'active' : '') + '" data-log-tag="">All</button>' +
+        recipeTags.map(t => '<button class="tag-filter-chip ' + (logTagFilter === t.name ? 'active' : '') + '" data-log-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>').join('') +
       '</div>'
-    ) : '<div style="font-size:11px;color:var(--ink3);padding:6px 0 10px;font-style:italic">Past day — tap › to return to today</div>') +
-
-    // Food entries
+    : '') +
+    '<div class="log-add-row">' +
+      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
+      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
+    '</div>' +
+    (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">🍽 ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
     // Exercise section
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">🏊 Exercise</div>' +
-    (isToday ? (
-      '<div class="log-add-row">' +
-        '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
-        '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
-      '</div>'
-    ) : '') +
+    '<div class="log-add-row">' +
+      '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
+      '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
+    '</div>' +
     (viewedExercise && viewedExercise.length > 0 ?
       viewedExercise.map(e =>
         '<div class="log-entry">' +
@@ -1099,7 +1095,7 @@ function renderLogInner() {
             (state.logBreakdownId === 'ex-' + e.id && e.breakdown ?
               '<div class="log-breakdown-text">' + esc(e.breakdown) + '</div>' : '') +
           '</div>' +
-          (isToday ? '<button class="remove-btn" data-ex-del="' + e.id + '">x</button>' : '') +
+          '<button class="remove-btn" data-ex-del="' + e.id + '">x</button>' +
         '</div>'
       ).join('')
     : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
@@ -1116,7 +1112,7 @@ function renderWeightProgress() {
   if (!startWeight || !target_weight || startWeight <= target_weight) return ''
 
   const tdee = calcTDEE(startWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
-  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
+  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : nullnull
   const weightLog = state.weightLog || []
 
   // Start date = goal start date (fixed) or first weigh-in
@@ -2400,11 +2396,18 @@ function bindEvents() {
       'Calories BURNED (not consumed) during: "' + activity + '" for a person weighing ' + weight + ' lbs, age ' + age + '. ' +
       'Reply with ONLY:\nCALORIES: [number]\nBREAKDOWN: [brief explanation]\nNo other text.'
     )
-    const saved = await db.addExerciseEntry(activity, calories, breakdown)
+    const isExToday = (state.logDayOffset || 0) === 0
+    const exDateStr = isExToday ? null : state._viewedDateStr
+    const saved = await db.addExerciseEntry(activity, calories, breakdown, exDateStr)
     if (saved) {
       saved.breakdown = breakdown
-      state.exerciseLog = state.exerciseLog || []
-      state.exerciseLog.push(saved)
+      if (isExToday) {
+        state.exerciseLog = state.exerciseLog || []
+        state.exerciseLog.push(saved)
+      } else {
+        state.viewedDayExercise = state.viewedDayExercise || []
+        state.viewedDayExercise.push(saved)
+      }
     }
     const input = document.getElementById('log-exercise')
     if (input) input.value = ''
@@ -2463,10 +2466,17 @@ function bindEvents() {
     const btn = document.getElementById('log-add-btn')
     if (btn) { btn.textContent = '...'; btn.disabled = true }
     const { calories, breakdown } = await estimateCaloriesAI(food)
-    const saved = await db.addLogEntry(food, calories)
+    const isToday = (state.logDayOffset || 0) === 0
+    const dateStr = isToday ? null : state._viewedDateStr
+    const saved = await db.addLogEntry(food, calories, null, dateStr)
     if (saved) {
       saved.breakdown = breakdown
-      state.log.push(saved)
+      if (isToday) {
+        state.log.push(saved)
+      } else {
+        state.viewedDayLog = state.viewedDayLog || []
+        state.viewedDayLog.push(saved)
+      }
     }
     const input = document.getElementById('log-food')
     if (input) input.value = ''
