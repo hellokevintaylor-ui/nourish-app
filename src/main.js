@@ -41,6 +41,7 @@ const state = {
   logTagFilter: null,
   logSearchFocused: false,
   logBreakdownId: null,
+  chatRecipeContext: null,
   editingLogId: null,
   scaleModal: null,
   estimatingPrepId: null,
@@ -88,8 +89,13 @@ async function sendChatMessage(userMessage) {
     // Build system context
     const context = buildClaudeContext()
     const agentCtx = buildAgentContext(state.agentProfile)
-    const systemPrompt = 'You are a personal food and meal planning coach for this user. You know their recipes, pantry, eating habits and goals intimately. Be warm, specific, and actionable. Reference their actual recipes and patterns by name when relevant. Keep responses concise and practical.\n\nWhen asked to build a grocery list: look at THIS WEEK\'S MEAL PLAN to see what recipes are planned, then check each recipe\'s ingredients against the PANTRY (skip anything already there) and CURRENT SHOPPING LIST (skip anything already on it), and suggest only what\'s missing. List items grouped by recipe.\n\n' + context + agentCtx
-
+    const recipeCtx = state.chatRecipeContext
+      ? '\n\nFOCUS RECIPE — The user is asking specifically about this recipe:\nName: ' + state.chatRecipeContext.name +
+        '\nIngredients:\n' + (state.chatRecipeContext.ingredients || '') +
+        '\nInstructions:\n' + (state.chatRecipeContext.instructions || '') +
+        '\n\nAnswer questions about this recipe specifically. Reference the actual ingredients and steps.'
+      : ''
+    const systemPrompt = 'You are a personal food and meal planning coach for this user. You know their recipes, pantry, eating habits and goals intimately. Be warm, specific, and actionable. Reference their actual recipes and patterns by name when relevant. Keep responses concise and practical.\n\nWhen asked to build a grocery list: look at THIS WEEK\'S MEAL PLAN to see what recipes are planned, then check each recipe\'s ingredients against the PANTRY (skip anything already there) and CURRENT SHOPPING LIST (skip anything already on it), and suggest only what\'s missing. List items grouped by recipe.\n\n' + context + agentCtx + recipeCtx
     // Build message history for API
     const messages = state.chatMessages.map(m => ({ role: m.role, content: m.content }))
 
@@ -1740,6 +1746,7 @@ function renderTags() {
 
 function renderChat() {
   const messages = state.chatMessages
+  const ctx = state.chatRecipeContext
 
   const chatHtml = messages.length === 0
     ? '<div class="chat-empty"><div class="chat-empty-title">Your AI Food Coach</div><div class="chat-empty-sub">Ask about meal planning, recipes, calories, shopping — anything food related. I know your recipes, pantry and eating patterns.</div><div class="chat-empty-prompts">' +
@@ -1754,11 +1761,21 @@ function renderChat() {
       ).join('')
 
   return '<div class="chat-fullpage">' +
+    // Recipe context banner
+    (ctx ? (
+      '<div style="background:var(--sage4);border-bottom:1.5px solid var(--forest2);padding:8px 14px;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-size:10px;color:var(--forest);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Asking about</div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--forest)">' + esc(ctx.name) + '</div>' +
+        '</div>' +
+        '<button id="chat-clear-context" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✕ Clear</button>' +
+      '</div>'
+    ) : '') +
     '<div class="chat-messages" id="chat-messages">' + chatHtml + '</div>' +
     (state.chatLoading ? '<div class="chat-loading"><div class="chat-dots"><span></span><span></span><span></span></div></div>' : '') +
     (messages.length > 0 ? '<button class="chat-clear-btn" id="chat-clear">Clear conversation</button>' : '') +
     '<div class="chat-input-row">' +
-      '<input id="chat-input" class="chat-input" placeholder="Message your food coach..." />' +
+      '<input id="chat-input" class="chat-input" placeholder="' + (ctx ? 'Ask about ' + esc(ctx.name) + '...' : 'Message your food coach...') + '" />' +
       '<button class="chat-send-btn" id="chat-send" ' + (state.chatLoading ? 'disabled' : '') + '>&#9654;</button>' +
     '</div>' +
   '</div>'
@@ -2265,7 +2282,14 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       const r = state.recipes.find(x => x.id === el.dataset.ask)
-      if (r) { state.tab = 'chat'; sendChatMessage('Tell me ways I can use this recipe this week: ' + r.name + '. Ingredients: ' + (r.ingredients||'')); render() }
+      if (!r) return
+      // Set recipe context for chat without auto-sending
+      state.chatRecipeContext = r
+      state.tab = 'chat'
+      localStorage.setItem('mep_tab', 'chat')
+      render()
+      // Focus the chat input
+      setTimeout(() => document.getElementById('chat-input')?.focus(), 100)
     })
   })
 
@@ -2531,8 +2555,13 @@ async function estimateCaloriesAI(description) {
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 300,
           messages: [{ role: 'user', content:
-            'Estimate the calories for: "' + description + '"\n\n' +
-            'Reply with ONLY this format:\nCALORIES: [number]\nBREAKDOWN: [brief per-item breakdown, e.g. "Cheerios 1/2 cup: 55 cal, Whole milk 1/2 cup: 75 cal"]\n\nNo other text.'
+            'You are a precise nutrition calculator using USDA database values. Estimate calories for: "' + description + '"\n\n' +
+            'Rules:\n' +
+            '- Use accurate USDA/nutrition database values, not rounded estimates\n' +
+            '- For single items (1 shrimp, 1 egg, 1 slice), use the actual per-item calorie count\n' +
+            '- Do NOT round up aggressively — a single large shrimp is ~7 kcal, not 30\n' +
+            '- If quantity is ambiguous, assume a typical single serving\n\n' +
+            'Reply with ONLY this format:\nCALORIES: [number]\nBREAKDOWN: [brief per-item breakdown with actual values]\n\nNo other text.'
           }]
         })
       })
@@ -3304,6 +3333,9 @@ async function estimateCaloriesAI(description) {
   })
   document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
     el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
+  })
+  document.getElementById('chat-clear-context')?.addEventListener('click', () => {
+    state.chatRecipeContext = null; render()
   })
   document.getElementById('chat-clear')?.addEventListener('click', () => {
     state.chatMessages = []
