@@ -603,9 +603,23 @@ function render() {
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
+
+      <!-- SCROLL TO TOP -->
+      <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--forest);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
     </div>
   `
   bindEvents()
+
+  // Scroll-to-top button visibility
+  const scrollTopBtn = document.getElementById('scroll-top-btn')
+  if (scrollTopBtn) {
+    const onScroll = () => {
+      scrollTopBtn.style.display = window.scrollY > 300 ? 'flex' : 'none'
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }))
+  }
   // Position active tag picker near its button
   const activePicker = document.getElementById('tag-picker-popover')
   if (activePicker && state.tagPickerPos) {
@@ -930,21 +944,21 @@ function renderShopItems(items) {
 
     const isChecked = !!i.have
 
-    return '<div class="shop-row' + (isChecked ? ' shop-row-checked' : '') + '">' +
+    return '<div class="shop-row" style="' + (isChecked ? 'opacity:0.6' : '') + '">' +
       '<div class="shop-check' + (isChecked ? ' shop-check-done' : '') + '" data-check="' + i.id + '"></div>' +
       '<div class="shop-item-main">' +
       (isEditingS ?
         '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
         '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
       :
-        '<div class="shop-item-name' + (isChecked ? ' shop-item-name-checked' : '') + '" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
+        '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer;' + (isChecked ? 'text-decoration:line-through;color:var(--ink4)' : '') + '" title="Tap to edit">' + esc(i.name) + '</div>'
       ) +
       (!isChecked ?
         '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
         '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">Pantry</button>' + picker + '</div>'
       : '') +
       '</div>' +
-      (!isChecked ? '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' : '') +
+      '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' +
     '</div>'
   }).join('')
 }
