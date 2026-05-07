@@ -68,6 +68,36 @@ const GOAL_PRESETS = {
   gain:     { calories: 2500, label: 'Build Muscle' },
 }
 
+// ── SHOP LIST HELPERS ─────────────────────────────────────────────────────────
+
+// Extract the sortable ingredient name — strips leading qty, fractions, units
+function shopSortKey(itemName) {
+  return itemName
+    // strip leading vulgar fractions
+    .replace(/^[½⅓⅔¼¾⅛⅜⅝⅞\s]+/, '')
+    // strip leading numbers like "2", "1/2", "1.5"
+    .replace(/^\d+(?:[./]\d+)?\s*/, '')
+    // strip leading unit words
+    .replace(/^(cups?|tbsp|tsp|tablespoons?|teaspoons?|oz|ounces?|lbs?|pounds?|grams?|kg|ml|liters?|pints?|quarts?|cans?|jars?|packages?|pkgs?|bunches?|heads?|cloves?|slices?|pieces?|large|medium|small|fresh|dried)\s+/i, '')
+    .trim()
+    .toLowerCase()
+}
+
+function sortShopList(items) {
+  return [...items].sort((a, b) => shopSortKey(a.name).localeCompare(shopSortKey(b.name)))
+}
+
+// Purge shop items that were checked more than 1 hour ago
+function purgeStaleCheckedItems() {
+  const ONE_HOUR = 60 * 60 * 1000
+  const now = Date.now()
+  state.shopList = state.shopList.filter(i => {
+    if (!i.have) return true
+    if (!i.checked_at) return false // have=true but no timestamp — treat as purgeable
+    return (now - i.checked_at) < ONE_HOUR
+  })
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 
 
@@ -216,6 +246,10 @@ async function init() {
     goal_start_date: goals.goal_start_date || null
   }
   state.loading  = false
+
+  // Purge shop items checked more than 1 hour ago
+  purgeStaleCheckedItems()
+
   render()
 }
 
@@ -883,6 +917,8 @@ function renderPantry() {
   '</div>'
 }
 
+// ── SHOP LIST RENDERING ───────────────────────────────────────────────────────
+
 function renderShopItems(items) {
   return items.map(function(i) {
     const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">x</button></span>').join('')
@@ -891,37 +927,48 @@ function renderShopItems(items) {
     const storeTags = getTagsForNamespace('location')
     const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
     const isEditingS = state.editingShopId === String(i.id)
-    return '<div class="shop-row">' +
-      '<div class="shop-check" data-check="' + i.id + '"></div>' +
+
+    const isChecked = !!i.have
+
+    return '<div class="shop-row' + (isChecked ? ' shop-row-checked' : '') + '">' +
+      '<div class="shop-check' + (isChecked ? ' shop-check-done' : '') + '" data-check="' + i.id + '"></div>' +
       '<div class="shop-item-main">' +
       (isEditingS ?
         '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
         '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
       :
-        '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
+        '<div class="shop-item-name' + (isChecked ? ' shop-item-name-checked' : '') + '" data-edit-shop="' + i.id + '" style="cursor:pointer" title="Tap to edit">' + esc(i.name) + '</div>'
       ) +
-      '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
-      '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">Pantry</button>' + picker + '</div>' +
+      (!isChecked ?
+        '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
+        '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">Pantry</button>' + picker + '</div>'
+      : '') +
       '</div>' +
-      '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' +
+      (!isChecked ? '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' : '') +
     '</div>'
   }).join('')
 }
 
-
 function renderShop() {
   const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
   const search = (state.shopSearch || '').toLowerCase()
-  const need = state.shopList.filter(i =>
+
+  // Split into unchecked (need) and checked (done) — filter by tag/search on need only
+  const need = sortShopList(state.shopList.filter(i =>
     !i.have &&
     (!activeTag || (activeTag === '__untagged__' ? !(i.tags||[]).length : (i.tags||[]).includes(activeTag))) &&
     (!search || i.name.toLowerCase().includes(search))
-  )
+  ))
+  const done = state.shopList.filter(i => i.have)
 
   return '<div class="tab-content">' +
     '<div class="shop-header">' +
       '<div class="section-title">Shopping List</div>' +
-      (state.shopList.length > 0 ? '<div style="display:flex;gap:6px"><button class="icon-btn" id="shop-copy-btn">Copy</button><button class="clear-pantry-btn" id="shop-clear">Clear</button></div>' : '') +
+      '<div style="display:flex;gap:6px">' +
+        (state.shopList.length > 0 ? '<button class="icon-btn" id="shop-copy-btn">Copy</button>' : '') +
+        (done.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear-checked" style="background:var(--cream2);color:var(--ink2);border:1px solid var(--border)">Clear checked (' + done.length + ')</button>' : '') +
+        (state.shopList.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear">Clear all</button>' : '') +
+      '</div>' +
     '</div>' +
     '<div class="shop-add-row">' +
       '<input id="shop-manual-input" placeholder="Add item manually..." />' +
@@ -946,6 +993,13 @@ function renderShop() {
         '<button class="shop-got-it-btn" id="shop-got-it">Got it all!</button>' +
       '</div>' +
       renderShopItems(need)
+    : (state.shopList.length > 0 && need.length === 0 && done.length > 0 ? '<div style="font-size:13px;color:var(--ink3);padding:12px 0;text-align:center">✅ All done! Items will clear in 1 hour.</div>' : '')) +
+    // Checked / crossed-off items
+    (done.length > 0 ?
+      '<div style="margin-top:14px;border-top:1px solid var(--cream3);padding-top:10px">' +
+        '<div style="font-size:10px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">In cart (' + done.length + ')</div>' +
+        renderShopItems(done) +
+      '</div>'
     : '') +
   '</div>'
 }
@@ -2328,87 +2382,60 @@ function bindEvents() {
     if (confirm('Clear entire pantry?')) { state.pantry = []; await db.clearPantry(); render() }
   })
 
-  // Shopping list
-  document.querySelectorAll('[data-shop]').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation()
-      const r = state.recipes.find(x => x.id === el.dataset.shop)
-      if (!r) return
-      const ingLines = (r.ingredients || r.text || '').split('\n')
-        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
-      const items = ingLines.map(raw => {
-        const name = parseIngredientLine(raw)
-        const stripped = stripMeasurements(raw)
-        const match = state.pantry.find(p => {
-          const pl = p.name.toLowerCase()
-          return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
-        })
-        return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
-      })
-      state.shopReview = { recipeId: r.id, recipeName: r.name, items }; render()
-    })
-  })
+  // ── SHOPPING LIST EVENTS ──
 
-  document.querySelectorAll('.shop-review-check').forEach(el => {
-    el.addEventListener('change', () => { if (state.shopReview) state.shopReview.items[+el.dataset.idx].checked = el.checked })
-  })
-  // "Got it" — mark as in pantry, uncheck from list, add to pantry
-  document.querySelectorAll('.shop-review-pantry-btn').forEach(el => {
-    el.addEventListener('click', async e => {
-      e.stopPropagation()
-      const idx = +el.dataset.pantryIdx
-      if (!state.shopReview) return
-      const item = state.shopReview.items[idx]
-      item.inPantry = true
-      item.checked = false
-      // Add to pantry if not already there
-      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
-      if (!exists) {
-        const saved = await db.addPantryItem(item.name, '')
-        if (saved) state.pantry.push(saved)
+  // Check off item (strike-through, don't delete)
+  document.querySelectorAll('[data-check]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const item = state.shopList.find(x => x.id === el.dataset.check)
+      if (!item) return
+      if (item.have) {
+        // Tap again to uncheck
+        item.have = false
+        item.checked_at = null
+        await db.updateShopItem(item.id, false)
+      } else {
+        item.have = true
+        item.checked_at = Date.now()
+        await db.updateShopItem(item.id, true)
       }
       render()
     })
   })
-  document.getElementById('shop-review-cancel')?.addEventListener('click', () => { state.shopReview = null; render() })
-  document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
-  document.getElementById('shop-review-add')?.addEventListener('click', async () => {
-    if (!state.shopReview) return
-    const toAdd = state.shopReview.items.filter(i => i.checked && !i.inPantry)
-    for (const item of toAdd) {
-      const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
-      if (!already) {
-        const saved = await db.addShopItem(item.name, state.shopReview.recipeName)
-        if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe })
-      }
-    }
-    state.shopReview = null; state.tab = 'shop'; render()
-  })
 
-  document.querySelectorAll('[data-check]').forEach(el => {
-    el.addEventListener('click', async () => {
-      const item = state.shopList.find(x => x.id === el.dataset.check)
-      if (item) { item.have = true; await db.updateShopItem(item.id, true); render() }
-    })
-  })
   document.querySelectorAll('[data-uncheck]').forEach(el => {
     el.addEventListener('click', async () => {
       const item = state.shopList.find(x => x.id === el.dataset.uncheck)
-      if (item) { item.have = false; await db.updateShopItem(item.id, false); render() }
+      if (item) { item.have = false; item.checked_at = null; await db.updateShopItem(item.id, false); render() }
     })
   })
+
   document.querySelectorAll('[data-shop-del]').forEach(el => {
     el.addEventListener('click', async () => {
       state.shopList = state.shopList.filter(x => x.id !== el.dataset.shopDel)
       await db.deleteShopItem(el.dataset.shopDel); render()
     })
   })
+
   document.getElementById('shop-got-it')?.addEventListener('click', async () => {
+    const now = Date.now()
+    state.shopList.forEach(i => {
+      if (!i.have) { i.have = true; i.checked_at = now }
+    })
     await db.markAllGotIt(state.shopList, state.pantry)
     const newPantry = await db.fetchPantry()
     state.pantry = newPantry
-    state.shopList = state.shopList.map(i => ({ ...i, have: true })); render()
+    render()
   })
+
+  // Clear only checked items
+  document.getElementById('shop-clear-checked')?.addEventListener('click', async () => {
+    const checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
+    state.shopList = state.shopList.filter(i => !i.have)
+    for (const id of checkedIds) await db.deleteShopItem(id)
+    render()
+  })
+
   document.getElementById('shop-clear')?.addEventListener('click', async () => {
     if (confirm('Clear shopping list?')) { state.shopList = []; await db.clearShopList(); render() }
   })
@@ -3352,6 +3379,10 @@ document.addEventListener('visibilitychange', async () => {
     const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
     state.recipes = recipes.map(normalizeRecipe)
     state.allTags = allTags || []
+
+    // Purge checked items older than 1 hour on tab focus too
+    purgeStaleCheckedItems()
+
     render()
 
     // Check clipboard for a recipe URL
