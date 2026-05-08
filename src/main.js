@@ -1919,8 +1919,11 @@ async function generateGamePlan(slot, targetTime, date, recipeId) {
     mealText = details.join('\n\n')
   }
 
+  const now = new Date()
+  const currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+
   const slotLabel = isWholeDay ? 'the whole day' : slot
-  const prompt = `You are a practical cooking timeline planner. The user wants to eat dinner at ${targetTime}${isWholeDay ? ' and needs a plan for the whole day' : ' and needs a plan for ' + slot}.
+  const prompt = `You are a practical cooking timeline planner. The current time is ${currentTime}. The user wants to eat dinner at ${targetTime}${isWholeDay ? ' and needs a plan for the whole day' : ' and needs a plan for ' + slot}.
 
 Here is what they are making:
 
@@ -1929,12 +1932,14 @@ ${mealText}
 Create a cooking timeline working BACKWARDS from ${targetTime}${isWholeDay ? ', incorporating all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ')' : ''}.
 
 CRITICAL RULES:
+- The current time is ${currentTime}. Do NOT schedule any steps before this time — they are already in the past. Start from now or later only.
 - Group related prep steps into ONE entry. "Drain, rinse, and dry chickpeas" is ONE step at ONE time — not three separate entries.
 - A new timestamp only appears when the cook needs to START something new or CHECK on something.
 - Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min. Never say 5 min for oven preheat.
 - Passive time (oven, simmering) should be used for active prep of other components — call that out explicitly.
 - Aim for 6-10 steps total for a single meal, up to 15 for a whole day. Collapse sub-steps, don't list every sentence from the recipe.
 - Be conversational. "Prep the chickpeas — drain, rinse, pat dry" not a bullet list of sub-steps.
+- If there is not much time left before ${targetTime}, prioritize the most critical steps and note what can be skipped or simplified.
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
 [
