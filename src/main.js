@@ -1617,16 +1617,28 @@ function renderCalendar() {
   // Day cards
   dates.forEach((date, idx) => {
     const today = isDateToday(date)
+    const dateMeals = state.mealPlan.filter(e => e.date === date && e.recipe_id)
     html += '<div class="cal-day ' + (today ? 'cal-day-today' : '') + '">'
     html += '<div class="cal-day-header">'
     html += '<span class="cal-day-name">' + DAY_NAMES[idx] + '</span>'
     html += '<span class="cal-day-date">' + formatDate(date).split(', ')[1] + '</span>'
+    if (dateMeals.length > 0) {
+      const dinnerDefault = localStorage.getItem('mep_dinner_time') || '7:00 PM'
+      html += '<button class="cal-game-plan-btn" data-game-plan-slot="Day" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(dinnerDefault) + '" style="margin-left:auto;font-size:10px;padding:3px 9px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan Day</button>'
+    }
     html += '</div>'
 
     MEAL_SLOTS.forEach(slot => {
       const entries = getMealPlanEntries(date, slot)
+      const slotHasRecipe = entries.some(e => e.recipe_id)
       html += '<div class="cal-slot">'
-      html += '<div class="cal-slot-label">' + slot + '</div>'
+      html += '<div class="cal-slot-label" style="display:flex;align-items:center;justify-content:space-between">'
+      html += '<span>' + slot + '</span>'
+      if (slotHasRecipe) {
+        const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+        html += '<button class="cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(defaultTime) + '" style="font-size:10px;padding:2px 7px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan</button>'
+      }
+      html += '</div>'
 
       entries.forEach(entry => {
         html += '<div class="cal-entry">'
@@ -1636,10 +1648,6 @@ function renderCalendar() {
         html += '<div class="cal-entry-actions">'
         html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
         if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--sage4);color:var(--forest)">+ List</button>'
-        if (entry.recipe_id) {
-          const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
-          html += '<button class="cal-entry-log cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-date="' + date + '" data-game-plan-rid="' + entry.recipe_id + '" data-game-plan-time="' + esc(defaultTime) + '" style="background:var(--forest);color:white">📋 Plan</button>'
-        }
         html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">&times;</button>'
         html += '</div>'
         html += '</div>'
@@ -1881,41 +1889,61 @@ function renderChat() {
 
 
 async function generateGamePlan(slot, targetTime, date, recipeId) {
-  // Find the specific entry
-  const entry = state.mealPlan.find(e => e.date === date && e.meal_slot === slot && String(e.recipe_id) === String(recipeId))
-  const recipe = recipeId ? state.recipes.find(r => String(r.id) === String(recipeId)) : null
-  const pt = recipe?.prepTime
+  const isWholeDay = slot === 'Day'
 
-  const mealText = '=== ' + (entry?.recipe_name || recipe?.name || 'Recipe') + ' ===\n' +
-    (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
-    (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
-    (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
+  let mealText = ''
 
-  const prompt = `You are a practical cooking timeline planner. The user wants to eat ${slot} at ${targetTime} today.
+  if (isWholeDay) {
+    // Gather all recipes planned for this date
+    const allEntries = state.mealPlan.filter(e => e.date === date && e.recipe_id)
+    const details = allEntries.map(entry => {
+      const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
+      const pt = recipe?.prepTime
+      return '=== ' + entry.meal_slot + ': ' + entry.recipe_name + ' ===\n' +
+        (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
+        (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
+        (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
+    })
+    mealText = details.join('\n\n')
+  } else {
+    // Single slot — gather all entries in that slot
+    const slotEntries = state.mealPlan.filter(e => e.date === date && e.meal_slot === slot && e.recipe_id)
+    const details = slotEntries.map(entry => {
+      const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
+      const pt = recipe?.prepTime
+      return '=== ' + entry.recipe_name + ' ===\n' +
+        (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
+        (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
+        (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
+    })
+    mealText = details.join('\n\n')
+  }
+
+  const slotLabel = isWholeDay ? 'the whole day' : slot
+  const prompt = `You are a practical cooking timeline planner. The user wants to eat dinner at ${targetTime}${isWholeDay ? ' and needs a plan for the whole day' : ' and needs a plan for ' + slot}.
 
 Here is what they are making:
 
 ${mealText}
 
-Create a cooking timeline working BACKWARDS from ${targetTime}. 
+Create a cooking timeline working BACKWARDS from ${targetTime}${isWholeDay ? ', incorporating all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ')' : ''}.
 
 CRITICAL RULES:
 - Group related prep steps into ONE entry. "Drain, rinse, and dry chickpeas" is ONE step at ONE time — not three separate entries.
-- A new timestamp only appears when the cook needs to START something new or CHECK on something. Not for every sub-task within a single prep.
+- A new timestamp only appears when the cook needs to START something new or CHECK on something.
 - Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min. Never say 5 min for oven preheat.
-- Passive time (oven, simmering, marinating) should be used for active prep of other components — call that out explicitly.
-- Aim for 6-10 steps total. If a recipe has 20 instruction lines, they collapse into a handful of meaningful moments.
-- Be conversational and direct. "Prep the chickpeas — drain, rinse, pat dry" not a bullet list of sub-steps.
+- Passive time (oven, simmering) should be used for active prep of other components — call that out explicitly.
+- Aim for 6-10 steps total for a single meal, up to 15 for a whole day. Collapse sub-steps, don't list every sentence from the recipe.
+- Be conversational. "Prep the chickpeas — drain, rinse, pat dry" not a bullet list of sub-steps.
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
 [
   {"time": "6:00 PM", "step": "Preheat oven to 425°F — takes about 20 min"},
   {"time": "6:05 PM", "step": "Prep the chickpeas — drain, rinse, pat dry with a towel"},
-  {"time": "6:15 PM", "step": "Toss chickpeas with oil and spices, spread on baking sheet"},
   ...
 ]
 
-End with "${slot} is served 🍽️" at ${targetTime}.`
+End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
 
   try {
     const resp = await fetch('/api/chat', {
@@ -1939,6 +1967,8 @@ End with "${slot} is served 🍽️" at ${targetTime}.`
 
 function renderGamePlanModal() {
   const { slot, targetTime } = state.gamePlanModal || {}
+  const isWholeDay = slot === 'Day'
+  const slotLabel = isWholeDay ? 'Whole Day' : (slot || 'Meal')
   const result = state.gamePlanResult
   const loading = state.gamePlanLoading
   const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
@@ -1948,13 +1978,13 @@ function renderGamePlanModal() {
   if (loading) {
     content = '<div style="text-align:center;padding:30px 0">' +
       '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
-      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your ' + (slot||'meal') + '...</div>' +
+      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your ' + slotLabel.toLowerCase() + '...</div>' +
       '<div style="font-size:12px;color:var(--ink3);margin-top:6px">Reading your recipes and building a timeline</div>' +
       '</div>'
   } else if (result) {
     content =
       '<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<span style="font-size:12px;color:var(--ink3)">' + (slot||'Meal') + ' at</span>' +
+        '<span style="font-size:12px;color:var(--ink3)">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at</span>' +
         '<input id="gp-dinner-time" value="' + esc(timeVal) + '" style="width:90px;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
         '<button class="add-btn" id="gp-regenerate" style="font-size:12px;padding:5px 12px">↺ Redo</button>' +
       '</div>' +
@@ -1971,9 +2001,9 @@ function renderGamePlanModal() {
       '</div>'
   } else {
     content =
-      '<div style="font-size:13px;color:var(--ink3);margin-bottom:16px">Set your ' + (slot||'meal') + ' time and I\'ll build a step-by-step cooking timeline.</div>' +
+      '<div style="font-size:13px;color:var(--ink3);margin-bottom:16px">Set your ' + (isWholeDay ? 'dinner' : slotLabel.toLowerCase()) + ' time and I\'ll build a step-by-step cooking timeline.</div>' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
-        '<span style="font-size:13px;font-weight:600">' + (slot||'Meal') + ' at:</span>' +
+        '<span style="font-size:13px;font-weight:600">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at:</span>' +
         '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
       '</div>' +
       '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
@@ -1981,7 +2011,7 @@ function renderGamePlanModal() {
 
   return '<div class="modal-bg" id="game-plan-bg">' +
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
-      '<div class="modal-title">📋 ' + (slot||'Meal') + ' Game Plan</div>' +
+      '<div class="modal-title">📋 ' + slotLabel + ' Game Plan</div>' +
       '<div class="modal-sub">' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '</div>' +
       content +
       '<div class="modal-btns" style="margin-top:16px">' +
