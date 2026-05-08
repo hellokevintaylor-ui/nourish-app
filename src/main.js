@@ -614,15 +614,16 @@ function render() {
   `
   bindEvents()
 
-  // Scroll-to-top button visibility
+  // Scroll-to-top button visibility — listens on .content div since window doesn't scroll
   const scrollTopBtn = document.getElementById('scroll-top-btn')
-  if (scrollTopBtn) {
+  const scrollContainer = document.querySelector('.content')
+  if (scrollTopBtn && scrollContainer) {
     const onScroll = () => {
-      scrollTopBtn.style.display = window.scrollY > 300 ? 'flex' : 'none'
+      scrollTopBtn.style.display = scrollContainer.scrollTop > 300 ? 'flex' : 'none'
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
+    scrollContainer.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
-    scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }))
+    scrollTopBtn.addEventListener('click', () => scrollContainer.scrollTo({ top: 0, behavior: 'smooth' }))
   }
   // Position active tag picker near its button
   const activePicker = document.getElementById('tag-picker-popover')
