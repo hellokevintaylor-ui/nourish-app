@@ -429,8 +429,10 @@ function formatRecipeText(text) {
   return text.split('\n').map(line => {
     line = line.trim()
     if (!line) return ''
-    if (line.startsWith('•') || /^\d+\./.test(line)) return `<div class="rt-item">${esc(line)}</div>`
-    return `<div class="rt-line">${esc(line)}</div>`
+    const escaped = esc(line)
+    const withTimers = linkifyTimers(escaped)
+    if (line.startsWith('•') || /^\d+\./.test(line)) return `<div class="rt-item">${withTimers}</div>`
+    return `<div class="rt-line">${withTimers}</div>`
   }).join('')
 }
 
@@ -443,6 +445,146 @@ function formatText(text) {
     if (!line.trim()) return '<div style="height:5px"></div>'
     return `<div class="fmt-p">${line}</div>`
   }).join('')
+}
+
+// ── TIMER SYSTEM ─────────────────────────────────────────────────────────────
+
+const timerState = {
+  active: false,
+  label: '',
+  totalSeconds: 0,
+  remaining: 0,
+  interval: null,
+  wakeLock: null,
+}
+
+function timerBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const beepCount = 3
+    for (let i = 0; i < beepCount; i++) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.frequency.value = 880
+      osc.type = 'sine'
+      gain.gain.setValueAtTime(0.6, ctx.currentTime + i * 0.35)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.35 + 0.3)
+      osc.start(ctx.currentTime + i * 0.35)
+      osc.stop(ctx.currentTime + i * 0.35 + 0.3)
+    }
+  } catch(e) {}
+}
+
+async function startTimer(seconds, label) {
+  // Stop any existing timer
+  if (timerState.interval) clearInterval(timerState.interval)
+
+  timerState.active = true
+  timerState.label = label
+  timerState.totalSeconds = seconds
+  timerState.remaining = seconds
+
+  // Request wake lock to keep screen on
+  try {
+    if (navigator.wakeLock) {
+      timerState.wakeLock = await navigator.wakeLock.request('screen')
+    }
+  } catch(e) {}
+
+  timerState.interval = setInterval(() => {
+    timerState.remaining--
+    if (timerState.remaining <= 0) {
+      timerState.remaining = 0
+      clearInterval(timerState.interval)
+      timerState.interval = null
+      timerBeep()
+      // Release wake lock when done
+      if (timerState.wakeLock) { timerState.wakeLock.release(); timerState.wakeLock = null }
+    }
+    renderTimerBar()
+  }, 1000)
+
+  renderTimerBar()
+}
+
+function stopTimer() {
+  if (timerState.interval) clearInterval(timerState.interval)
+  if (timerState.wakeLock) { timerState.wakeLock.release(); timerState.wakeLock = null }
+  timerState.active = false
+  timerState.interval = null
+  timerState.remaining = 0
+  renderTimerBar()
+}
+
+function renderTimerBar() {
+  let bar = document.getElementById('timer-bar')
+  if (!timerState.active && timerState.remaining === 0 && !timerState.interval) {
+    if (bar) bar.remove()
+    return
+  }
+  const mins = Math.floor(timerState.remaining / 60)
+  const secs = timerState.remaining % 60
+  const timeStr = mins + ':' + String(secs).padStart(2, '0')
+  const pct = timerState.totalSeconds > 0 ? (timerState.remaining / timerState.totalSeconds) * 100 : 0
+  const isDone = timerState.remaining === 0
+  const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--forest)'
+
+  const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid ' + barColor + ';border-radius:14px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:180px;font-family:inherit">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+      '<div style="font-size:11px;font-weight:600;color:var(--ink3);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timerState.label) + '</div>' +
+      '<button id="timer-stop" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px">' +
+      '<div style="font-size:24px;font-weight:800;color:' + barColor + ';font-variant-numeric:tabular-nums">' + (isDone ? 'Done! 🍳' : timeStr) + '</div>' +
+    '</div>' +
+    '<div style="height:4px;background:var(--cream3);border-radius:2px;margin-top:8px">' +
+      '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width 1s linear"></div>' +
+    '</div>' +
+  '</div>'
+
+  if (bar) {
+    bar.outerHTML = html
+  } else {
+    document.body.insertAdjacentHTML('beforeend', html)
+  }
+
+  // Re-attach stop button handler
+  document.getElementById('timer-stop')?.addEventListener('click', stopTimer)
+}
+
+// Parse a time string like "9 min", "12 minutes", "9-12 min", "1 hour 30 min" into seconds
+// Returns { seconds, label } or null
+function parseTimerDuration(text) {
+  text = text.toLowerCase().trim()
+  // Range like "9-12 min" — use lower bound
+  const rangeMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:min|minute|minutes|mins)/)
+  if (rangeMatch) return { seconds: parseInt(rangeMatch[1]) * 60, label: text }
+  // Hours + minutes like "1 hour 30 min"
+  const hourMinMatch = text.match(/(\d+)\s*(?:hour|hr|h)\s*(?:(\d+)\s*(?:min|minute|minutes|mins))?/)
+  if (hourMinMatch) {
+    const h = parseInt(hourMinMatch[1])
+    const m = parseInt(hourMinMatch[2] || 0)
+    return { seconds: h * 3600 + m * 60, label: text }
+  }
+  // Just minutes
+  const minMatch = text.match(/(\d+)\s*(?:min|minute|minutes|mins)/)
+  if (minMatch) return { seconds: parseInt(minMatch[1]) * 60, label: text }
+  // Just seconds
+  const secMatch = text.match(/(\d+)\s*(?:sec|second|seconds|secs)/)
+  if (secMatch) return { seconds: parseInt(secMatch[1]), label: text }
+  return null
+}
+
+// Linkify time references in HTML text — wraps them in tappable timer buttons
+function linkifyTimers(html) {
+  // Match patterns like "9 min", "12 minutes", "9-12 min", "1 hour", "35-40 minutes"
+  return html.replace(/(\d+\s*[-–]?\s*\d*\s*(?:hour|hr|h|min|minute|minutes|mins|sec|second|seconds|secs)(?:\s+\d+\s*(?:min|minute|minutes|mins))?)/gi, (match) => {
+    const parsed = parseTimerDuration(match)
+    if (!parsed) return match
+    return '<button class="timer-link" data-timer-seconds="' + parsed.seconds + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
+  })
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
@@ -613,6 +755,9 @@ function render() {
     </div>
   `
   bindEvents()
+
+  // Re-render timer bar if active (survives render cycles)
+  if (timerState.active || timerState.remaining > 0) renderTimerBar()
 
   // Scroll-to-top — body is the scroll container
   const scrollTopBtn = document.getElementById('scroll-top-btn')
@@ -1839,12 +1984,13 @@ function linkifyRecipes(text) {
   let html = esc(text)
   sorted.forEach(r => {
     const escapedName = esc(r.name)
-    // Only match whole-word-ish boundaries (not mid-word)
     const re = new RegExp('(?<![\\w-])' + escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'g')
     html = html.replace(re,
       '<button class="chat-recipe-link" data-go-recipe="' + r.id + '" style="background:none;border:none;padding:0;color:var(--forest);font-weight:700;text-decoration:underline dotted;cursor:pointer;font-family:inherit;font-size:inherit">' + escapedName + '</button>'
     )
   })
+  // Linkify time references
+  html = linkifyTimers(html)
   // Convert newlines to <br> for display
   html = html.replace(/\n/g, '<br>')
   return html
@@ -2191,6 +2337,16 @@ function renderLogModal() {
 
 // ── EVENTS ────────────────────────────────────────────────────────────────────
 function bindEvents() {
+  // ── TIMER HANDLERS ──
+  document.querySelectorAll('.timer-link[data-timer-seconds]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const seconds = parseInt(el.dataset.timerSeconds)
+      const label = el.dataset.timerLabel
+      startTimer(seconds, label)
+    })
+  })
+
   // Tabs
   document.querySelectorAll('.tab[data-tab]').forEach(el => {
     el.addEventListener('click', () => { state.tab = el.dataset.tab; localStorage.setItem('mep_tab', state.tab); render() })
