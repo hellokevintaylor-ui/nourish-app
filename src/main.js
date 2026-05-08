@@ -470,7 +470,7 @@ function unlockAudio() {
   src.start(0)
 }
 
-function timerBeep() {
+function timerBeep(repeat = false) {
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
     if (audioCtx.state === 'suspended') audioCtx.resume()
@@ -486,6 +486,10 @@ function timerBeep() {
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + i * 0.35 + 0.3)
       osc.start(audioCtx.currentTime + i * 0.35)
       osc.stop(audioCtx.currentTime + i * 0.35 + 0.3)
+    }
+    if (repeat) {
+      // Keep beeping every 4 seconds — stops when timer is dismissed via stopTimer()
+      // We store the interval on the timer object in startTimer
     }
   } catch(e) { console.error('beep error', e) }
 }
@@ -505,7 +509,7 @@ function releaseWakeLockIfDone() {
 
 async function startTimer(seconds, label) {
   const id = ++timerIdCounter
-  const timer = { id, label, totalSeconds: seconds, remaining: seconds, interval: null }
+  const timer = { id, label, totalSeconds: seconds, remaining: seconds, interval: null, beepInterval: null }
 
   timer.interval = setInterval(() => {
     timer.remaining--
@@ -514,6 +518,8 @@ async function startTimer(seconds, label) {
       clearInterval(timer.interval)
       timer.interval = null
       timerBeep()
+      // Keep beeping every 4 seconds until dismissed
+      timer.beepInterval = setInterval(() => timerBeep(), 1500)
       releaseWakeLockIfDone()
     }
     renderTimerBar()
@@ -529,6 +535,7 @@ function stopTimer(id) {
   if (idx === -1) return
   const timer = timers[idx]
   if (timer.interval) clearInterval(timer.interval)
+  if (timer.beepInterval) clearInterval(timer.beepInterval)
   timers.splice(idx, 1)
   releaseWakeLockIfDone()
   renderTimerBar()
