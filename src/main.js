@@ -60,6 +60,9 @@ const state = {
   pasteModal: false,
   addRecipeModal: false,
   logModal: null,
+  gamePlanModal: false,
+  gamePlanResult: null,
+  gamePlanLoading: false,
 }
 
 const GOAL_PRESETS = {
@@ -603,6 +606,7 @@ function render() {
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
+      ${state.gamePlanModal  ? renderGamePlanModal() : ''}
 
       <!-- SCROLL TO TOP -->
       <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--forest);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
@@ -1610,92 +1614,17 @@ function renderCalendar() {
     }
   }
 
-  // ── TODAY'S GAME PLAN (current week only, today has meals planned) ──
-  if (state.weekOffset === 0) {
-    const today = new Date().toISOString().slice(0,10)
-    const todayMeals = state.mealPlan.filter(e => e.date === today)
-    if (todayMeals.length > 0) {
-      // Slot target eat times
-      const eatTimes = { Breakfast: '8:00 AM', Lunch: '12:30 PM', Dinner: '7:00 PM', Snack: '3:30 PM' }
-      const eatMinutes = { Breakfast: 8*60, Lunch: 12*60+30, Dinner: 19*60, Snack: 15*60+30 }
-
-      // Build meal rows with prep time info
-      const mealRows = MEAL_SLOTS.map(slot => {
-        const entries = todayMeals.filter(e => e.meal_slot === slot)
-        if (!entries.length) return null
-        return entries.map(entry => {
-          const recipe = entry.recipe_id ? state.recipes.find(r => String(r.id) === String(entry.recipe_id)) : null
-          const pt = recipe?.prepTime
-          const totalMin = pt ? (pt.active_min + (pt.passive_min || 0)) : null
-          const startMin = totalMin ? eatMinutes[slot] - totalMin : null
-          const formatMin = m => {
-            const h = Math.floor(((m % 1440) + 1440) % 1440 / 60)
-            const min = ((m % 1440) + 1440) % 1440 % 60
-            const ampm = h >= 12 ? 'PM' : 'AM'
-            const h12 = h % 12 || 12
-            return h12 + ':' + String(min).padStart(2, '0') + ' ' + ampm
-          }
-          return { slot, entry, recipe, pt, totalMin, startMin, formatMin }
-        })
-      }).flat().filter(Boolean)
-
-      if (mealRows.length > 0) {
-        html += '<div style="background:var(--sage4);border:1.5px solid var(--forest2);border-radius:14px;padding:14px;margin-bottom:14px">'
-        html += '<div style="font-size:11px;color:var(--forest);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📋 Today\'s Game Plan</div>'
-
-        mealRows.forEach(({ slot, entry, recipe, pt, totalMin, startMin, formatMin }) => {
-          html += '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(0,0,0,0.06)">'
-
-          // Time column
-          html += '<div style="min-width:60px;text-align:right">'
-          if (startMin !== null) {
-            html += '<div style="font-size:12px;font-weight:700;color:var(--forest)">' + formatMin(startMin) + '</div>'
-            html += '<div style="font-size:10px;color:var(--ink3)">start</div>'
-          } else {
-            html += '<div style="font-size:12px;font-weight:700;color:var(--ink3)">' + eatTimes[slot] + '</div>'
-          }
-          html += '</div>'
-
-          // Content column
-          html += '<div style="flex:1">'
-          html += '<div style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">' + slot + '</div>'
-          html += '<div style="font-size:13px;font-weight:700;color:var(--ink)">' + esc(entry.recipe_name) + '</div>'
-
-          if (pt) {
-            html += '<div style="font-size:11px;color:var(--ink3);margin-top:2px">'
-            html += '⏱ ' + pt.active_min + ' min active'
-            if (pt.passive_min > 0) html += ' + ' + pt.passive_min + ' min passive'
-            html += ' · ' + (pt.difficulty || '')
-            html += '</div>'
-            if (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None') {
-              html += '<div style="font-size:11px;color:var(--forest2);margin-top:2px">🗓 Make-ahead: ' + esc(pt.make_ahead) + '</div>'
-            }
-            if (pt.multitask) {
-              html += '<div style="font-size:11px;color:var(--ink3);margin-top:2px">⚡ ' + esc(pt.multitask) + '</div>'
-            }
-          } else if (recipe) {
-            html += '<div style="font-size:11px;color:var(--ink4);margin-top:2px">No prep time estimated yet</div>'
-          }
-          html += '</div>'
-          html += '</div>'
-        })
-
-        // Remove last border
-        html = html.replace(/border-bottom:1px solid rgba\(0,0,0,0\.06\)">\s*<\/div>\s*<\/div>\s*<div style="font-size:11px;color:var\(--forest\);font-weight:700/, (m) => m)
-
-        html += '<div style="font-size:10px;color:var(--ink4);margin-top:4px;font-style:italic">Times based on prep estimates. Tap a recipe name to see full details.</div>'
-        html += '</div>'
-      }
-    }
-  }
-
   // Day cards
   dates.forEach((date, idx) => {
     const today = isDateToday(date)
+    const todayMeals = state.mealPlan.filter(e => e.date === date)
     html += '<div class="cal-day ' + (today ? 'cal-day-today' : '') + '">'
     html += '<div class="cal-day-header">'
     html += '<span class="cal-day-name">' + DAY_NAMES[idx] + '</span>'
     html += '<span class="cal-day-date">' + formatDate(date).split(', ')[1] + '</span>'
+    if (today && todayMeals.length > 0) {
+      html += '<button class="add-btn" id="game-plan-btn" style="font-size:11px;padding:4px 10px;background:var(--forest);color:white;border:none;margin-left:auto">📋 Game Plan</button>'
+    }
     html += '</div>'
 
     MEAL_SLOTS.forEach(slot => {
@@ -1950,6 +1879,122 @@ function renderChat() {
   '</div>'
 }
 
+
+async function generateGamePlan(dinnerTime) {
+  const today = new Date().toISOString().slice(0,10)
+  const todayMeals = state.mealPlan.filter(e => e.date === today)
+
+  // Build recipe details for each planned meal
+  const mealDetails = todayMeals.map(entry => {
+    const recipe = entry.recipe_id ? state.recipes.find(r => String(r.id) === String(entry.recipe_id)) : null
+    const pt = recipe?.prepTime
+    return {
+      slot: entry.meal_slot,
+      name: entry.recipe_name,
+      ingredients: recipe?.ingredients || '',
+      instructions: recipe?.instructions || '',
+      prepTime: pt ? JSON.stringify(pt) : null
+    }
+  })
+
+  const mealText = mealDetails.map(m =>
+    '=== ' + m.slot + ': ' + m.name + ' ===\n' +
+    (m.prepTime ? 'Prep data: ' + m.prepTime + '\n' : '') +
+    (m.ingredients ? 'Ingredients:\n' + m.ingredients + '\n' : '') +
+    (m.instructions ? 'Instructions:\n' + m.instructions : '')
+  ).join('\n\n')
+
+  const prompt = `You are a cooking timeline planner. The user wants to eat dinner at ${dinnerTime} today.
+
+Here are their planned meals for today:
+
+${mealText}
+
+Create a detailed, practical cooking timeline working BACKWARDS from the dinner time. Be specific about actual cooking steps — not just "start cooking", but "mince the garlic", "heat oil in pan", "put pasta water on to boil". Factor in passive time (oven, simmering) so the cook can multitask.
+
+Return ONLY a JSON array, no other text, no markdown, no backticks:
+[
+  {"time": "6:15 PM", "step": "Take chicken out of fridge to come to room temp"},
+  {"time": "6:20 PM", "step": "Mince garlic and shallots"},
+  ...
+]
+
+Times must be specific (e.g. "6:15 PM"). Steps must be concrete and actionable. Work strictly backwards from ${dinnerTime}. Include breakfast/lunch/snack steps at their natural times if planned. End with "Dinner is served 🍽️" at ${dinnerTime}.`
+
+  const resp = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  })
+  const data = await resp.json()
+  const text = data.content?.[0]?.text?.trim() || ''
+  try {
+    const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+    return JSON.parse(clean)
+  } catch(e) {
+    return null
+  }
+}
+
+function renderGamePlanModal() {
+  const dinnerTime = state.gamePlanModal?.dinnerTime || localStorage.getItem('mep_dinner_time') || '7:00 PM'
+  const result = state.gamePlanResult
+  const loading = state.gamePlanLoading
+
+  let content = ''
+
+  if (loading) {
+    content = '<div style="text-align:center;padding:30px 0">' +
+      '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
+      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your day...</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-top:6px">Reading your recipes and building a timeline</div>' +
+      '</div>'
+  } else if (result) {
+    content =
+      '<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:12px;color:var(--ink3)">Dinner at</span>' +
+        '<input id="gp-dinner-time" value="' + esc(dinnerTime) + '" style="width:90px;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
+        '<button class="add-btn" id="gp-regenerate" style="font-size:12px;padding:5px 12px">Regenerate</button>' +
+      '</div>' +
+      '<div style="position:relative;padding-left:18px">' +
+        // vertical line
+        '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--forest2);opacity:0.3;border-radius:2px"></div>' +
+        result.map((item, i) => {
+          const isLast = i === result.length - 1
+          return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
+            // dot
+            '<div style="position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--forest)' : 'var(--forest2)') + ';border:2px solid white;box-shadow:0 0 0 1.5px var(--forest2)"></div>' +
+            '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--forest);padding-top:2px">' + esc(item.time) + '</div>' +
+            '<div style="font-size:13px;color:var(--ink);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + esc(item.step) + '</div>' +
+          '</div>'
+        }).join('') +
+      '</div>'
+  } else {
+    // Initial state — dinner time picker
+    content =
+      '<div style="font-size:13px;color:var(--ink3);margin-bottom:16px">Set your dinner time and I\'ll build a step-by-step cooking timeline for everything planned today.</div>' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
+        '<span style="font-size:13px;font-weight:600">Dinner at:</span>' +
+        '<input id="gp-dinner-time" value="' + esc(dinnerTime) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
+      '</div>' +
+      '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate My Game Plan</button>'
+  }
+
+  return '<div class="modal-bg" id="game-plan-bg">' +
+    '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
+      '<div class="modal-title">Today\'s Game Plan</div>' +
+      (result ? '' : '<div class="modal-sub">' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '</div>') +
+      content +
+      '<div class="modal-btns" style="margin-top:16px">' +
+        '<button class="modal-cancel" id="gp-close">Close</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
+}
 
 function renderScanPicker() {
   return '<div class="modal-bg" id="scan-picker-bg">' +
@@ -3467,6 +3512,44 @@ async function estimateCaloriesAI(description) {
     })
   })
 
+
+  // ── GAME PLAN HANDLERS ──
+  document.getElementById('game-plan-btn')?.addEventListener('click', () => {
+    state.gamePlanModal = { dinnerTime: localStorage.getItem('mep_dinner_time') || '7:00 PM' }
+    state.gamePlanResult = null
+    state.gamePlanLoading = false
+    render()
+  })
+  document.getElementById('gp-close')?.addEventListener('click', () => {
+    state.gamePlanModal = false; state.gamePlanResult = null; render()
+  })
+  document.getElementById('game-plan-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; state.gamePlanResult = null; render() }
+  })
+  document.getElementById('gp-generate')?.addEventListener('click', async () => {
+    const dinnerTime = document.getElementById('gp-dinner-time')?.value?.trim() || '7:00 PM'
+    localStorage.setItem('mep_dinner_time', dinnerTime)
+    state.gamePlanModal = { dinnerTime }
+    state.gamePlanLoading = true
+    state.gamePlanResult = null
+    render()
+    const result = await generateGamePlan(dinnerTime)
+    state.gamePlanLoading = false
+    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — try again.' }]
+    render()
+  })
+  document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
+    const dinnerTime = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.dinnerTime || '7:00 PM'
+    localStorage.setItem('mep_dinner_time', dinnerTime)
+    state.gamePlanModal = { dinnerTime }
+    state.gamePlanLoading = true
+    state.gamePlanResult = null
+    render()
+    const result = await generateGamePlan(dinnerTime)
+    state.gamePlanLoading = false
+    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — try again.' }]
+    render()
+  })
 
   // ── CHAT HANDLERS ──
   document.getElementById('chat-send')?.addEventListener('click', () => {
