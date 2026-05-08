@@ -1011,7 +1011,10 @@ function renderShop() {
     // Checked / crossed-off items
     (done.length > 0 ?
       '<div style="margin-top:14px;border-top:1px solid var(--cream3);padding-top:10px">' +
-        '<div style="font-size:10px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">In cart (' + done.length + ')</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<div style="font-size:10px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">In cart (' + done.length + ')</div>' +
+          '<button class="clear-pantry-btn" id="shop-clear-cart" style="font-size:10px;padding:3px 8px">Remove all</button>' +
+        '</div>' +
         renderShopItems(done) +
       '</div>'
     : '') +
@@ -1607,6 +1610,85 @@ function renderCalendar() {
     }
   }
 
+  // ── TODAY'S GAME PLAN (current week only, today has meals planned) ──
+  if (state.weekOffset === 0) {
+    const today = new Date().toISOString().slice(0,10)
+    const todayMeals = state.mealPlan.filter(e => e.date === today)
+    if (todayMeals.length > 0) {
+      // Slot target eat times
+      const eatTimes = { Breakfast: '8:00 AM', Lunch: '12:30 PM', Dinner: '7:00 PM', Snack: '3:30 PM' }
+      const eatMinutes = { Breakfast: 8*60, Lunch: 12*60+30, Dinner: 19*60, Snack: 15*60+30 }
+
+      // Build meal rows with prep time info
+      const mealRows = MEAL_SLOTS.map(slot => {
+        const entries = todayMeals.filter(e => e.meal_slot === slot)
+        if (!entries.length) return null
+        return entries.map(entry => {
+          const recipe = entry.recipe_id ? state.recipes.find(r => String(r.id) === String(entry.recipe_id)) : null
+          const pt = recipe?.prepTime
+          const totalMin = pt ? (pt.active_min + (pt.passive_min || 0)) : null
+          const startMin = totalMin ? eatMinutes[slot] - totalMin : null
+          const formatMin = m => {
+            const h = Math.floor(((m % 1440) + 1440) % 1440 / 60)
+            const min = ((m % 1440) + 1440) % 1440 % 60
+            const ampm = h >= 12 ? 'PM' : 'AM'
+            const h12 = h % 12 || 12
+            return h12 + ':' + String(min).padStart(2, '0') + ' ' + ampm
+          }
+          return { slot, entry, recipe, pt, totalMin, startMin, formatMin }
+        })
+      }).flat().filter(Boolean)
+
+      if (mealRows.length > 0) {
+        html += '<div style="background:var(--sage4);border:1.5px solid var(--forest2);border-radius:14px;padding:14px;margin-bottom:14px">'
+        html += '<div style="font-size:11px;color:var(--forest);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📋 Today\'s Game Plan</div>'
+
+        mealRows.forEach(({ slot, entry, recipe, pt, totalMin, startMin, formatMin }) => {
+          html += '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(0,0,0,0.06)">'
+
+          // Time column
+          html += '<div style="min-width:60px;text-align:right">'
+          if (startMin !== null) {
+            html += '<div style="font-size:12px;font-weight:700;color:var(--forest)">' + formatMin(startMin) + '</div>'
+            html += '<div style="font-size:10px;color:var(--ink3)">start</div>'
+          } else {
+            html += '<div style="font-size:12px;font-weight:700;color:var(--ink3)">' + eatTimes[slot] + '</div>'
+          }
+          html += '</div>'
+
+          // Content column
+          html += '<div style="flex:1">'
+          html += '<div style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">' + slot + '</div>'
+          html += '<div style="font-size:13px;font-weight:700;color:var(--ink)">' + esc(entry.recipe_name) + '</div>'
+
+          if (pt) {
+            html += '<div style="font-size:11px;color:var(--ink3);margin-top:2px">'
+            html += '⏱ ' + pt.active_min + ' min active'
+            if (pt.passive_min > 0) html += ' + ' + pt.passive_min + ' min passive'
+            html += ' · ' + (pt.difficulty || '')
+            html += '</div>'
+            if (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None') {
+              html += '<div style="font-size:11px;color:var(--forest2);margin-top:2px">🗓 Make-ahead: ' + esc(pt.make_ahead) + '</div>'
+            }
+            if (pt.multitask) {
+              html += '<div style="font-size:11px;color:var(--ink3);margin-top:2px">⚡ ' + esc(pt.multitask) + '</div>'
+            }
+          } else if (recipe) {
+            html += '<div style="font-size:11px;color:var(--ink4);margin-top:2px">No prep time estimated yet</div>'
+          }
+          html += '</div>'
+          html += '</div>'
+        })
+
+        // Remove last border
+        html = html.replace(/border-bottom:1px solid rgba\(0,0,0,0\.06\)">\s*<\/div>\s*<\/div>\s*<div style="font-size:11px;color:var\(--forest\);font-weight:700/, (m) => m)
+
+        html += '<div style="font-size:10px;color:var(--ink4);margin-top:4px;font-style:italic">Times based on prep estimates. Tap a recipe name to see full details.</div>'
+        html += '</div>'
+      }
+    }
+  }
+
   // Day cards
   dates.forEach((date, idx) => {
     const today = isDateToday(date)
@@ -1812,6 +1894,25 @@ function renderTags() {
   '</div>'
 }
 
+// Replace recipe names in AI text with tappable links
+function linkifyRecipes(text) {
+  // Sort recipes longest-name-first so "Lemon Herb Chicken Soup" matches before "Lemon Herb Chicken"
+  const sorted = [...state.recipes].sort((a, b) => b.name.length - a.name.length)
+  // Escape the text first, then inject spans (safe — we're working on already-escaped HTML)
+  let html = esc(text)
+  sorted.forEach(r => {
+    const escapedName = esc(r.name)
+    // Only match whole-word-ish boundaries (not mid-word)
+    const re = new RegExp('(?<![\\w-])' + escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'g')
+    html = html.replace(re,
+      '<button class="chat-recipe-link" data-go-recipe="' + r.id + '" style="background:none;border:none;padding:0;color:var(--forest);font-weight:700;text-decoration:underline dotted;cursor:pointer;font-family:inherit;font-size:inherit">' + escapedName + '</button>'
+    )
+  })
+  // Convert newlines to <br> for display
+  html = html.replace(/\n/g, '<br>')
+  return html
+}
+
 function renderChat() {
   const messages = state.chatMessages
   const ctx = state.chatRecipeContext
@@ -1824,7 +1925,7 @@ function renderChat() {
       '</div></div>'
     : messages.map(m =>
         '<div class="chat-msg chat-msg-' + m.role + '">' +
-          '<div class="chat-bubble">' + esc(m.content) + '</div>' +
+          '<div class="chat-bubble">' + (m.role === 'assistant' ? linkifyRecipes(m.content) : esc(m.content)) + '</div>' +
         '</div>'
       ).join('')
 
@@ -1936,11 +2037,11 @@ function renderPasteModal() {
   const recipeTags = getTagsForNamespace('recipe')
   const tagSection = recipeTags.length > 0 ?
     '<div class="clip-field-label">Tags</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">' +
       recipeTags.map(t =>
-        '<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:4px 8px">' +
-        '<input type="checkbox" class="paste-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
-        esc(t.name) + '</label>'
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:8px 10px;min-width:0">' +
+        '<input type="checkbox" class="paste-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest);flex-shrink:0;width:16px;height:16px" />' +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.name) + '</span></label>'
       ).join('') +
     '</div>'
   : ''
@@ -2444,6 +2545,14 @@ function bindEvents() {
 
   // Clear only checked items
   document.getElementById('shop-clear-checked')?.addEventListener('click', async () => {
+    const checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
+    state.shopList = state.shopList.filter(i => !i.have)
+    for (const id of checkedIds) await db.deleteShopItem(id)
+    render()
+  })
+
+  // Remove all items in cart (same as clear checked)
+  document.getElementById('shop-clear-cart')?.addEventListener('click', async () => {
     const checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
     state.shopList = state.shopList.filter(i => !i.have)
     for (const id of checkedIds) await db.deleteShopItem(id)
@@ -3381,6 +3490,20 @@ async function estimateCaloriesAI(description) {
   document.getElementById('chat-clear')?.addEventListener('click', () => {
     state.chatMessages = []
     render()
+  })
+
+  // Tappable recipe links inside AI chat bubbles
+  document.querySelectorAll('.chat-recipe-link[data-go-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.tab = 'recipes'
+      state.expandedRecipe = String(el.dataset.goRecipe)
+      localStorage.setItem('mep_tab', 'recipes')
+      render()
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    })
   })
 }
 
