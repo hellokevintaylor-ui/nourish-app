@@ -2508,6 +2508,26 @@ function bindEvents() {
     })
   })
 
+  document.querySelectorAll('[data-shop]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const r = state.recipes.find(x => x.id === el.dataset.shop)
+      if (!r) return
+      const ingLines = (r.ingredients || r.text || '').split('\n')
+        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
+      const items = ingLines.map(raw => {
+        const name = parseIngredientLine(raw)
+        const stripped = stripMeasurements(raw)
+        const match = state.pantry.find(p => {
+          const pl = p.name.toLowerCase()
+          return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
+        })
+        return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
+      })
+      state.shopReview = { recipeId: r.id, recipeName: r.name, items }; render()
+    })
+  })
+
   document.querySelectorAll('[data-del]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
