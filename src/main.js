@@ -1031,6 +1031,7 @@ function renderRecipeCard(r) {
       '<button class="ra-btn ra-shop" data-shop="' + r.id + '">Add to list</button>' +
       '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">Log meal</button>' +
       '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
+      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '">📋 Plan</button>' +
       '<button class="ra-btn ra-ask" data-ask="' + r.id + '">Ask AI</button>' +
       '<button class="ra-btn ra-del" data-del="' + r.id + '">Del</button>' +
     '</div>' +
@@ -2177,7 +2178,20 @@ End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
     const data = await resp.json()
     const text = data.content?.[0]?.text?.trim() || ''
     const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
-    return JSON.parse(clean)
+    const parsed = JSON.parse(clean)
+    // Sort chronologically (earliest first) — AI calculates backwards but we display forwards
+    parsed.sort((a, b) => {
+      const toMins = t => {
+        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+        if (!m) return 0
+        let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
+        if (ampm === 'PM' && h !== 12) h += 12
+        if (ampm === 'AM' && h === 12) h = 0
+        return h * 60 + min
+      }
+      return toMins(a.time) - toMins(b.time)
+    })
+    return parsed
   } catch(e) {
     console.error('Game plan error:', e)
     return null
@@ -2214,7 +2228,7 @@ function renderGamePlanModal() {
           return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
             '<div style="position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--forest)' : 'var(--forest2)') + ';border:2px solid white;box-shadow:0 0 0 1.5px var(--forest2)"></div>' +
             '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--forest);padding-top:2px">' + esc(item.time) + '</div>' +
-            '<div style="font-size:13px;color:var(--ink);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + esc(item.step) + '</div>' +
+            '<div style="font-size:13px;color:var(--ink);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
           '</div>'
         }).join('') +
       '</div>'
@@ -2755,6 +2769,27 @@ function bindEvents() {
         return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
       })
       state.shopReview = { recipeId: r.id, recipeName: r.name, items }; render()
+    })
+  })
+
+  document.querySelectorAll('[data-plan-recipe]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.planRecipe
+      const today = new Date().toISOString().slice(0, 10)
+      // Find which slot this recipe is planned in today (if any)
+      const plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))
+      const slot = plannedEntry?.meal_slot || 'Dinner'
+      const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+      const lastPlan = state._lastGamePlan
+      const isSame = lastPlan && lastPlan.slot === slot && lastPlan.date === today
+      if (!isSame) {
+        state.gamePlanResult = null
+        state.gamePlanLoading = false
+        state._lastGamePlan = { slot, date: today }
+      }
+      state.gamePlanModal = { slot, targetTime: (isSame && lastPlan?.targetTime) || defaultTime, date: today, recipeId: rid }
+      render()
     })
   })
 
