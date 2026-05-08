@@ -1905,22 +1905,31 @@ async function generateGamePlan(slot, targetTime) {
     (m.instructions ? 'Instructions:\n' + m.instructions : '')
   ).join('\n\n')
 
-  const prompt = `You are a cooking timeline planner. The user wants to eat ${slot} at ${targetTime} today.
+  const prompt = `You are a practical cooking timeline planner. The user wants to eat ${slot} at ${targetTime} today.
 
 Here is what they are making:
 
 ${mealText}
 
-Create a detailed step-by-step cooking timeline working BACKWARDS from ${targetTime}. Be specific — not "start cooking" but "mince the garlic", "heat oil in pan", "put water on to boil". Factor in passive time (oven, simmering) so the cook can multitask efficiently.
+Create a cooking timeline working BACKWARDS from ${targetTime}. 
+
+CRITICAL RULES:
+- Group related prep steps into ONE entry. "Drain, rinse, and dry chickpeas" is ONE step at ONE time — not three separate entries.
+- A new timestamp only appears when the cook needs to START something new or CHECK on something. Not for every sub-task within a single prep.
+- Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min. Never say 5 min for oven preheat.
+- Passive time (oven, simmering, marinating) should be used for active prep of other components — call that out explicitly.
+- Aim for 6-10 steps total. If a recipe has 20 instruction lines, they collapse into a handful of meaningful moments.
+- Be conversational and direct. "Prep the chickpeas — drain, rinse, pat dry" not a bullet list of sub-steps.
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
 [
-  {"time": "6:15 PM", "step": "Take chicken out of fridge to come to room temp"},
-  {"time": "6:20 PM", "step": "Mince garlic and shallots"},
+  {"time": "6:00 PM", "step": "Preheat oven to 425°F — takes about 20 min"},
+  {"time": "6:05 PM", "step": "Prep the chickpeas — drain, rinse, pat dry with a towel"},
+  {"time": "6:15 PM", "step": "Toss chickpeas with oil and spices, spread on baking sheet"},
   ...
 ]
 
-Times must be specific (e.g. "6:15 PM"). Steps must be concrete and actionable. End with "${slot} is served 🍽️" at ${targetTime}.`
+End with "${slot} is served 🍽️" at ${targetTime}.`
 
   try {
     const resp = await fetch('/api/chat', {
