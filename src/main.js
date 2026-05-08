@@ -1625,15 +1625,8 @@ function renderCalendar() {
 
     MEAL_SLOTS.forEach(slot => {
       const entries = getMealPlanEntries(date, slot)
-      const showGamePlan = today && (slot === 'Lunch' || slot === 'Dinner') && entries.length > 0
       html += '<div class="cal-slot">'
-      html += '<div class="cal-slot-label" style="display:flex;align-items:center;justify-content:space-between">'
-      html += '<span>' + slot + '</span>'
-      if (showGamePlan) {
-        const defaultTime = slot === 'Lunch' ? '12:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
-        html += '<button class="cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-time="' + esc(defaultTime) + '" style="font-size:10px;padding:2px 7px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan</button>'
-      }
-      html += '</div>'
+      html += '<div class="cal-slot-label">' + slot + '</div>'
 
       entries.forEach(entry => {
         html += '<div class="cal-entry">'
@@ -1643,6 +1636,10 @@ function renderCalendar() {
         html += '<div class="cal-entry-actions">'
         html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
         if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--sage4);color:var(--forest)">+ List</button>'
+        if (entry.recipe_id) {
+          const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+          html += '<button class="cal-entry-log cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-date="' + date + '" data-game-plan-rid="' + entry.recipe_id + '" data-game-plan-time="' + esc(defaultTime) + '" style="background:var(--forest);color:white">📋 Plan</button>'
+        }
         html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">&times;</button>'
         html += '</div>'
         html += '</div>'
@@ -1883,27 +1880,16 @@ function renderChat() {
 }
 
 
-async function generateGamePlan(slot, targetTime) {
-  const today = new Date().toISOString().slice(0,10)
-  const slotMeals = state.mealPlan.filter(e => e.date === today && e.meal_slot === slot)
+async function generateGamePlan(slot, targetTime, date, recipeId) {
+  // Find the specific entry
+  const entry = state.mealPlan.find(e => e.date === date && e.meal_slot === slot && String(e.recipe_id) === String(recipeId))
+  const recipe = recipeId ? state.recipes.find(r => String(r.id) === String(recipeId)) : null
+  const pt = recipe?.prepTime
 
-  const mealDetails = slotMeals.map(entry => {
-    const recipe = entry.recipe_id ? state.recipes.find(r => String(r.id) === String(entry.recipe_id)) : null
-    const pt = recipe?.prepTime
-    return {
-      name: entry.recipe_name,
-      ingredients: recipe?.ingredients || '',
-      instructions: recipe?.instructions || '',
-      prepTime: pt ? JSON.stringify(pt) : null
-    }
-  })
-
-  const mealText = mealDetails.map(m =>
-    '=== ' + m.name + ' ===\n' +
-    (m.prepTime ? 'Prep data: ' + m.prepTime + '\n' : '') +
-    (m.ingredients ? 'Ingredients:\n' + m.ingredients + '\n' : '') +
-    (m.instructions ? 'Instructions:\n' + m.instructions : '')
-  ).join('\n\n')
+  const mealText = '=== ' + (entry?.recipe_name || recipe?.name || 'Recipe') + ' ===\n' +
+    (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
+    (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
+    (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
 
   const prompt = `You are a practical cooking timeline planner. The user wants to eat ${slot} at ${targetTime} today.
 
@@ -3528,7 +3514,9 @@ async function estimateCaloriesAI(description) {
       e.stopPropagation()
       const slot = el.dataset.gamePlanSlot
       const targetTime = el.dataset.gamePlanTime
-      state.gamePlanModal = { slot, targetTime }
+      const date = el.dataset.gamePlanDate
+      const recipeId = el.dataset.gamePlanRid
+      state.gamePlanModal = { slot, targetTime, date, recipeId }
       state.gamePlanResult = null
       state.gamePlanLoading = false
       render()
@@ -3542,26 +3530,26 @@ async function estimateCaloriesAI(description) {
   })
   document.getElementById('gp-generate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
-    const slot = state.gamePlanModal?.slot || 'Dinner'
+    const { slot, date, recipeId } = state.gamePlanModal
     if (slot === 'Dinner') localStorage.setItem('mep_dinner_time', timeVal)
-    state.gamePlanModal = { slot, targetTime: timeVal }
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal)
+    const result = await generateGamePlan(slot, timeVal, date, recipeId)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     render()
   })
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
-    const slot = state.gamePlanModal?.slot || 'Dinner'
+    const { slot, date, recipeId } = state.gamePlanModal
     if (slot === 'Dinner') localStorage.setItem('mep_dinner_time', timeVal)
-    state.gamePlanModal = { slot, targetTime: timeVal }
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal)
+    const result = await generateGamePlan(slot, timeVal, date, recipeId)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     render()
