@@ -3560,14 +3560,20 @@ async function estimateCaloriesAI(description) {
 
     const slotLabel = slot === 'Day' ? 'whole day' : slot
     const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
-    const message = 'Here\'s my current ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nI\'d like to tweak this. Can you help me adjust it?'
+
+    // Pre-load into chat as an assistant message so the AI has context
+    // but doesn't auto-respond — user drives from here
+    state.chatMessages = [{
+      role: 'assistant',
+      content: 'Here\'s your ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+    }]
 
     state.gamePlanModal = false
     state.gamePlanResult = null
     state.tab = 'chat'
     localStorage.setItem('mep_tab', 'chat')
     render()
-    sendChatMessage(message)
+    setTimeout(() => document.getElementById('chat-input')?.focus(), 100)
   })
   document.getElementById('gp-close')?.addEventListener('click', () => {
     state.gamePlanModal = false; state.gamePlanResult = null; render()
