@@ -455,19 +455,38 @@ let globalWakeLock = null
 let audioCtx = null // shared AudioContext, unlocked on first user tap
 
 function unlockAudio() {
-  // Must be called from a user gesture (tap) to satisfy iOS
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)()
   }
-  // Play a silent buffer to unlock the context on iOS
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume()
-  }
+  if (audioCtx.state === 'suspended') audioCtx.resume()
+  // Play a silent buffer to unlock on iOS
   const buf = audioCtx.createBuffer(1, 1, 22050)
   const src = audioCtx.createBufferSource()
   src.buffer = buf
   src.connect(audioCtx.destination)
   src.start(0)
+}
+
+// Keep AudioContext alive on iOS by playing a silent buffer every 5s while timers run
+let keepAliveInterval = null
+
+function startAudioKeepAlive() {
+  if (keepAliveInterval) return
+  keepAliveInterval = setInterval(() => {
+    if (!audioCtx) return
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+    try {
+      const buf = audioCtx.createBuffer(1, 1, 22050)
+      const src = audioCtx.createBufferSource()
+      src.buffer = buf
+      src.connect(audioCtx.destination)
+      src.start(0)
+    } catch(e) {}
+  }, 5000)
+}
+
+function stopAudioKeepAlive() {
+  if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null }
 }
 
 function timerBeep(repeat = false) {
@@ -518,7 +537,6 @@ async function startTimer(seconds, label) {
       clearInterval(timer.interval)
       timer.interval = null
       timerBeep()
-      // Keep beeping every 4 seconds until dismissed
       timer.beepInterval = setInterval(() => timerBeep(), 1500)
       releaseWakeLockIfDone()
     }
@@ -527,6 +545,7 @@ async function startTimer(seconds, label) {
 
   timers.push(timer)
   await requestWakeLock()
+  startAudioKeepAlive()
   renderTimerBar()
 }
 
@@ -538,6 +557,7 @@ function stopTimer(id) {
   if (timer.beepInterval) clearInterval(timer.beepInterval)
   timers.splice(idx, 1)
   releaseWakeLockIfDone()
+  if (timers.length === 0) stopAudioKeepAlive()
   renderTimerBar()
 }
 
@@ -3759,9 +3779,15 @@ async function estimateCaloriesAI(description) {
       const targetTime = el.dataset.gamePlanTime
       const date = el.dataset.gamePlanDate
       const recipeId = el.dataset.gamePlanRid
-      state.gamePlanModal = { slot, targetTime, date, recipeId }
-      state.gamePlanResult = null
-      state.gamePlanLoading = false
+      // If same slot/date already has a result, reopen it
+      const isSame = state.gamePlanModal &&
+        state.gamePlanModal.slot === slot &&
+        state.gamePlanModal.date === date
+      state.gamePlanModal = { slot, targetTime: state.gamePlanModal?.targetTime || targetTime, date, recipeId }
+      if (!isSame) {
+        state.gamePlanResult = null
+        state.gamePlanLoading = false
+      }
       render()
     })
   })
@@ -3788,10 +3814,12 @@ async function estimateCaloriesAI(description) {
     setTimeout(() => document.getElementById('chat-input')?.focus(), 100)
   })
   document.getElementById('gp-close')?.addEventListener('click', () => {
-    state.gamePlanModal = false; state.gamePlanResult = null; render()
+    state.gamePlanModal = { ...state.gamePlanModal, _open: false }
+    state.gamePlanModal = false
+    render()
   })
   document.getElementById('game-plan-bg')?.addEventListener('click', e => {
-    if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; state.gamePlanResult = null; render() }
+    if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; render() }
   })
   document.getElementById('gp-generate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
