@@ -2014,7 +2014,8 @@ function renderGamePlanModal() {
       '<div class="modal-title">📋 ' + slotLabel + ' Game Plan</div>' +
       '<div class="modal-sub">' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '</div>' +
       content +
-      '<div class="modal-btns" style="margin-top:16px">' +
+      '<div class="modal-btns" style="margin-top:16px;flex-direction:column;gap:8px">' +
+        (result ? '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%">✦ Tweak with AI</button>' : '') +
         '<button class="modal-cancel" id="gp-close">Close</button>' +
       '</div>' +
     '</div>' +
@@ -3551,6 +3552,22 @@ async function estimateCaloriesAI(description) {
       state.gamePlanLoading = false
       render()
     })
+  })
+  document.getElementById('gp-tweak')?.addEventListener('click', () => {
+    const { slot, targetTime } = state.gamePlanModal || {}
+    const result = state.gamePlanResult
+    if (!result) return
+
+    const slotLabel = slot === 'Day' ? 'whole day' : slot
+    const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
+    const message = 'Here\'s my current ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nI\'d like to tweak this. Can you help me adjust it?'
+
+    state.gamePlanModal = false
+    state.gamePlanResult = null
+    state.tab = 'chat'
+    localStorage.setItem('mep_tab', 'chat')
+    render()
+    sendChatMessage(message)
   })
   document.getElementById('gp-close')?.addEventListener('click', () => {
     state.gamePlanModal = false; state.gamePlanResult = null; render()
