@@ -452,24 +452,42 @@ function formatText(text) {
 const timers = [] // array of { id, label, totalSeconds, remaining, interval }
 let timerIdCounter = 0
 let globalWakeLock = null
+let audioCtx = null // shared AudioContext, unlocked on first user tap
+
+function unlockAudio() {
+  // Must be called from a user gesture (tap) to satisfy iOS
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  }
+  // Play a silent buffer to unlock the context on iOS
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume()
+  }
+  const buf = audioCtx.createBuffer(1, 1, 22050)
+  const src = audioCtx.createBufferSource()
+  src.buffer = buf
+  src.connect(audioCtx.destination)
+  src.start(0)
+}
 
 function timerBeep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    if (audioCtx.state === 'suspended') audioCtx.resume()
     const beepCount = 3
     for (let i = 0; i < beepCount; i++) {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
+      const osc = audioCtx.createOscillator()
+      const gain = audioCtx.createGain()
       osc.connect(gain)
-      gain.connect(ctx.destination)
+      gain.connect(audioCtx.destination)
       osc.frequency.value = 880
       osc.type = 'sine'
-      gain.gain.setValueAtTime(0.6, ctx.currentTime + i * 0.35)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.35 + 0.3)
-      osc.start(ctx.currentTime + i * 0.35)
-      osc.stop(ctx.currentTime + i * 0.35 + 0.3)
+      gain.gain.setValueAtTime(0.6, audioCtx.currentTime + i * 0.35)
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + i * 0.35 + 0.3)
+      osc.start(audioCtx.currentTime + i * 0.35)
+      osc.stop(audioCtx.currentTime + i * 0.35 + 0.3)
     }
-  } catch(e) {}
+  } catch(e) { console.error('beep error', e) }
 }
 
 async function requestWakeLock() {
@@ -2346,6 +2364,7 @@ function bindEvents() {
   document.querySelectorAll('.timer-link[data-timer-seconds]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
+      unlockAudio() // unlock audio context on this user gesture so beep works on iOS
       const seconds = parseInt(el.dataset.timerSeconds)
       const label = el.dataset.timerLabel
       startTimer(seconds, label)
