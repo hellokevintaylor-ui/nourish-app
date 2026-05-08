@@ -449,14 +449,9 @@ function formatText(text) {
 
 // ── TIMER SYSTEM ─────────────────────────────────────────────────────────────
 
-const timerState = {
-  active: false,
-  label: '',
-  totalSeconds: 0,
-  remaining: 0,
-  interval: null,
-  wakeLock: null,
-}
+const timers = [] // array of { id, label, totalSeconds, remaining, interval }
+let timerIdCounter = 0
+let globalWakeLock = null
 
 function timerBeep() {
   try {
@@ -477,81 +472,88 @@ function timerBeep() {
   } catch(e) {}
 }
 
-async function startTimer(seconds, label) {
-  // Stop any existing timer
-  if (timerState.interval) clearInterval(timerState.interval)
-
-  timerState.active = true
-  timerState.label = label
-  timerState.totalSeconds = seconds
-  timerState.remaining = seconds
-
-  // Request wake lock to keep screen on
+async function requestWakeLock() {
+  if (globalWakeLock) return
   try {
-    if (navigator.wakeLock) {
-      timerState.wakeLock = await navigator.wakeLock.request('screen')
-    }
+    if (navigator.wakeLock) globalWakeLock = await navigator.wakeLock.request('screen')
   } catch(e) {}
+}
 
-  timerState.interval = setInterval(() => {
-    timerState.remaining--
-    if (timerState.remaining <= 0) {
-      timerState.remaining = 0
-      clearInterval(timerState.interval)
-      timerState.interval = null
+function releaseWakeLockIfDone() {
+  if (timers.every(t => t.remaining <= 0)) {
+    if (globalWakeLock) { globalWakeLock.release(); globalWakeLock = null }
+  }
+}
+
+async function startTimer(seconds, label) {
+  const id = ++timerIdCounter
+  const timer = { id, label, totalSeconds: seconds, remaining: seconds, interval: null }
+
+  timer.interval = setInterval(() => {
+    timer.remaining--
+    if (timer.remaining <= 0) {
+      timer.remaining = 0
+      clearInterval(timer.interval)
+      timer.interval = null
       timerBeep()
-      // Release wake lock when done
-      if (timerState.wakeLock) { timerState.wakeLock.release(); timerState.wakeLock = null }
+      releaseWakeLockIfDone()
     }
     renderTimerBar()
   }, 1000)
 
+  timers.push(timer)
+  await requestWakeLock()
   renderTimerBar()
 }
 
-function stopTimer() {
-  if (timerState.interval) clearInterval(timerState.interval)
-  if (timerState.wakeLock) { timerState.wakeLock.release(); timerState.wakeLock = null }
-  timerState.active = false
-  timerState.interval = null
-  timerState.remaining = 0
+function stopTimer(id) {
+  const idx = timers.findIndex(t => t.id === id)
+  if (idx === -1) return
+  const timer = timers[idx]
+  if (timer.interval) clearInterval(timer.interval)
+  timers.splice(idx, 1)
+  releaseWakeLockIfDone()
   renderTimerBar()
 }
 
 function renderTimerBar() {
-  let bar = document.getElementById('timer-bar')
-  if (!timerState.active && timerState.remaining === 0 && !timerState.interval) {
-    if (bar) bar.remove()
-    return
-  }
-  const mins = Math.floor(timerState.remaining / 60)
-  const secs = timerState.remaining % 60
-  const timeStr = mins + ':' + String(secs).padStart(2, '0')
-  const pct = timerState.totalSeconds > 0 ? (timerState.remaining / timerState.totalSeconds) * 100 : 0
-  const isDone = timerState.remaining === 0
-  const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--forest)'
+  // Remove any existing bar
+  document.getElementById('timer-bar')?.remove()
+  if (timers.length === 0) return
 
-  const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid ' + barColor + ';border-radius:14px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:180px;font-family:inherit">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-      '<div style="font-size:11px;font-weight:600;color:var(--ink3);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timerState.label) + '</div>' +
-      '<button id="timer-stop" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--ink3);padding:0;line-height:1">×</button>' +
-    '</div>' +
-    '<div style="display:flex;align-items:center;gap:10px">' +
-      '<div style="font-size:24px;font-weight:800;color:' + barColor + ';font-variant-numeric:tabular-nums">' + (isDone ? 'Done! 🍳' : timeStr) + '</div>' +
-    '</div>' +
-    '<div style="height:4px;background:var(--cream3);border-radius:2px;margin-top:8px">' +
-      '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width 1s linear"></div>' +
-    '</div>' +
+  const rows = timers.map(timer => {
+    const mins = Math.floor(timer.remaining / 60)
+    const secs = timer.remaining % 60
+    const timeStr = mins + ':' + String(secs).padStart(2, '0')
+    const pct = timer.totalSeconds > 0 ? (timer.remaining / timer.totalSeconds) * 100 : 0
+    const isDone = timer.remaining === 0
+    const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--forest)'
+
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+        '<div style="font-size:11px;font-weight:600;color:var(--ink3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timer.label) + '</div>' +
+        '<button class="timer-stop-btn" data-timer-id="' + timer.id + '" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<div style="font-size:22px;font-weight:800;color:' + barColor + ';font-variant-numeric:tabular-nums;min-width:55px">' + (isDone ? '✓ Done!' : timeStr) + '</div>' +
+        '<div style="flex:1;height:4px;background:var(--cream3);border-radius:2px">' +
+          '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width 1s linear"></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  }).join('')
+
+  const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:4px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:200px;max-width:240px;font-family:inherit">' +
+    '<div style="font-size:10px;font-weight:700;color:var(--forest);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px">⏱ Timers</div>' +
+    rows +
   '</div>'
 
-  if (bar) {
-    bar.outerHTML = html
-  } else {
-    document.body.insertAdjacentHTML('beforeend', html)
-  }
+  document.body.insertAdjacentHTML('beforeend', html)
 
-  // Re-attach stop button handler
-  document.getElementById('timer-stop')?.addEventListener('click', stopTimer)
+  // Attach stop handlers
+  document.querySelectorAll('.timer-stop-btn').forEach(btn => {
+    btn.addEventListener('click', () => stopTimer(parseInt(btn.dataset.timerId)))
+  })
 }
 
 // Parse a time string like "9 min", "12 minutes", "9-12 min", "5 to 10 min", "1 hour 30 min" into seconds
@@ -759,8 +761,8 @@ function render() {
   `
   bindEvents()
 
-  // Re-render timer bar if active (survives render cycles)
-  if (timerState.active || timerState.remaining > 0) renderTimerBar()
+  // Re-render timer bar if any timers active (survives render cycles)
+  if (timers.length > 0) renderTimerBar()
 
   // Scroll-to-top — body is the scroll container
   const scrollTopBtn = document.getElementById('scroll-top-btn')
