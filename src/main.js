@@ -554,11 +554,14 @@ function renderTimerBar() {
   document.getElementById('timer-stop')?.addEventListener('click', stopTimer)
 }
 
-// Parse a time string like "9 min", "12 minutes", "9-12 min", "1 hour 30 min" into seconds
+// Parse a time string like "9 min", "12 minutes", "9-12 min", "5 to 10 min", "1 hour 30 min" into seconds
 // Returns { seconds, label } or null
 function parseTimerDuration(text) {
   text = text.toLowerCase().trim()
-  // Range like "9-12 min" — use lower bound
+  // Range with "to" like "5 to 10 min" or "5 to 10 minutes" — use lower bound
+  const toRangeMatch = text.match(/(\d+)\s+to\s+(\d+)\s*(?:min|minute|minutes|mins)/)
+  if (toRangeMatch) return { seconds: parseInt(toRangeMatch[1]) * 60, label: text }
+  // Range with dash like "9-12 min" — use lower bound
   const rangeMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:min|minute|minutes|mins)/)
   if (rangeMatch) return { seconds: parseInt(rangeMatch[1]) * 60, label: text }
   // Hours + minutes like "1 hour 30 min"
@@ -579,8 +582,8 @@ function parseTimerDuration(text) {
 
 // Linkify time references in HTML text — wraps them in tappable timer buttons
 function linkifyTimers(html) {
-  // Match patterns like "9 min", "12 minutes", "9-12 min", "1 hour", "35-40 minutes"
-  return html.replace(/(\d+\s*[-–]?\s*\d*\s*(?:hour|hr|h|min|minute|minutes|mins|sec|second|seconds|secs)(?:\s+\d+\s*(?:min|minute|minutes|mins))?)/gi, (match) => {
+  // Match "X to Y min/minutes" first (before plain "Y min" can grab the higher number alone)
+  return html.replace(/(\d+\s+to\s+\d+\s*(?:min|minute|minutes|mins|hour|hr|sec|second|seconds|secs)|\d+\s*[-–]\s*\d*\s*(?:hour|hr|h|min|minute|minutes|mins|sec|second|seconds|secs)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:hour|hr|h)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:min|minute|minutes|mins|sec|second|seconds|secs))/gi, (match) => {
     const parsed = parseTimerDuration(match)
     if (!parsed) return match
     return '<button class="timer-link" data-timer-seconds="' + parsed.seconds + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
