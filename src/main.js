@@ -452,66 +452,83 @@ function formatText(text) {
 const timers = [] // array of { id, label, totalSeconds, remaining, interval }
 let timerIdCounter = 0
 let globalWakeLock = null
-let audioCtx = null // shared AudioContext, unlocked on first user tap
+
+// ── AUDIO BEEP VIA HTML AUDIO ELEMENT (more reliable on iOS) ─────────────────
+// Short beep encoded as a base64 WAV data URI
+const BEEP_WAV = 'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU' +
+  'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAB4AHgAeAB4AHgA' +
+  'eAB4AHgAeAB4AHgAeAB4AHgAeAB4AHgAeAB4AHgAeAB4AHgAeAB4AHgAeAB4AHgAeAB4AHgAeAB4AHgAeAB4AA=='
+
+let beepAudio = null
 
 function unlockAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+  // Create and pre-load audio element on user gesture tap — required for iOS
+  if (!beepAudio) {
+    beepAudio = new Audio()
+    beepAudio.src = generateBeepDataURI()
+    beepAudio.load()
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume()
-  // Play a silent buffer to unlock on iOS
-  const buf = audioCtx.createBuffer(1, 1, 22050)
-  const src = audioCtx.createBufferSource()
-  src.buffer = buf
-  src.connect(audioCtx.destination)
-  src.start(0)
+  // Play and immediately pause to "unlock" on iOS
+  const p = beepAudio.play()
+  if (p) p.catch(() => {})
+  setTimeout(() => { if (beepAudio) beepAudio.pause(); beepAudio && (beepAudio.currentTime = 0) }, 50)
 }
 
-// Keep AudioContext alive on iOS by playing a silent buffer every 5s while timers run
-let keepAliveInterval = null
+function generateBeepDataURI() {
+  // Generate a short 880Hz beep WAV programmatically as a data URI
+  const sampleRate = 44100
+  const duration = 0.25 // seconds
+  const freq = 880
+  const numSamples = Math.floor(sampleRate * duration)
+  const buffer = new ArrayBuffer(44 + numSamples * 2)
+  const view = new DataView(buffer)
 
-function startAudioKeepAlive() {
-  if (keepAliveInterval) return
-  keepAliveInterval = setInterval(() => {
-    if (!audioCtx) return
-    if (audioCtx.state === 'suspended') audioCtx.resume()
-    try {
-      const buf = audioCtx.createBuffer(1, 1, 22050)
-      const src = audioCtx.createBufferSource()
-      src.buffer = buf
-      src.connect(audioCtx.destination)
-      src.start(0)
-    } catch(e) {}
-  }, 5000)
+  // WAV header
+  const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)) }
+  writeStr(0, 'RIFF')
+  view.setUint32(4, 36 + numSamples * 2, true)
+  writeStr(8, 'WAVE')
+  writeStr(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeStr(36, 'data')
+  view.setUint32(40, numSamples * 2, true)
+
+  // PCM samples — sine wave with fade out
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate
+    const fade = 1 - (i / numSamples)
+    const sample = Math.sin(2 * Math.PI * freq * t) * fade * 0.8
+    view.setInt16(44 + i * 2, sample * 32767, true)
+  }
+
+  // Convert to base64
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return 'data:audio/wav;base64,' + btoa(binary)
 }
 
-function stopAudioKeepAlive() {
-  if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null }
-}
-
-function timerBeep(repeat = false) {
+function timerBeep() {
   try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-    if (audioCtx.state === 'suspended') audioCtx.resume()
-    const beepCount = 3
-    for (let i = 0; i < beepCount; i++) {
-      const osc = audioCtx.createOscillator()
-      const gain = audioCtx.createGain()
-      osc.connect(gain)
-      gain.connect(audioCtx.destination)
-      osc.frequency.value = 880
-      osc.type = 'sine'
-      gain.gain.setValueAtTime(0.6, audioCtx.currentTime + i * 0.35)
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + i * 0.35 + 0.3)
-      osc.start(audioCtx.currentTime + i * 0.35)
-      osc.stop(audioCtx.currentTime + i * 0.35 + 0.3)
+    if (!beepAudio) {
+      beepAudio = new Audio(generateBeepDataURI())
+      beepAudio.load()
     }
-    if (repeat) {
-      // Keep beeping every 4 seconds — stops when timer is dismissed via stopTimer()
-      // We store the interval on the timer object in startTimer
-    }
+    beepAudio.currentTime = 0
+    const p = beepAudio.play()
+    if (p) p.catch(e => console.error('beep play error', e))
   } catch(e) { console.error('beep error', e) }
 }
+
+let keepAliveInterval = null
+function startAudioKeepAlive() {}
+function stopAudioKeepAlive() {}
 
 async function requestWakeLock() {
   if (globalWakeLock) return
@@ -2119,28 +2136,29 @@ async function generateGamePlan(slot, targetTime, date, recipeId) {
   const currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
   const slotLabel = isWholeDay ? 'the whole day' : slot
-  const prompt = `You are a practical cooking timeline planner. The current time is ${currentTime}. The user wants to eat dinner at ${targetTime}${isWholeDay ? ' and needs a plan for the whole day' : ' and needs a plan for ' + slot}.
+  const prompt = `You are a practical cooking timeline planner. The current time is ${currentTime}. The user wants to eat ${isWholeDay ? 'dinner' : slot} at ${targetTime}.
 
 Here is what they are making:
 
 ${mealText}
 
-Create a cooking timeline working BACKWARDS from ${targetTime}${isWholeDay ? ', incorporating all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ')' : ''}.
+Create a cooking timeline working STRICTLY BACKWARDS from ${targetTime}. Anchor on ${targetTime} as the finish line and subtract prep times to find each start time.
 
 CRITICAL RULES:
-- The current time is ${currentTime}. Do NOT schedule any steps before this time — they are already in the past. Start from now or later only.
-- Group related prep steps into ONE entry. "Drain, rinse, and dry chickpeas" is ONE step at ONE time — not three separate entries.
-- A new timestamp only appears when the cook needs to START something new or CHECK on something.
-- Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min. Never say 5 min for oven preheat.
-- Passive time (oven, simmering) should be used for active prep of other components — call that out explicitly.
-- Aim for 6-10 steps total for a single meal, up to 15 for a whole day. Collapse sub-steps, don't list every sentence from the recipe.
-- Be conversational. "Prep the chickpeas — drain, rinse, pat dry" not a bullet list of sub-steps.
-- If there is not much time left before ${targetTime}, prioritize the most critical steps and note what can be skipped or simplified.
+- Work BACKWARDS from ${targetTime}. The last step is serving at ${targetTime}. Everything else flows backward from there.
+- Current time is ${currentTime}. If any calculated step falls before ${currentTime}, mark it as "Start now:" instead of showing a past time. Never show a time that has already passed.
+- Group related prep into ONE entry. "Drain, rinse, dry chickpeas" is ONE step — not three.
+- New timestamp only when the cook starts something new or needs to check something.
+- Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min.
+- Use passive time (oven, simmering) for active prep of other components.
+- Aim for 6-10 steps for a single meal, up to 15 for a whole day.
+- Be conversational. "Prep the chickpeas — drain, rinse, pat dry" not sub-bullet lists.
+${isWholeDay ? '- Include all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ').' : ''}
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
 [
   {"time": "6:00 PM", "step": "Preheat oven to 425°F — takes about 20 min"},
-  {"time": "6:05 PM", "step": "Prep the chickpeas — drain, rinse, pat dry with a towel"},
+  {"time": "6:05 PM", "step": "Prep the chickpeas — drain, rinse, pat dry"},
   ...
 ]
 
@@ -3779,15 +3797,16 @@ async function estimateCaloriesAI(description) {
       const targetTime = el.dataset.gamePlanTime
       const date = el.dataset.gamePlanDate
       const recipeId = el.dataset.gamePlanRid
-      // If same slot/date already has a result, reopen it
-      const isSame = state.gamePlanModal &&
-        state.gamePlanModal.slot === slot &&
-        state.gamePlanModal.date === date
-      state.gamePlanModal = { slot, targetTime: state.gamePlanModal?.targetTime || targetTime, date, recipeId }
+      // Check if we already have a result for this same slot+date — reopen it
+      const lastPlan = state._lastGamePlan
+      const isSame = lastPlan && lastPlan.slot === slot && lastPlan.date === date
       if (!isSame) {
+        // New plan — clear old result
         state.gamePlanResult = null
         state.gamePlanLoading = false
+        state._lastGamePlan = { slot, date }
       }
+      state.gamePlanModal = { slot, targetTime: (isSame && lastPlan.targetTime) || targetTime, date, recipeId }
       render()
     })
   })
@@ -3824,8 +3843,9 @@ async function estimateCaloriesAI(description) {
   document.getElementById('gp-generate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
     const { slot, date, recipeId } = state.gamePlanModal
-    if (slot === 'Dinner') localStorage.setItem('mep_dinner_time', timeVal)
+    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
+    state._lastGamePlan = { slot, date, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
@@ -3837,8 +3857,9 @@ async function estimateCaloriesAI(description) {
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
     const { slot, date, recipeId } = state.gamePlanModal
-    if (slot === 'Dinner') localStorage.setItem('mep_dinner_time', timeVal)
+    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
+    state._lastGamePlan = { slot, date, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
