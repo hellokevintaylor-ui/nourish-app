@@ -1617,20 +1617,23 @@ function renderCalendar() {
   // Day cards
   dates.forEach((date, idx) => {
     const today = isDateToday(date)
-    const todayMeals = state.mealPlan.filter(e => e.date === date)
     html += '<div class="cal-day ' + (today ? 'cal-day-today' : '') + '">'
     html += '<div class="cal-day-header">'
     html += '<span class="cal-day-name">' + DAY_NAMES[idx] + '</span>'
     html += '<span class="cal-day-date">' + formatDate(date).split(', ')[1] + '</span>'
-    if (today && todayMeals.length > 0) {
-      html += '<button class="add-btn" id="game-plan-btn" style="font-size:11px;padding:4px 10px;background:var(--forest);color:white;border:none;margin-left:auto">📋 Game Plan</button>'
-    }
     html += '</div>'
 
     MEAL_SLOTS.forEach(slot => {
       const entries = getMealPlanEntries(date, slot)
+      const showGamePlan = today && (slot === 'Lunch' || slot === 'Dinner') && entries.length > 0
       html += '<div class="cal-slot">'
-      html += '<div class="cal-slot-label">' + slot + '</div>'
+      html += '<div class="cal-slot-label" style="display:flex;align-items:center;justify-content:space-between">'
+      html += '<span>' + slot + '</span>'
+      if (showGamePlan) {
+        const defaultTime = slot === 'Lunch' ? '12:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+        html += '<button class="cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-time="' + esc(defaultTime) + '" style="font-size:10px;padding:2px 7px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan</button>'
+      }
+      html += '</div>'
 
       entries.forEach(entry => {
         html += '<div class="cal-entry">'
@@ -1880,16 +1883,14 @@ function renderChat() {
 }
 
 
-async function generateGamePlan(dinnerTime) {
+async function generateGamePlan(slot, targetTime) {
   const today = new Date().toISOString().slice(0,10)
-  const todayMeals = state.mealPlan.filter(e => e.date === today)
+  const slotMeals = state.mealPlan.filter(e => e.date === today && e.meal_slot === slot)
 
-  // Build recipe details for each planned meal
-  const mealDetails = todayMeals.map(entry => {
+  const mealDetails = slotMeals.map(entry => {
     const recipe = entry.recipe_id ? state.recipes.find(r => String(r.id) === String(entry.recipe_id)) : null
     const pt = recipe?.prepTime
     return {
-      slot: entry.meal_slot,
       name: entry.recipe_name,
       ingredients: recipe?.ingredients || '',
       instructions: recipe?.instructions || '',
@@ -1898,19 +1899,19 @@ async function generateGamePlan(dinnerTime) {
   })
 
   const mealText = mealDetails.map(m =>
-    '=== ' + m.slot + ': ' + m.name + ' ===\n' +
+    '=== ' + m.name + ' ===\n' +
     (m.prepTime ? 'Prep data: ' + m.prepTime + '\n' : '') +
     (m.ingredients ? 'Ingredients:\n' + m.ingredients + '\n' : '') +
     (m.instructions ? 'Instructions:\n' + m.instructions : '')
   ).join('\n\n')
 
-  const prompt = `You are a cooking timeline planner. The user wants to eat dinner at ${dinnerTime} today.
+  const prompt = `You are a cooking timeline planner. The user wants to eat ${slot} at ${targetTime} today.
 
-Here are their planned meals for today:
+Here is what they are making:
 
 ${mealText}
 
-Create a detailed, practical cooking timeline working BACKWARDS from the dinner time. Be specific about actual cooking steps — not just "start cooking", but "mince the garlic", "heat oil in pan", "put pasta water on to boil". Factor in passive time (oven, simmering) so the cook can multitask.
+Create a detailed step-by-step cooking timeline working BACKWARDS from ${targetTime}. Be specific — not "start cooking" but "mince the garlic", "heat oil in pan", "put water on to boil". Factor in passive time (oven, simmering) so the cook can multitask efficiently.
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
 [
@@ -1919,54 +1920,54 @@ Return ONLY a JSON array, no other text, no markdown, no backticks:
   ...
 ]
 
-Times must be specific (e.g. "6:15 PM"). Steps must be concrete and actionable. Work strictly backwards from ${dinnerTime}. Include breakfast/lunch/snack steps at their natural times if planned. End with "Dinner is served 🍽️" at ${dinnerTime}.`
+Times must be specific (e.g. "6:15 PM"). Steps must be concrete and actionable. End with "${slot} is served 🍽️" at ${targetTime}.`
 
-  const resp = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  })
-  const data = await resp.json()
-  const text = data.content?.[0]?.text?.trim() || ''
   try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+    const data = await resp.json()
+    const text = data.content?.[0]?.text?.trim() || ''
     const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
     return JSON.parse(clean)
   } catch(e) {
+    console.error('Game plan error:', e)
     return null
   }
 }
 
 function renderGamePlanModal() {
-  const dinnerTime = state.gamePlanModal?.dinnerTime || localStorage.getItem('mep_dinner_time') || '7:00 PM'
+  const { slot, targetTime } = state.gamePlanModal || {}
   const result = state.gamePlanResult
   const loading = state.gamePlanLoading
+  const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
 
   let content = ''
 
   if (loading) {
     content = '<div style="text-align:center;padding:30px 0">' +
       '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
-      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your day...</div>' +
+      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your ' + (slot||'meal') + '...</div>' +
       '<div style="font-size:12px;color:var(--ink3);margin-top:6px">Reading your recipes and building a timeline</div>' +
       '</div>'
   } else if (result) {
     content =
-      '<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px">' +
-        '<span style="font-size:12px;color:var(--ink3)">Dinner at</span>' +
-        '<input id="gp-dinner-time" value="' + esc(dinnerTime) + '" style="width:90px;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
-        '<button class="add-btn" id="gp-regenerate" style="font-size:12px;padding:5px 12px">Regenerate</button>' +
+      '<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span style="font-size:12px;color:var(--ink3)">' + (slot||'Meal') + ' at</span>' +
+        '<input id="gp-dinner-time" value="' + esc(timeVal) + '" style="width:90px;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
+        '<button class="add-btn" id="gp-regenerate" style="font-size:12px;padding:5px 12px">↺ Redo</button>' +
       '</div>' +
       '<div style="position:relative;padding-left:18px">' +
-        // vertical line
         '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--forest2);opacity:0.3;border-radius:2px"></div>' +
         result.map((item, i) => {
           const isLast = i === result.length - 1
           return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
-            // dot
             '<div style="position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--forest)' : 'var(--forest2)') + ';border:2px solid white;box-shadow:0 0 0 1.5px var(--forest2)"></div>' +
             '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--forest);padding-top:2px">' + esc(item.time) + '</div>' +
             '<div style="font-size:13px;color:var(--ink);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + esc(item.step) + '</div>' +
@@ -1974,20 +1975,19 @@ function renderGamePlanModal() {
         }).join('') +
       '</div>'
   } else {
-    // Initial state — dinner time picker
     content =
-      '<div style="font-size:13px;color:var(--ink3);margin-bottom:16px">Set your dinner time and I\'ll build a step-by-step cooking timeline for everything planned today.</div>' +
+      '<div style="font-size:13px;color:var(--ink3);margin-bottom:16px">Set your ' + (slot||'meal') + ' time and I\'ll build a step-by-step cooking timeline.</div>' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
-        '<span style="font-size:13px;font-weight:600">Dinner at:</span>' +
-        '<input id="gp-dinner-time" value="' + esc(dinnerTime) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
+        '<span style="font-size:13px;font-weight:600">' + (slot||'Meal') + ' at:</span>' +
+        '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
       '</div>' +
-      '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate My Game Plan</button>'
+      '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
   }
 
   return '<div class="modal-bg" id="game-plan-bg">' +
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
-      '<div class="modal-title">Today\'s Game Plan</div>' +
-      (result ? '' : '<div class="modal-sub">' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '</div>') +
+      '<div class="modal-title">📋 ' + (slot||'Meal') + ' Game Plan</div>' +
+      '<div class="modal-sub">' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '</div>' +
       content +
       '<div class="modal-btns" style="margin-top:16px">' +
         '<button class="modal-cancel" id="gp-close">Close</button>' +
@@ -3514,11 +3514,16 @@ async function estimateCaloriesAI(description) {
 
 
   // ── GAME PLAN HANDLERS ──
-  document.getElementById('game-plan-btn')?.addEventListener('click', () => {
-    state.gamePlanModal = { dinnerTime: localStorage.getItem('mep_dinner_time') || '7:00 PM' }
-    state.gamePlanResult = null
-    state.gamePlanLoading = false
-    render()
+  document.querySelectorAll('.cal-game-plan-btn[data-game-plan-slot]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const slot = el.dataset.gamePlanSlot
+      const targetTime = el.dataset.gamePlanTime
+      state.gamePlanModal = { slot, targetTime }
+      state.gamePlanResult = null
+      state.gamePlanLoading = false
+      render()
+    })
   })
   document.getElementById('gp-close')?.addEventListener('click', () => {
     state.gamePlanModal = false; state.gamePlanResult = null; render()
@@ -3527,27 +3532,29 @@ async function estimateCaloriesAI(description) {
     if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; state.gamePlanResult = null; render() }
   })
   document.getElementById('gp-generate')?.addEventListener('click', async () => {
-    const dinnerTime = document.getElementById('gp-dinner-time')?.value?.trim() || '7:00 PM'
-    localStorage.setItem('mep_dinner_time', dinnerTime)
-    state.gamePlanModal = { dinnerTime }
+    const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
+    const slot = state.gamePlanModal?.slot || 'Dinner'
+    if (slot === 'Dinner') localStorage.setItem('mep_dinner_time', timeVal)
+    state.gamePlanModal = { slot, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(dinnerTime)
+    const result = await generateGamePlan(slot, timeVal)
     state.gamePlanLoading = false
-    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — try again.' }]
+    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     render()
   })
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
-    const dinnerTime = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.dinnerTime || '7:00 PM'
-    localStorage.setItem('mep_dinner_time', dinnerTime)
-    state.gamePlanModal = { dinnerTime }
+    const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
+    const slot = state.gamePlanModal?.slot || 'Dinner'
+    if (slot === 'Dinner') localStorage.setItem('mep_dinner_time', timeVal)
+    state.gamePlanModal = { slot, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(dinnerTime)
+    const result = await generateGamePlan(slot, timeVal)
     state.gamePlanLoading = false
-    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — try again.' }]
+    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     render()
   })
 
