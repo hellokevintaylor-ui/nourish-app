@@ -2014,9 +2014,9 @@ function renderGamePlanModal() {
       '<div class="modal-title">📋 ' + slotLabel + ' Game Plan</div>' +
       '<div class="modal-sub">' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '</div>' +
       content +
-      '<div class="modal-btns" style="margin-top:16px;flex-direction:column;gap:8px">' +
-        (result ? '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%">✦ Tweak with AI</button>' : '') +
-        '<button class="modal-cancel" id="gp-close">Close</button>' +
+      '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
+        (result ? '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">✦ Tweak with AI</button>' : '') +
+        '<button class="modal-cancel" id="gp-close" style="width:100%">Close</button>' +
       '</div>' +
     '</div>' +
   '</div>'
