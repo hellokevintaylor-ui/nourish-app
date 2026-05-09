@@ -64,8 +64,9 @@ const state = {
   gamePlanModal: false,
   gamePlanResult: null,
   gamePlanLoading: false,
-  gamePlanView: 'timeline',  // 'timeline' or 'chat'
-  gamePlanChats: {},         // keyed by "date-slot", stores message arrays
+  gamePlanView: 'timeline',
+  gamePlanChats: {},
+  timerSlider: null,  // { low, high, current, label, anchorTop, anchorLeft }
 }
 
 const GOAL_PRESETS = {
@@ -337,34 +338,60 @@ function stripMeasurements(line) {
 
 // Parse ingredient line to clean shopping list format
 function parseIngredientLine(line) {
-  let s = line
-  // Remove parenthetical notes first
+  let s = line.trim()
+
+  // Remove parenthetical notes
   s = s.replace(/\([^)]*\)/g, ' ')
-  // Remove everything after a comma
-  s = s.replace(/,.*$/, '')
+  // Remove everything after comma, semicolon, or em-dash
+  s = s.replace(/[,;–—].*$/, '')
   s = s.replace(/\s+/g, ' ').trim()
 
-  const unitMap = {'tablespoons?':'tbsp','tbsp':'tbsp','teaspoons?':'tsp','tsp':'tsp','cups?':'cup','ounces?':'oz','oz':'oz','pounds?':'lb','lbs?':'lb','grams?':'g','kg':'kg','ml':'ml','cans?':'can','jars?':'jar','packages?':'pkg','bunches?':'bunch','heads?':'head','cloves?':'clove','slices?':'slice'}
-  const unitPattern = Object.keys(unitMap).join('|')
-  const qtyRe = new RegExp('^\\s*(\\d+(?:[./]\\d+)?)\\s*(?:('+unitPattern+')\\s+)?','i')
+  // Handle vulgar fractions at start
+  s = s.replace(/^([¼½¾⅓⅔⅛⅜⅝⅞])\s*/, (_, frac) => {
+    const map = {'¼':'1/4','½':'1/2','¾':'3/4','⅓':'1/3','⅔':'2/3','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8'}
+    return (map[frac] || frac) + ' '
+  })
+  // Also handle mixed numbers like "1½" -> "1.5"
+  s = s.replace(/(\d+)[¼½¾⅓⅔⅛⅜⅝⅞]/, m => m[0])
 
-  // Extract leading quantity FIRST
+  const unitMap = {
+    'tablespoons?': 'tbsp', 'tbsp': 'tbsp', 'teaspoons?': 'tsp', 'tsp': 'tsp',
+    'cups?': 'cup', 'ounces?': 'oz', 'oz': 'oz', 'pounds?': 'lb', 'lbs?': 'lb',
+    'grams?': 'g', 'kg': 'kg', 'ml': 'ml', 'liters?': 'L',
+    'cans?': 'can', 'jars?': 'jar', 'packages?': 'pkg', 'bunches?': 'bunch',
+    'heads?': 'head', 'cloves?': 'clove', 'slices?': 'slice', 'pieces?': 'piece',
+    'sprigs?': 'sprig', 'stalks?': 'stalk', 'strips?': 'strip'
+  }
+  const unitPattern = Object.keys(unitMap).join('|')
+  const qtyRe = new RegExp('^(\\d+(?:[\\./]\\d+)?(?:\\s+\\d+\\/\\d+)?)\\s*(?:(' + unitPattern + ')\\s+)?', 'i')
+
+  // Extract quantity + unit
   let qty = ''
   const m = s.match(qtyRe)
   if (m) {
-    const num = m[1], rawUnit = m[2]
-    const unit = rawUnit ? (unitMap[Object.keys(unitMap).find(k => new RegExp('^'+k+'$','i').test(rawUnit))] || rawUnit) : ''
-    qty = unit ? num+unit : num
-    s = s.replace(qtyRe, '')
+    const num = m[1].trim()
+    const rawUnit = m[2]
+    const unit = rawUnit
+      ? (unitMap[Object.keys(unitMap).find(k => new RegExp('^' + k + '$', 'i').test(rawUnit))] || rawUnit.toLowerCase())
+      : ''
+    qty = unit ? num + ' ' + unit : num
+    s = s.slice(m[0].length).trim()
   }
 
-  // NOW strip prep words and size adjectives from what remains
-  s = s.replace(/^(chopped|sliced|diced|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|packed|heaping|fresh|dried|frozen|raw|cooked|whole|boneless|skinless|canned|unsalted|salted|large|medium|small)\s+/gi, '')
-  s = s.replace(/\s+(chopped|sliced|diced|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|room temperature|at room temp|packed|heaping|to taste|or more|such as).*/i, '')
-  s = s.replace(/\b(large|medium|small|fresh|dried|frozen|raw|cooked|whole|boneless|skinless|canned|unsalted|salted)\b/gi, '')
+  // Strip leading prep/descriptor words — but only from the start, not mid-name
+  s = s.replace(/^(chopped|sliced|diced|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|packed|heaping|frozen|raw|cooked|whole|boneless|skinless|canned|unsalted|salted|dried|ground|crumbled|cracked|toasted)\s+/gi, '')
+
+  // Strip trailing prep notes
+  s = s.replace(/\s*,?\s*(chopped|sliced|diced|minced|grated|shredded|peeled|trimmed|divided|softened|melted|beaten|room temperature|at room temp|packed|heaping|to taste|or more|such as|for serving|for garnish|optional).*$/gi, '')
   s = s.replace(/\s+/g, ' ').trim()
 
-  const name = s.replace(/\b\w/g, c => c.toUpperCase())
+  // If we ended up with nothing or just a number, return the original line cleaned up
+  if (!s || /^\d+$/.test(s)) {
+    // Fall back: just return the line with leading qty stripped but everything else intact
+    s = line.replace(/\([^)]*\)/g, '').replace(/^[\d¼½¾⅓⅔⅛⅜⅝⅞\/\s]+(?:tablespoons?|tbsp|teaspoons?|tsp|cups?|ounces?|oz|pounds?|lbs?|grams?|g|kg|ml|cans?|jars?|packages?|bunches?|heads?|cloves?|slices?)\s*/gi, '').replace(/[,;].*$/, '').replace(/\s+/g, ' ').trim()
+  }
+
+  const name = s.charAt(0).toUpperCase() + s.slice(1)
   return qty ? name + ', ' + qty : name
 }
 
@@ -647,34 +674,39 @@ function renderTimerBar() {
 // Returns { seconds, label } or null
 function parseTimerDuration(text) {
   text = text.toLowerCase().trim()
-  // Range with "to" like "5 to 10 min" or "5 to 10 minutes" — use lower bound
-  const toRangeMatch = text.match(/(\d+)\s+to\s+(\d+)\s*(?:min|minute|minutes|mins)/)
-  if (toRangeMatch) return { seconds: parseInt(toRangeMatch[1]) * 60, label: text }
-  // Range with dash like "9-12 min" — use lower bound
-  const rangeMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(?:min|minute|minutes|mins)/)
-  if (rangeMatch) return { seconds: parseInt(rangeMatch[1]) * 60, label: text }
-  // Hours + minutes like "1 hour 30 min"
-  const hourMinMatch = text.match(/(\d+)\s*(?:hour|hr|h)\s*(?:(\d+)\s*(?:min|minute|minutes|mins))?/)
-  if (hourMinMatch) {
-    const h = parseInt(hourMinMatch[1])
-    const m = parseInt(hourMinMatch[2] || 0)
-    return { seconds: h * 3600 + m * 60, label: text }
+  const toSecs = (n, unit) => {
+    if (!unit) return parseInt(n) * 60
+    if (unit.startsWith('hour') || unit === 'hr' || unit === 'h') return parseInt(n) * 3600
+    if (unit.startsWith('sec')) return parseInt(n)
+    return parseInt(n) * 60
   }
+  // Range with "to" — return both bounds
+  const toMatch = text.match(/(\d+)\s+to\s+(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?/)
+  if (toMatch) return { low: toSecs(toMatch[1], toMatch[3]), high: toSecs(toMatch[2], toMatch[3]), isRange: true, label: text }
+  // Range with dash
+  const dashMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?/)
+  if (dashMatch) return { low: toSecs(dashMatch[1], dashMatch[3]), high: toSecs(dashMatch[2], dashMatch[3]), isRange: true, label: text }
+  // Hours + minutes
+  const hourMin = text.match(/(\d+)\s*(?:hour|hr|h)\s*(?:(\d+)\s*(?:min|minute|minutes|mins))?/)
+  if (hourMin) return { seconds: parseInt(hourMin[1]) * 3600 + parseInt(hourMin[2] || 0) * 60, label: text }
   // Just minutes
-  const minMatch = text.match(/(\d+)\s*(?:min|minute|minutes|mins)/)
-  if (minMatch) return { seconds: parseInt(minMatch[1]) * 60, label: text }
+  const min = text.match(/(\d+)\s*(?:min|minute|minutes|mins)/)
+  if (min) return { seconds: parseInt(min[1]) * 60, label: text }
   // Just seconds
-  const secMatch = text.match(/(\d+)\s*(?:sec|second|seconds|secs)/)
-  if (secMatch) return { seconds: parseInt(secMatch[1]), label: text }
+  const sec = text.match(/(\d+)\s*(?:sec|second|seconds|secs)/)
+  if (sec) return { seconds: parseInt(sec[1]), label: text }
   return null
 }
 
-// Linkify time references in HTML text — wraps them in tappable timer buttons
+// Linkify time references — ranges get a slider button, single times get a direct start button
 function linkifyTimers(html) {
-  // Match "X to Y min/minutes" first (before plain "Y min" can grab the higher number alone)
-  return html.replace(/(\d+\s+to\s+\d+\s*(?:min|minute|minutes|mins|hour|hr|sec|second|seconds|secs)|\d+\s*[-–]\s*\d*\s*(?:hour|hr|h|min|minute|minutes|mins|sec|second|seconds|secs)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:hour|hr|h)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:min|minute|minutes|mins|sec|second|seconds|secs))/gi, (match) => {
+  return html.replace(/(\d+\s+to\s+\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*[-–]\s*\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*(?:hour|hr|h)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:min|minute|minutes|mins|sec|second|seconds|secs))/gi, (match) => {
     const parsed = parseTimerDuration(match)
     if (!parsed) return match
+    if (parsed.isRange) {
+      // Range — show slider button
+      return '<button class="timer-link timer-range-link" data-timer-low="' + parsed.low + '" data-timer-high="' + parsed.high + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
+    }
     return '<button class="timer-link" data-timer-seconds="' + parsed.seconds + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
   })
 }
@@ -697,6 +729,7 @@ function render() {
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
         <button class="icon-btn" id="clip-url-btn">Clip</button><button class="icon-btn" id="paste-btn">Paste</button>
+        <button class="icon-btn" id="force-update-btn">↻ Update</button>
           <button class="icon-btn" id="sync-toggle">&#128279; Sync</button>
           <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle">&#9881; Goals</button>
         </div>
@@ -847,6 +880,49 @@ function render() {
     </div>
   `
   bindEvents()
+
+  // Timer slider popover
+  if (state.timerSlider) {
+    const { low, high, current, label, anchorTop, anchorLeft } = state.timerSlider
+    const pct = ((current - low) / (high - low)) * 100
+    const mins = Math.round(current / 60)
+    const popover = document.createElement('div')
+    popover.id = 'timer-slider-popover'
+    popover.style.cssText = 'position:fixed;z-index:2000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:14px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.2);min-width:200px;font-family:inherit'
+    popover.style.top = Math.min(anchorTop + 30, window.innerHeight - 160) + 'px'
+    popover.style.left = Math.min(anchorLeft, window.innerWidth - 220) + 'px'
+    popover.innerHTML =
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:8px">⏱ ' + esc(label) + '</div>' +
+      '<div style="font-size:28px;font-weight:800;color:var(--forest);text-align:center;margin-bottom:8px;font-variant-numeric:tabular-nums">' + mins + ' min</div>' +
+      '<input id="timer-range-slider" type="range" min="' + low + '" max="' + high + '" step="60" value="' + current + '" style="width:100%;accent-color:var(--forest);margin-bottom:12px" />' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="timer-slider-start" style="flex:1;background:var(--forest);color:white;border:none;border-radius:10px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Start</button>' +
+        '<button id="timer-slider-cancel" style="background:none;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer;font-family:inherit;color:var(--ink3)">✕</button>' +
+      '</div>'
+    document.body.appendChild(popover)
+
+    document.getElementById('timer-range-slider')?.addEventListener('input', e => {
+      state.timerSlider.current = parseInt(e.target.value)
+      const m = Math.round(state.timerSlider.current / 60)
+      popover.querySelector('div[style*="28px"]').textContent = m + ' min'
+    })
+    document.getElementById('timer-slider-start')?.addEventListener('click', () => {
+      unlockAudio()
+      startTimer(state.timerSlider.current, state.timerSlider.label)
+      state.timerSlider = null
+      popover.remove()
+    })
+    document.getElementById('timer-slider-cancel')?.addEventListener('click', () => {
+      state.timerSlider = null
+      popover.remove()
+    })
+    // Close on outside tap
+    setTimeout(() => {
+      document.addEventListener('click', e => {
+        if (!popover.contains(e.target)) { state.timerSlider = null; popover.remove() }
+      }, { once: true })
+    }, 0)
+  }
 
   // Re-render timer bar if any timers active (survives render cycles)
   if (timers.length > 0) renderTimerBar()
@@ -1195,10 +1271,11 @@ function renderShopItems(items) {
       :
         '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer;' + (isChecked ? 'text-decoration:line-through;color:var(--ink4)' : '') + '" title="Tap to edit">' + esc(i.name) + '</div>'
       ) +
-      (!isChecked ?
-        '<div class="shop-item-tags">' + chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' +
-        '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px">Pantry</button>' + picker + '</div>'
-      : '') +
+      '<div class="shop-item-tags">' +
+        (!isChecked ? chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' + picker : '') +
+        // Pantry button always visible — moves to cart AND adds to pantry
+        '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px' + (isChecked ? ';opacity:1' : '') + '">🧺 Pantry</button>' +
+      '</div>' +
       '</div>' +
       '<button class="remove-btn" data-shop-del="' + i.id + '">x</button>' +
     '</div>'
@@ -2449,19 +2526,22 @@ function renderShopReview() {
     const inPantry = item.inPantry
     return '<div class="shop-review-row' + (inPantry ? ' shop-review-row-pantry' : '') + '">' +
       '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (!inPantry && item.checked ? 'checked' : '') + (inPantry ? 'disabled' : '') + ' />' +
-      '<div class="shop-review-info">' +
-        '<div class="shop-review-name">' + esc(item.name) + '</div>' +
-        (inPantry ? '<div class="shop-review-have">Added to pantry</div>' : pantryInfo) +
+      '<div class="shop-review-info" style="flex:1;min-width:0">' +
+        (inPantry
+          ? '<div class="shop-review-name">' + esc(item.name) + '</div><div class="shop-review-have">Added to pantry</div>'
+          : '<input class="shop-review-name-input" data-review-idx="' + idx + '" value="' + esc(item.name) + '" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:2px" />' +
+            pantryInfo
+        ) +
       '</div>' +
       (!inPantry ?
-        '<button class="shop-review-pantry-btn" data-pantry-idx="' + idx + '" title="I already have this">Got it</button>'
+        '<button class="shop-review-pantry-btn" data-pantry-idx="' + idx + '" title="I already have this" style="flex-shrink:0">Got it</button>'
       : '') +
     '</div>'
   }).join('')
   return '<div class="modal-bg" id="shop-review-bg"><div class="modal-sheet">' +
     '<div class="modal-title">What do you need?</div>' +
     '<div class="modal-sub">' + esc(s.recipeName) + '</div>' +
-    '<div class="shop-review-hint">Check items to add to your list. Tap "Got it" if you already have it.</div>' +
+    '<div class="shop-review-hint">Check items to add. Edit any name before adding. Tap "Got it" if you already have it.</div>' +
     '<div class="shop-review-list">' + itemsHtml + '</div>' +
     '<div class="modal-btns"><button class="modal-cancel" id="shop-review-cancel">Cancel</button><button class="modal-save" id="shop-review-add">Add to Shopping List</button></div>' +
     '</div></div>'
@@ -2503,10 +2583,28 @@ function bindEvents() {
   document.querySelectorAll('.timer-link[data-timer-seconds]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      unlockAudio() // unlock audio context on this user gesture so beep works on iOS
+      unlockAudio()
       const seconds = parseInt(el.dataset.timerSeconds)
       const label = el.dataset.timerLabel
       startTimer(seconds, label)
+    })
+  })
+
+  // Range timer — opens slider popover
+  document.querySelectorAll('.timer-range-link[data-timer-low]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      unlockAudio()
+      const rect = el.getBoundingClientRect()
+      state.timerSlider = {
+        low: parseInt(el.dataset.timerLow),
+        high: parseInt(el.dataset.timerHigh),
+        current: parseInt(el.dataset.timerLow), // start at low end
+        label: el.dataset.timerLabel,
+        anchorTop: rect.bottom,
+        anchorLeft: rect.left
+      }
+      render()
     })
   })
 
@@ -2597,6 +2695,25 @@ function bindEvents() {
       await removeTagFromItem(el.dataset.removeTag, el.dataset.tagNs, el.dataset.tagItem)
     })
   })
+  document.getElementById('force-update-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('force-update-btn')
+    if (btn) { btn.textContent = '↻ Updating...'; btn.disabled = true }
+    try {
+      // Unregister all service workers
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map(r => r.unregister()))
+      }
+      // Clear all caches
+      if ('caches' in window) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map(k => caches.delete(k)))
+      }
+    } catch(e) {}
+    // Hard reload
+    window.location.reload(true)
+  })
+
   document.getElementById('sync-toggle')?.addEventListener('click', () => { state.showSync = !state.showSync; state.showGoals = false; render() })
   document.getElementById('sync-copy-btn')?.addEventListener('click', () => {
     navigator.clipboard.writeText(getUserId()).then(() => {
@@ -2882,10 +2999,25 @@ function bindEvents() {
       render()
     })
   })
+  document.querySelectorAll('.shop-review-name-input').forEach(el => {
+    el.addEventListener('change', () => {
+      const idx = parseInt(el.dataset.reviewIdx)
+      if (state.shopReview && state.shopReview.items[idx]) {
+        state.shopReview.items[idx].name = el.value.trim() || state.shopReview.items[idx].name
+      }
+    })
+  })
   document.getElementById('shop-review-cancel')?.addEventListener('click', () => { state.shopReview = null; render() })
   document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
   document.getElementById('shop-review-add')?.addEventListener('click', async () => {
     if (!state.shopReview) return
+    // Snapshot any edited names from inputs before saving
+    document.querySelectorAll('.shop-review-name-input').forEach(el => {
+      const idx = parseInt(el.dataset.reviewIdx)
+      if (state.shopReview.items[idx]) {
+        state.shopReview.items[idx].name = el.value.trim() || state.shopReview.items[idx].name
+      }
+    })
     const toAdd = state.shopReview.items.filter(i => i.checked && !i.inPantry)
     for (const item of toAdd) {
       const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
@@ -3561,7 +3693,7 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-edit-shop-name]').forEach(el => {
     el.addEventListener('keydown', e => { if (e.key === 'Enter') document.querySelector('[data-save-shop="' + el.dataset.editShopName + '"]')?.click() })
   })
-  // Move list -> pantry
+  // Move list -> pantry (also moves to cart/crossed out)
   document.querySelectorAll('[data-move-to-pantry]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
@@ -3569,10 +3701,16 @@ async function estimateCaloriesAI(description) {
       const item = state.shopList.find(i => String(i.id) === String(id))
       if (!item) return
       const tags = item.tags || []
-      const saved = await db.addPantryItem(item.name, '', tags)
-      if (saved) state.pantry.push({ ...saved, tags })
-      await db.deleteShopItem(id)
-      state.shopList = state.shopList.filter(i => String(i.id) !== String(id))
+      // Add to pantry
+      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
+      if (!exists) {
+        const saved = await db.addPantryItem(item.name, '', tags)
+        if (saved) state.pantry.push({ ...saved, tags })
+      }
+      // Move to cart (check it off) rather than deleting
+      item.have = true
+      item.checked_at = Date.now()
+      await db.updateShopItem(id, true)
       render()
     })
   })
