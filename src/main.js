@@ -2834,6 +2834,40 @@ function bindEvents() {
     })
   })
 
+  document.querySelectorAll('.shop-review-check').forEach(el => {
+    el.addEventListener('change', () => { if (state.shopReview) state.shopReview.items[+el.dataset.idx].checked = el.checked })
+  })
+  document.querySelectorAll('.shop-review-pantry-btn').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const idx = +el.dataset.pantryIdx
+      if (!state.shopReview) return
+      const item = state.shopReview.items[idx]
+      item.inPantry = true
+      item.checked = false
+      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
+      if (!exists) {
+        const saved = await db.addPantryItem(item.name, '')
+        if (saved) state.pantry.push(saved)
+      }
+      render()
+    })
+  })
+  document.getElementById('shop-review-cancel')?.addEventListener('click', () => { state.shopReview = null; render() })
+  document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
+  document.getElementById('shop-review-add')?.addEventListener('click', async () => {
+    if (!state.shopReview) return
+    const toAdd = state.shopReview.items.filter(i => i.checked && !i.inPantry)
+    for (const item of toAdd) {
+      const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
+      if (!already) {
+        const saved = await db.addShopItem(item.name, state.shopReview.recipeName)
+        if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe })
+      }
+    }
+    state.shopReview = null; state.tab = 'shop'; render()
+  })
+
   document.querySelectorAll('[data-plan-recipe]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
