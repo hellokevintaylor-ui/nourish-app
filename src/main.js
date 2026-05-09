@@ -63,6 +63,8 @@ const state = {
   gamePlanModal: false,
   gamePlanResult: null,
   gamePlanLoading: false,
+  gamePlanView: 'timeline',  // 'timeline' or 'chat'
+  gamePlanChats: {},         // keyed by "date-slot", stores message arrays
 }
 
 const GOAL_PRESETS = {
@@ -2198,16 +2200,62 @@ End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
   }
 }
 
+function gpChatKey() {
+  const { date, slot } = state.gamePlanModal || {}
+  return (date || 'today') + '-' + (slot || 'Dinner')
+}
+
 function renderGamePlanModal() {
-  const { slot, targetTime } = state.gamePlanModal || {}
+  const { slot, targetTime, date } = state.gamePlanModal || {}
   const isWholeDay = slot === 'Day'
   const slotLabel = isWholeDay ? 'Whole Day' : (slot || 'Meal')
   const result = state.gamePlanResult
   const loading = state.gamePlanLoading
   const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+  const view = state.gamePlanView || 'timeline'
+  const chatKey = gpChatKey()
+  const chatMessages = state.gamePlanChats[chatKey] || []
+  const chatLoading = state.gamePlanChatLoading || false
+  const dateLabel = date
+    ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
+    : new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
 
+  // ── CHAT VIEW ──
+  if (view === 'chat') {
+    const bubbles = chatMessages.map(m =>
+      '<div style="display:flex;flex-direction:column;align-items:' + (m.role === 'user' ? 'flex-end' : 'flex-start') + ';margin-bottom:10px">' +
+        '<div style="max-width:85%;background:' + (m.role === 'user' ? 'var(--forest)' : 'var(--cream2)') + ';color:' + (m.role === 'user' ? 'white' : 'var(--ink)') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
+          (m.role === 'assistant' ? linkifyTimers(esc(m.content).replace(/\n/g, '<br>')) : esc(m.content).replace(/\n/g, '<br>')) +
+        '</div>' +
+      '</div>'
+    ).join('')
+
+    return '<div class="modal-bg" id="game-plan-bg">' +
+      '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden">' +
+        '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--cream3);flex-shrink:0">' +
+          '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--forest);padding:0;line-height:1;font-family:inherit">←</button>' +
+          '<div style="flex:1">' +
+            '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Tweaking with AI</div>' +
+            '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
+          '</div>' +
+          '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+        '</div>' +
+        '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
+          (chatMessages.length === 0
+            ? '<div style="color:var(--ink4);font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>'
+            : bubbles) +
+          (chatLoading ? '<div style="text-align:center;padding:10px;color:var(--ink3);font-size:13px">thinking...</div>' : '') +
+        '</div>' +
+        '<div style="padding:10px 12px;border-top:1px solid var(--cream3);display:flex;gap:8px;flex-shrink:0">' +
+          '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />' +
+          '<button id="gp-chat-send" style="background:var(--forest);color:white;border:none;border-radius:12px;padding:9px 14px;font-size:16px;cursor:pointer" ' + (chatLoading ? 'disabled' : '') + '>▶</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  }
+
+  // ── TIMELINE VIEW ──
   let content = ''
-
   if (loading) {
     content = '<div style="text-align:center;padding:30px 0">' +
       '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
@@ -2242,18 +2290,21 @@ function renderGamePlanModal() {
       '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
   }
 
+  const hasPriorChat = chatMessages.length > 0
+
   return '<div class="modal-bg" id="game-plan-bg">' +
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
       '<div class="modal-title">📋 ' + slotLabel + ' Game Plan</div>' +
-      '<div class="modal-sub">' + new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '</div>' +
+      '<div class="modal-sub">' + dateLabel + '</div>' +
       content +
       '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
-        (result ? '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">✦ Tweak with AI</button>' : '') +
+        (result ? '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' : '') +
         '<button class="modal-cancel" id="gp-close" style="width:100%">Close</button>' +
       '</div>' +
     '</div>' +
   '</div>'
 }
+
 
 function renderScanPicker() {
   return '<div class="modal-bg" id="scan-picker-bg">' +
@@ -2786,6 +2837,7 @@ function bindEvents() {
       if (!isSame) {
         state.gamePlanResult = null
         state.gamePlanLoading = false
+        state.gamePlanView = 'timeline'
         state._lastGamePlan = { slot, date: today }
       }
       state.gamePlanModal = { slot, targetTime: (isSame && lastPlan?.targetTime) || defaultTime, date: today, recipeId: rid }
@@ -3836,9 +3888,9 @@ async function estimateCaloriesAI(description) {
       const lastPlan = state._lastGamePlan
       const isSame = lastPlan && lastPlan.slot === slot && lastPlan.date === date
       if (!isSame) {
-        // New plan — clear old result
         state.gamePlanResult = null
         state.gamePlanLoading = false
+        state.gamePlanView = 'timeline'
         state._lastGamePlan = { slot, date }
       }
       state.gamePlanModal = { slot, targetTime: (isSame && lastPlan.targetTime) || targetTime, date, recipeId }
@@ -3849,23 +3901,76 @@ async function estimateCaloriesAI(description) {
     const { slot, targetTime } = state.gamePlanModal || {}
     const result = state.gamePlanResult
     if (!result) return
-
-    const slotLabel = slot === 'Day' ? 'whole day' : slot
-    const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
-
-    // Pre-load into chat as an assistant message so the AI has context
-    // but doesn't auto-respond — user drives from here
-    state.chatMessages = [{
-      role: 'assistant',
-      content: 'Here\'s your ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
-    }]
-
-    state.gamePlanModal = false
-    state.gamePlanResult = null
-    state.tab = 'chat'
-    localStorage.setItem('mep_tab', 'chat')
+    const chatKey = gpChatKey()
+    // If no prior chat, seed it with the timeline as the opening assistant message
+    if (!state.gamePlanChats[chatKey] || state.gamePlanChats[chatKey].length === 0) {
+      const slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
+      const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
+      state.gamePlanChats[chatKey] = [{
+        role: 'assistant',
+        content: 'Here\'s your ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+      }]
+    }
+    state.gamePlanView = 'chat'
     render()
-    setTimeout(() => document.getElementById('chat-input')?.focus(), 100)
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
+  })
+
+  document.getElementById('gp-back-to-timeline')?.addEventListener('click', () => {
+    state.gamePlanView = 'timeline'
+    render()
+  })
+
+  // Send message in game plan chat
+  async function sendGpChatMessage(text) {
+    if (!text.trim() || state.gamePlanChatLoading) return
+    const chatKey = gpChatKey()
+    if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
+    state.gamePlanChats[chatKey].push({ role: 'user', content: text })
+    state.gamePlanChatLoading = true
+    render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
+    try {
+      const { slot, targetTime } = state.gamePlanModal || {}
+      const system = 'You are a cooking timeline assistant. The user has a meal plan and you are helping them adjust their cooking timeline. Be specific and practical. Keep responses concise. Reference actual times and steps from the timeline.'
+      const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, system })
+      })
+      const data = await resp.json()
+      const reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
+      state.gamePlanChats[chatKey].push({ role: 'assistant', content: reply })
+    } catch(e) {
+      state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Something went wrong — try again.' })
+    }
+    state.gamePlanChatLoading = false
+    render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
+  }
+
+  document.getElementById('gp-chat-send')?.addEventListener('click', () => {
+    const input = document.getElementById('gp-chat-input')
+    const text = input?.value?.trim()
+    if (text) { input.value = ''; sendGpChatMessage(text) }
+  })
+  document.getElementById('gp-chat-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      const text = e.target.value?.trim()
+      if (text) { e.target.value = ''; sendGpChatMessage(text) }
+    }
   })
   document.getElementById('gp-close')?.addEventListener('click', () => {
     state.gamePlanModal = { ...state.gamePlanModal, _open: false }
