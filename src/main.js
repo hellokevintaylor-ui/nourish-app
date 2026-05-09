@@ -2086,9 +2086,12 @@ function renderChat() {
     // Recipe context banner
     (ctx ? (
       '<div style="background:var(--sage4);border-bottom:1.5px solid var(--forest2);padding:8px 14px;display:flex;justify-content:space-between;align-items:center">' +
-        '<div>' +
-          '<div style="font-size:10px;color:var(--forest);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Asking about</div>' +
-          '<div style="font-size:13px;font-weight:700;color:var(--forest)">' + esc(ctx.name) + '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<button id="chat-back-to-recipe" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--forest);padding:0;line-height:1;font-family:inherit" title="Back to recipe">←</button>' +
+          '<div>' +
+            '<div style="font-size:10px;color:var(--forest);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Asking about</div>' +
+            '<button id="chat-go-to-recipe" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);text-decoration:underline dotted;font-family:inherit;text-align:left">' + esc(ctx.name) + '</button>' +
+          '</div>' +
         '</div>' +
         '<button id="chat-clear-context" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✕ Clear</button>' +
       '</div>'
@@ -4087,6 +4090,22 @@ async function estimateCaloriesAI(description) {
   document.getElementById('chat-clear-context')?.addEventListener('click', () => {
     state.chatRecipeContext = null; render()
   })
+
+  // Back arrow and recipe name link — both jump back to the recipe card
+  const goToRecipeFromChat = () => {
+    if (!state.chatRecipeContext) return
+    const rid = String(state.chatRecipeContext.id)
+    state.tab = 'recipes'
+    state.expandedRecipe = rid
+    localStorage.setItem('mep_tab', 'recipes')
+    render()
+    setTimeout(() => {
+      const card = document.querySelector('[data-rid="' + rid + '"]')
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }
+  document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
+  document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
   document.getElementById('chat-clear')?.addEventListener('click', () => {
     state.chatMessages = []
     render()
