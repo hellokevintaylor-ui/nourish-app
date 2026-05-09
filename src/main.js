@@ -134,13 +134,29 @@ async function sendChatMessage(userMessage) {
     // Build message history for API
     const messages = state.chatMessages.map(m => ({ role: m.role, content: m.content }))
 
-    const resp = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, system: systemPrompt })
-    })
-
-    if (!resp.ok) throw new Error('API error ' + resp.status)
+    let resp, attempts = 0
+    while (attempts < 3) {
+      try {
+        resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages, system: systemPrompt })
+        })
+        if (resp.ok) break
+        // 429 rate limit or 529 overloaded — wait and retry
+        if (resp.status === 429 || resp.status === 529) {
+          await new Promise(r => setTimeout(r, 2000 * (attempts + 1)))
+          attempts++
+          continue
+        }
+        throw new Error('API error ' + resp.status)
+      } catch(e) {
+        if (attempts >= 2) throw e
+        await new Promise(r => setTimeout(r, 1500 * (attempts + 1)))
+        attempts++
+      }
+    }
+    if (!resp || !resp.ok) throw new Error('API error after retries')
     const data = await resp.json()
     const reply = data.content?.[0]?.text || 'Sorry, I could not get a response.'
 
@@ -347,7 +363,7 @@ function parseIngredientLine(line) {
 
 function buildClaudeContext() {
   const recipeList = state.recipes.length === 0 ? "No recipes saved yet."
-    : state.recipes.map((r,i) => (i+1) + ". " + r.name + "\nINGREDIENTS:\n" + (r.ingredients||"") + "\nINSTRUCTIONS:\n" + (r.instructions||r.text||"") + (r.cookingNotes ? "\nMY NOTES: " + r.cookingNotes : "")).join("\n\n")
+    : state.recipes.map((r,i) => (i+1) + ". " + r.name + "\nIngredients:\n" + (r.ingredients||"") + (r.cookingNotes ? "\nNotes: " + r.cookingNotes : "")).join("\n\n")
   const pantryList = state.pantry.length === 0 ? "Empty."
     : state.pantry.map(p => p.name + (p.qty ? " (" + p.qty + ")" : "")).join(", ")
   const shopList = state.shopList.filter(i => !i.have).length === 0 ? "Empty."
