@@ -42,6 +42,7 @@ const state = {
   logSearchFocused: false,
   logBreakdownId: null,
   chatRecipeContext: null,
+  recipeChatMessages: {},   // keyed by recipe id, persistent per-recipe chat threads
   editingLogId: null,
   scaleModal: null,
   estimatingPrepId: null,
@@ -109,19 +110,28 @@ function purgeStaleCheckedItems() {
 async function sendChatMessage(userMessage) {
   if (!userMessage.trim() || state.chatLoading) return
 
-  // Add user message
-  state.chatMessages.push({ role: 'user', content: userMessage })
+  // Route to the right message thread
+  const rid = state.chatRecipeContext?.id
+  const getMessages = () => rid ? (state.recipeChatMessages[rid] || []) : state.chatMessages
+  const pushMessage = (msg) => {
+    if (rid) {
+      if (!state.recipeChatMessages[rid]) state.recipeChatMessages[rid] = []
+      state.recipeChatMessages[rid].push(msg)
+    } else {
+      state.chatMessages.push(msg)
+    }
+  }
+
+  pushMessage({ role: 'user', content: userMessage })
   state.chatLoading = true
   render()
 
-  // Scroll to bottom
   setTimeout(() => {
     const el = document.getElementById('chat-messages')
     if (el) el.scrollTop = el.scrollHeight
   }, 50)
 
   try {
-    // Build system context
     const context = buildClaudeContext()
     const agentCtx = buildAgentContext(state.agentProfile)
     const recipeCtx = state.chatRecipeContext
@@ -131,8 +141,7 @@ async function sendChatMessage(userMessage) {
         '\n\nAnswer questions about this recipe specifically. Reference the actual ingredients and steps.'
       : ''
     const systemPrompt = 'You are a personal food and meal planning coach for this user. You know their recipes, pantry, eating habits and goals intimately. Be warm, specific, and actionable. Reference their actual recipes and patterns by name when relevant. Keep responses concise and practical.\n\nWhen asked to build a grocery list: look at THIS WEEK\'S MEAL PLAN to see what recipes are planned, then check each recipe\'s ingredients against the PANTRY (skip anything already there) and CURRENT SHOPPING LIST (skip anything already on it), and suggest only what\'s missing. List items grouped by recipe.\n\n' + context + agentCtx + recipeCtx
-    // Build message history for API
-    const messages = state.chatMessages.map(m => ({ role: m.role, content: m.content }))
+    const messages = getMessages().map(m => ({ role: m.role, content: m.content }))
 
     let resp, attempts = 0
     while (attempts < 3) {
@@ -143,7 +152,6 @@ async function sendChatMessage(userMessage) {
           body: JSON.stringify({ messages, system: systemPrompt })
         })
         if (resp.ok) break
-        // 429 rate limit or 529 overloaded — wait and retry
         if (resp.status === 429 || resp.status === 529) {
           await new Promise(r => setTimeout(r, 2000 * (attempts + 1)))
           attempts++
@@ -159,10 +167,9 @@ async function sendChatMessage(userMessage) {
     if (!resp || !resp.ok) throw new Error('API error after retries')
     const data = await resp.json()
     const reply = data.content?.[0]?.text || 'Sorry, I could not get a response.'
-
-    state.chatMessages.push({ role: 'assistant', content: reply })
+    pushMessage({ role: 'assistant', content: reply })
   } catch(e) {
-    state.chatMessages.push({ role: 'assistant', content: '[!] ' + (e.message || 'Something went wrong. Please try again.') })
+    pushMessage({ role: 'assistant', content: '[!] ' + (e.message || 'Something went wrong. Please try again.') })
   }
 
   state.chatLoading = false
@@ -2083,15 +2090,18 @@ function linkifyRecipes(text) {
 }
 
 function renderChat() {
-  const messages = state.chatMessages
   const ctx = state.chatRecipeContext
+  // Use per-recipe thread if a recipe is focused, otherwise main chat
+  const messages = ctx ? (state.recipeChatMessages[ctx.id] || []) : state.chatMessages
 
   const chatHtml = messages.length === 0
-    ? '<div class="chat-empty"><div class="chat-empty-title">Your AI Food Coach</div><div class="chat-empty-sub">Ask about meal planning, recipes, calories, shopping — anything food related. I know your recipes, pantry and eating patterns.</div><div class="chat-empty-prompts">' +
-      ['Plan my week', 'What should I eat today?', 'What can I make with my pantry?', 'How am I doing with my goals?'].map(p =>
-        '<button class="chat-starter" data-prompt-text="' + esc(p) + '">' + esc(p) + '</button>'
-      ).join('') +
-      '</div></div>'
+    ? (ctx
+        ? '<div class="chat-empty"><div class="chat-empty-title">' + esc(ctx.name) + '</div><div class="chat-empty-sub">Ask anything about this recipe — substitutions, technique, timing, scaling.</div></div>'
+        : '<div class="chat-empty"><div class="chat-empty-title">Your AI Food Coach</div><div class="chat-empty-sub">Ask about meal planning, recipes, calories, shopping — anything food related. I know your recipes, pantry and eating patterns.</div><div class="chat-empty-prompts">' +
+          ['Plan my week', 'What should I eat today?', 'What can I make with my pantry?', 'How am I doing with my goals?'].map(p =>
+            '<button class="chat-starter" data-prompt-text="' + esc(p) + '">' + esc(p) + '</button>'
+          ).join('') +
+          '</div></div>')
     : messages.map(m =>
         '<div class="chat-msg chat-msg-' + m.role + '">' +
           '<div class="chat-bubble">' + (m.role === 'assistant' ? linkifyRecipes(m.content) : esc(m.content)) + '</div>' +
@@ -4123,7 +4133,12 @@ async function estimateCaloriesAI(description) {
   document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
   document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
   document.getElementById('chat-clear')?.addEventListener('click', () => {
-    state.chatMessages = []
+    const rid = state.chatRecipeContext?.id
+    if (rid) {
+      state.recipeChatMessages[rid] = []
+    } else {
+      state.chatMessages = []
+    }
     render()
   })
 
