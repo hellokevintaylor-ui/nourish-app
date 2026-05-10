@@ -246,9 +246,10 @@ async function removeTagFromItem(name, namespace, itemId) {
 async function init() {
   render()
   const weekDates = getWeekDates(0)
-  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog, weightLog] = await Promise.all([
+  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog, weightLog, gamePlans] = await Promise.all([
     db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags(),
-    db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90), db.fetchExerciseLog(), db.fetchWeightLog()
+    db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90), db.fetchExerciseLog(), db.fetchWeightLog(),
+    db.fetchGamePlans()
   ])
   state.allTags = allTags || []
   state.mealPlan = mealPlan || []
@@ -275,6 +276,22 @@ async function init() {
     goal_start_date: goals.goal_start_date || null
   }
   state.loading  = false
+
+  state.loading  = false
+
+  // Hydrate game plan chats and timelines from Supabase
+  if (gamePlans && gamePlans.length > 0) {
+    gamePlans.forEach(gp => {
+      const key = gp.date + '-' + gp.slot
+      if (gp.chat_messages && gp.chat_messages.length > 0) {
+        state.gamePlanChats[key] = gp.chat_messages
+      }
+      if (!state._lastGamePlan || new Date(gp.updated_at) > new Date(state._lastGamePlan._updated || 0)) {
+        state._lastGamePlan = { slot: gp.slot, date: gp.date, targetTime: gp.target_time, _updated: gp.updated_at }
+        if (gp.timeline) state.gamePlanResult = gp.timeline
+      }
+    })
+  }
 
   // Purge shop items checked more than 1 hour ago
   purgeStaleCheckedItems()
@@ -2311,6 +2328,18 @@ function gpChatKey() {
   return (date || 'today') + '-' + (slot || 'Dinner')
 }
 
+async function saveGamePlanToDb() {
+  const { date, slot, targetTime } = state.gamePlanModal || {}
+  if (!date || !slot) return
+  const chatKey = gpChatKey()
+  await db.saveGamePlan(
+    date, slot,
+    state.gamePlanResult || null,
+    state.gamePlanChats[chatKey] || [],
+    targetTime || null
+  )
+}
+
 function renderGamePlanModal() {
   const { slot, targetTime, date } = state.gamePlanModal || {}
   const isWholeDay = slot === 'Day'
@@ -4184,6 +4213,8 @@ async function estimateCaloriesAI(description) {
       const el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
     }, 50)
+    // Auto-save to Supabase after each message
+    saveGamePlanToDb()
   }
 
   document.getElementById('gp-chat-send')?.addEventListener('click', () => {
@@ -4218,6 +4249,7 @@ async function estimateCaloriesAI(description) {
     const result = await generateGamePlan(slot, timeVal, date, recipeId)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    saveGamePlanToDb()
     render()
   })
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
@@ -4232,6 +4264,7 @@ async function estimateCaloriesAI(description) {
     const result = await generateGamePlan(slot, timeVal, date, recipeId)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    saveGamePlanToDb()
     render()
   })
 

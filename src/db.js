@@ -82,10 +82,8 @@ export async function clearShopList() {
   await supabase.from('shop_list').delete().eq('user_id', uid())
 }
 export async function markAllGotIt(items, pantryItems) {
-  // Mark all as have
   const ids = items.filter(i => !i.have).map(i => i.id)
   if (ids.length) await supabase.from('shop_list').update({ have: true }).in('id', ids)
-  // Add to pantry
   const toAdd = items.filter(i => !i.have && !pantryItems.find(p => p.name.toLowerCase() === i.name.toLowerCase()))
   if (toAdd.length) {
     await supabase.from('pantry').insert(toAdd.map(i => ({ user_id: uid(), name: i.name, qty: '' })))
@@ -140,7 +138,6 @@ export async function deleteExerciseEntry(id) {
   await supabase.from('exercise_log').delete().eq('id', id).eq('user_id', uid())
 }
 export async function fetchLog() {
-  // Use local midnight to avoid timezone issues where yesterday's entries bleed into today
   const now = new Date()
   const localMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
   const { data } = await supabase.from('food_log').select('*').eq('user_id', uid()).gte('logged_at', localMidnight.toISOString()).order('logged_at')
@@ -150,7 +147,6 @@ export async function addLogEntry(food, calories, recipeId, dateStr) {
   const row = { user_id: uid(), food, calories }
   if (recipeId) row.recipe_id = recipeId
   if (dateStr) {
-    // Set logged_at to noon on the specified date in local time
     const d = new Date(dateStr + 'T12:00:00')
     row.logged_at = d.toISOString()
   }
@@ -195,7 +191,6 @@ export async function saveGoals(goals) {
 
 // ── TAGS ─────────────────────────────────────────────────────────────────────
 export async function fetchTags(namespace) {
-  const q = namespace ? `?user_id=eq.${uid()}&namespace=eq.${namespace}&order=name` : `?user_id=eq.${uid()}&order=name`
   const { data } = await supabase.from('tags').select('*').eq('user_id', uid())
   if (namespace) return (data || []).filter(t => t.namespace === namespace)
   return data || []
@@ -207,16 +202,12 @@ export async function saveTag(name, namespace) {
 export async function deleteTag(id) {
   await supabase.from('tags').delete().eq('id', id)
 }
-
-// Update recipe tags
 export async function updateRecipeTags(id, tags) {
   await supabase.from('recipes').update({ tags }).eq('id', id)
 }
-// Update pantry tags
 export async function updatePantryTags(id, tags) {
   await supabase.from('pantry').update({ tags }).eq('id', id)
 }
-// Update shop item tags
 export async function updateShopItemTags(id, tags) {
   await supabase.from('shop_list').update({ tags }).eq('id', id)
 }
@@ -253,7 +244,6 @@ export async function fetchFullLog(days) {
     .order('logged_at', { ascending: false })
   return data || []
 }
-
 export async function fetchFullMealPlan(days) {
   const since = new Date()
   since.setDate(since.getDate() - (days || 90))
@@ -264,4 +254,38 @@ export async function fetchFullMealPlan(days) {
     .gte('date', sinceDate)
     .order('date', { ascending: false })
   return data || []
+}
+
+// ── GAME PLANS ────────────────────────────────────────────────────────────────
+export async function fetchGamePlans() {
+  const { data } = await supabase.from('game_plans')
+    .select('*')
+    .eq('user_id', uid())
+    .order('updated_at', { ascending: false })
+  return data || []
+}
+
+export async function saveGamePlan(date, slot, timeline, chatMessages, targetTime) {
+  const row = {
+    user_id: uid(),
+    date,
+    slot,
+    timeline: timeline || null,
+    chat_messages: chatMessages || [],
+    target_time: targetTime || null,
+    updated_at: new Date().toISOString()
+  }
+  // Upsert — update if same user/date/slot exists, insert if not
+  const { data } = await supabase.from('game_plans')
+    .upsert(row, { onConflict: 'user_id,date,slot' })
+    .select()
+  return data?.[0]
+}
+
+export async function deleteGamePlan(date, slot) {
+  await supabase.from('game_plans')
+    .delete()
+    .eq('user_id', uid())
+    .eq('date', date)
+    .eq('slot', slot)
 }
