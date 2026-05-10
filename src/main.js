@@ -496,11 +496,10 @@ function openClaude(prompt) {
 function formatRecipeText(text) {
   if (!text) return ''
   return text.split('\n').map(line => {
-    line = line.trim()
-    if (!line) return ''
-    const escaped = esc(line)
-    const withTimers = linkifyTimers(escaped)
-    if (line.startsWith('•') || /^\d+\./.test(line)) return `<div class="rt-item">${withTimers}</div>`
+    const trimmed = line.trim()
+    if (!trimmed) return '<div style="height:8px"></div>'
+    const withTimers = linkifyTimers(esc(trimmed))
+    if (trimmed.startsWith('•') || /^\d+\./.test(trimmed)) return `<div class="rt-item">${withTimers}</div>`
     return `<div class="rt-line">${withTimers}</div>`
   }).join('')
 }
