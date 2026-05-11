@@ -256,7 +256,25 @@ export async function fetchFullMealPlan(days) {
   return data || []
 }
 
-// ── GAME PLANS ────────────────────────────────────────────────────────────────
+// ── RECIPE CHATS ──────────────────────────────────────────────────────────────
+export async function fetchRecipeChat(recipeId) {
+  const { data } = await supabase.from('recipe_chats')
+    .select('*')
+    .eq('user_id', uid())
+    .eq('recipe_id', recipeId)
+    .single()
+  return data?.messages || []
+}
+
+export async function saveRecipeChat(recipeId, messages) {
+  await supabase.from('recipe_chats')
+    .upsert({
+      user_id: uid(),
+      recipe_id: recipeId,
+      messages,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id,recipe_id' })
+}
 export async function fetchGamePlans() {
   const { data } = await supabase.from('game_plans')
     .select('*')

@@ -176,6 +176,12 @@ async function sendChatMessage(userMessage) {
 
   state.chatLoading = false
   render()
+
+  // Auto-save recipe chat to Supabase if in recipe context
+  if (rid) {
+    db.saveRecipeChat(rid, state.recipeChatMessages[rid] || [])
+  }
+
   setTimeout(() => {
     const el = document.getElementById('chat-messages')
     if (el) el.scrollTop = el.scrollHeight
@@ -3119,16 +3125,19 @@ function bindEvents() {
   })
 
   document.querySelectorAll('[data-ask]').forEach(el => {
-    el.addEventListener('click', e => {
+    el.addEventListener('click', async e => {
       e.stopPropagation()
       const r = state.recipes.find(x => x.id === el.dataset.ask)
       if (!r) return
-      // Set recipe context for chat without auto-sending
       state.chatRecipeContext = r
       state.tab = 'chat'
       localStorage.setItem('mep_tab', 'chat')
+      // Load persisted chat from Supabase if not already in memory
+      if (!state.recipeChatMessages[r.id] || state.recipeChatMessages[r.id].length === 0) {
+        const saved = await db.fetchRecipeChat(r.id)
+        if (saved && saved.length > 0) state.recipeChatMessages[r.id] = saved
+      }
       render()
-      // Focus the chat input
       setTimeout(() => document.getElementById('chat-input')?.focus(), 100)
     })
   })
@@ -4331,6 +4340,7 @@ async function estimateCaloriesAI(description) {
     const rid = state.chatRecipeContext?.id
     if (rid) {
       state.recipeChatMessages[rid] = []
+      db.saveRecipeChat(rid, [])
     } else {
       state.chatMessages = []
     }
