@@ -550,15 +550,13 @@ function unlockAudio() {
 }
 
 function generateBeepDataURI() {
-  // Generate a short 880Hz beep WAV programmatically as a data URI
   const sampleRate = 44100
-  const duration = 0.25 // seconds
-  const freq = 880
+  const duration = 0.3
+  const freq = 740  // slightly lower than 880 — carries better
   const numSamples = Math.floor(sampleRate * duration)
   const buffer = new ArrayBuffer(44 + numSamples * 2)
   const view = new DataView(buffer)
 
-  // WAV header
   const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)) }
   writeStr(0, 'RIFF')
   view.setUint32(4, 36 + numSamples * 2, true)
@@ -574,15 +572,13 @@ function generateBeepDataURI() {
   writeStr(36, 'data')
   view.setUint32(40, numSamples * 2, true)
 
-  // PCM samples — sine wave with fade out
   for (let i = 0; i < numSamples; i++) {
     const t = i / sampleRate
-    const fade = 1 - (i / numSamples)
-    const sample = Math.sin(2 * Math.PI * freq * t) * fade * 0.8
-    view.setInt16(44 + i * 2, sample * 32767, true)
+    const fade = i < sampleRate * 0.01 ? (i / (sampleRate * 0.01)) : 1 - ((i - sampleRate * 0.01) / (numSamples - sampleRate * 0.01))
+    const sample = Math.sin(2 * Math.PI * freq * t) * fade * 0.99  // max amplitude
+    view.setInt16(44 + i * 2, Math.max(-32767, Math.min(32767, sample * 32767)), true)
   }
 
-  // Convert to base64
   const bytes = new Uint8Array(buffer)
   let binary = ''
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
@@ -595,10 +591,16 @@ function timerBeep() {
       beepAudio = new Audio(generateBeepDataURI())
       beepAudio.load()
     }
+    beepAudio.volume = 1.0
     beepAudio.currentTime = 0
     const p = beepAudio.play()
     if (p) p.catch(e => console.error('beep play error', e))
   } catch(e) { console.error('beep error', e) }
+
+  // Vibrate if supported — three pulses
+  try {
+    if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400])
+  } catch(e) {}
 }
 
 let keepAliveInterval = null
@@ -2286,18 +2288,20 @@ Create a cooking timeline working STRICTLY BACKWARDS from ${targetTime}. Anchor 
 CRITICAL RULES:
 - Work BACKWARDS from ${targetTime}. The last step is serving at ${targetTime}. Everything else flows backward from there.
 - Current time is ${currentTime}. If any calculated step falls before ${currentTime}, mark it as "Start now:" instead of showing a past time. Never show a time that has already passed.
-- Group related prep into ONE entry. "Drain, rinse, dry chickpeas" is ONE step — not three.
+- ALWAYS include exact quantities from the recipe inline with each step. If a step involves garlic, say "mince 3 cloves garlic" not just "mince garlic". If it involves soy sauce, say "measure 2 tbsp soy sauce". The cook should never need to look at the recipe for amounts.
+- Group related prep into ONE entry with all its quantities. "Mince 3 cloves garlic, dice 1 medium onion, measure 2 tbsp soy sauce" is ONE step.
 - New timestamp only when the cook starts something new or needs to check something.
 - Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min.
 - Use passive time (oven, simmering) for active prep of other components.
 - Aim for 6-10 steps for a single meal, up to 15 for a whole day.
-- Be conversational. "Prep the chickpeas — drain, rinse, pat dry" not sub-bullet lists.
+- Be conversational but specific. "Prep the aromatics — mince 3 cloves garlic, dice 1 onion" not vague references.
 ${isWholeDay ? '- Include all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ').' : ''}
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
 [
   {"time": "6:00 PM", "step": "Preheat oven to 425°F — takes about 20 min"},
-  {"time": "6:05 PM", "step": "Prep the chickpeas — drain, rinse, pat dry"},
+  {"time": "6:05 PM", "step": "Prep the chickpeas — drain and rinse one 15oz can, pat dry with a towel"},
+  {"time": "6:10 PM", "step": "Toss chickpeas with 2 tbsp olive oil, 1 tsp cumin, ½ tsp paprika, salt and pepper — spread on baking sheet"},
   ...
 ]
 
