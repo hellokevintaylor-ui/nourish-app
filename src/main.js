@@ -2442,11 +2442,13 @@ function renderGamePlanModal() {
       '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--cream3);flex-shrink:0">' +
           '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--forest);padding:0;line-height:1;font-family:inherit">←</button>' +
-          '<div style="flex:1">' +
-            '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Game Plan</div>' +
-            '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
+          '<div style="flex:1;display:flex;align-items:center;gap:8px">' +
+            '<div>' +
+              '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Game Plan</div>' +
+              '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
+            '</div>' +
+            '<button id="gp-start-over" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">↺ Redo</button>' +
           '</div>' +
-          '<button id="gp-start-over" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit;margin-right:8px">↺ Redo</button>' +
           '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
         '</div>' +
         '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
