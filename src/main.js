@@ -2446,13 +2446,15 @@ function renderGamePlanModal() {
 
   return '<div class="modal-bg" id="game-plan-bg">' +
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
-      '<div class="modal-title">📋 ' + slotLabel + ' Game Plan</div>' +
-      '<div class="modal-sub">' + dateLabel + '</div>' +
-      content +
-      '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
-        (result ? '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' : '') +
-        '<button class="modal-cancel" id="gp-close" style="width:100%">Close</button>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+        '<div class="modal-title" style="margin:0">📋 ' + slotLabel + ' Game Plan</div>' +
+        '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1;flex-shrink:0">×</button>' +
       '</div>' +
+      '<div class="modal-sub" style="margin-bottom:14px">' + dateLabel + '</div>' +
+      content +
+      (result ? '<div style="margin-top:16px">' +
+        '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
+      '</div>' : '') +
     '</div>' +
   '</div>'
 }
