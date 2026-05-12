@@ -3162,24 +3162,27 @@ function bindEvents() {
       e.stopPropagation()
       const rid = el.dataset.planRecipe
       const today = new Date().toISOString().slice(0, 10)
-      // Find which slot this recipe is planned in today (if any)
       const plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))
       const slot = plannedEntry?.meal_slot || 'Dinner'
       const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
-      const lastPlan = state._lastGamePlan
-      const isSame = lastPlan && lastPlan.slot === slot && lastPlan.date === today
-      if (!isSame) {
+      const chatKey = today + '-' + slot
+      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
+      if (hasPriorChat) {
+        state.gamePlanView = 'chat'
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid }
+        render()
+        setTimeout(() => {
+          const el = document.getElementById('gp-chat-messages')
+          if (el) el.scrollTop = el.scrollHeight
+        }, 50)
+      } else {
         state.gamePlanResult = null
         state.gamePlanLoading = false
         state.gamePlanView = 'timeline'
         state._lastGamePlan = { slot, date: today }
-      } else {
-        const chatKey = today + '-' + slot
-        const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
-        state.gamePlanView = hasPriorChat ? 'chat' : 'timeline'
+        state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
+        render()
       }
-      state.gamePlanModal = { slot, targetTime: (isSame && lastPlan?.targetTime) || defaultTime, date: today, recipeId: rid }
-      render()
     })
   })
 
@@ -4231,26 +4234,27 @@ async function estimateCaloriesAI(description) {
       const targetTime = el.dataset.gamePlanTime
       const date = el.dataset.gamePlanDate
       const recipeId = el.dataset.gamePlanRid
-      const lastPlan = state._lastGamePlan
-      const isSame = lastPlan && lastPlan.slot === slot && lastPlan.date === date
-      if (!isSame) {
-        state.gamePlanResult = null
-        state.gamePlanLoading = false
-        state.gamePlanView = 'timeline'
-        state._lastGamePlan = { slot, date }
-      } else {
-        // Reopen — if there's a prior chat, go straight to it
-        const chatKey = date + '-' + slot
-        const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
-        state.gamePlanView = hasPriorChat ? 'chat' : 'timeline'
-      }
-      state.gamePlanModal = { slot, targetTime: (isSame && lastPlan.targetTime) || targetTime, date, recipeId }
-      render()
-      if (state.gamePlanView === 'chat') {
+      const chatKey = date + '-' + slot
+      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
+      const hasPriorResult = state._lastGamePlan?.slot === slot && state._lastGamePlan?.date === date && state.gamePlanResult
+
+      if (hasPriorChat) {
+        // Has a saved chat — go straight to it
+        state.gamePlanView = 'chat'
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || targetTime, date, recipeId }
+        render()
         setTimeout(() => {
           const el = document.getElementById('gp-chat-messages')
           if (el) el.scrollTop = el.scrollHeight
         }, 50)
+      } else {
+        // No prior chat — show the generate screen
+        state.gamePlanResult = null
+        state.gamePlanLoading = false
+        state.gamePlanView = 'timeline'
+        state._lastGamePlan = { slot, date }
+        state.gamePlanModal = { slot, targetTime, date, recipeId }
+        render()
       }
     })
   })
