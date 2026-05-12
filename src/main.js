@@ -2245,32 +2245,39 @@ function renderChat() {
 async function generateGamePlan(slot, targetTime, date, recipeId) {
   const isWholeDay = slot === 'Day'
 
+  // Helper — trim instructions if too long, keep ingredients full
+  const recipeDetail = (entry, recipe) => {
+    const pt = recipe?.prepTime
+    const instructions = recipe?.instructions || ''
+    // Trim instructions to 600 chars if multiple recipes to avoid token overflow
+    const instTrimmed = instructions.length > 600 ? instructions.slice(0, 600) + '...' : instructions
+    return '=== ' + (entry.meal_slot ? entry.meal_slot + ': ' : '') + entry.recipe_name + ' ===\n' +
+      (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
+      (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
+      (instTrimmed ? 'Instructions:\n' + instTrimmed : '')
+  }
+
   let mealText = ''
 
   if (isWholeDay) {
-    // Gather all recipes planned for this date
     const allEntries = state.mealPlan.filter(e => e.date === date && e.recipe_id)
     const details = allEntries.map(entry => {
       const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
-      const pt = recipe?.prepTime
-      return '=== ' + entry.meal_slot + ': ' + entry.recipe_name + ' ===\n' +
-        (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
-        (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
-        (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
+      return recipeDetail(entry, recipe)
     })
     mealText = details.join('\n\n')
   } else {
-    // Single slot — gather all entries in that slot
     const slotEntries = state.mealPlan.filter(e => e.date === date && e.meal_slot === slot && e.recipe_id)
     const details = slotEntries.map(entry => {
       const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
-      const pt = recipe?.prepTime
-      return '=== ' + entry.recipe_name + ' ===\n' +
-        (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
-        (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
-        (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
+      return recipeDetail(entry, recipe)
     })
     mealText = details.join('\n\n')
+  }
+
+  // Safety check — if still very large, trim further
+  if (mealText.length > 4000) {
+    mealText = mealText.slice(0, 4000) + '\n...(recipe details trimmed for length)'
   }
 
   const now = new Date()
@@ -2313,7 +2320,7 @@ End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 1500,
+        max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }]
       })
     })
