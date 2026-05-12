@@ -2242,7 +2242,7 @@ function renderChat() {
 }
 
 
-async function generateGamePlan(slot, targetTime, date, recipeId) {
+async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const isWholeDay = slot === 'Day'
 
   // Helper — trim instructions if too long, keep ingredients full
@@ -2303,6 +2303,7 @@ CRITICAL RULES:
 - Aim for 6-8 steps for a single meal, 10-12 for multiple recipes. Be ruthlessly concise — combine steps wherever possible.
 - Keep each step under 20 words where possible.
 ${isWholeDay ? '- Include all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ').' : ''}
+${notes ? '\nUSER NOTES (factor these in): ' + notes : ''}
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
 [
@@ -2451,12 +2452,13 @@ function renderGamePlanModal() {
         }).join('') +
       '</div>'
   } else {
+    const savedNotes = state.gamePlanModal?.notes || ''
     content =
-      '<div style="font-size:13px;color:var(--ink3);margin-bottom:16px">Set your ' + (isWholeDay ? 'dinner' : slotLabel.toLowerCase()) + ' time and I\'ll build a step-by-step cooking timeline.</div>' +
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
         '<span style="font-size:13px;font-weight:600">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at:</span>' +
         '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
       '</div>' +
+      '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, skipping the potatoes tonight, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px">' + esc(savedNotes) + '</textarea>' +
       '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
   }
 
@@ -4296,33 +4298,61 @@ async function estimateCaloriesAI(description) {
   })
   document.getElementById('gp-generate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
+    const notes = document.getElementById('gp-notes')?.value?.trim() || ''
     const { slot, date, recipeId } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal, date, recipeId)
+    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    // Seed the chat thread and go straight to it
+    const chatKey = date + '-' + slot
+    const slotLabel = slot === 'Day' ? 'whole day' : slot
+    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    const seedMessages = []
+    if (notes) seedMessages.push({ role: 'user', content: notes })
+    seedMessages.push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
+    state.gamePlanChats[chatKey] = seedMessages
+    state.gamePlanView = 'chat'
     saveGamePlanToDb()
     render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
   })
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
-    const { slot, date, recipeId } = state.gamePlanModal
+    const { slot, date, recipeId, notes } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal, date, recipeId)
+    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    // Re-seed chat thread with new timeline
+    const chatKey = date + '-' + slot
+    const slotLabel = slot === 'Day' ? 'whole day' : slot
+    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    const seedMessages = []
+    if (notes) seedMessages.push({ role: 'user', content: notes })
+    seedMessages.push({ role: 'assistant', content: 'Here\'s your updated ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
+    state.gamePlanChats[chatKey] = seedMessages
+    state.gamePlanView = 'chat'
     saveGamePlanToDb()
     render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
   })
 
   // ── CHAT HANDLERS ──
