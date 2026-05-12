@@ -2295,13 +2295,13 @@ Create a cooking timeline working STRICTLY BACKWARDS from ${targetTime}. Anchor 
 CRITICAL RULES:
 - Work BACKWARDS from ${targetTime}. The last step is serving at ${targetTime}. Everything else flows backward from there.
 - Current time is ${currentTime}. If any calculated step falls before ${currentTime}, mark it as "Start now:" instead of showing a past time. Never show a time that has already passed.
-- ALWAYS include exact quantities from the recipe inline with each step. If a step involves garlic, say "mince 3 cloves garlic" not just "mince garlic". If it involves soy sauce, say "measure 2 tbsp soy sauce". The cook should never need to look at the recipe for amounts.
-- Group related prep into ONE entry with all its quantities. "Mince 3 cloves garlic, dice 1 medium onion, measure 2 tbsp soy sauce" is ONE step.
+- ALWAYS include exact quantities inline with each step — but keep steps concise. "Mince 3 cloves garlic, dice 1 onion" not a sentence per ingredient.
+- Group related prep into ONE entry. One step per task, not per ingredient.
 - New timestamp only when the cook starts something new or needs to check something.
 - Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min.
 - Use passive time (oven, simmering) for active prep of other components.
-- Aim for 6-10 steps for a single meal, up to 15 for a whole day.
-- Be conversational but specific. "Prep the aromatics — mince 3 cloves garlic, dice 1 onion" not vague references.
+- Aim for 6-8 steps for a single meal, 10-12 for multiple recipes. Be ruthlessly concise — combine steps wherever possible.
+- Keep each step under 20 words where possible.
 ${isWholeDay ? '- Include all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ').' : ''}
 
 Return ONLY a JSON array, no other text, no markdown, no backticks:
@@ -2320,7 +2320,7 @@ End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 2000,
+        max_tokens: 3000,
         messages: [{ role: 'user', content: prompt }]
       })
     })
