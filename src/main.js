@@ -2325,9 +2325,20 @@ End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
       })
     })
     const data = await resp.json()
+    if (!resp.ok) {
+      console.error('Game plan API error:', resp.status, data)
+      return [{ time: '!', step: 'API error ' + resp.status + ': ' + (data?.error?.message || JSON.stringify(data)) }]
+    }
     const text = data.content?.[0]?.text?.trim() || ''
+    console.log('Game plan raw response:', text.slice(0, 300))
     const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
-    const parsed = JSON.parse(clean)
+    // Find the JSON array even if there's surrounding text
+    const arrayMatch = clean.match(/\[[\s\S]*\]/)
+    if (!arrayMatch) {
+      console.error('No JSON array found in response:', clean.slice(0, 200))
+      return [{ time: '!', step: 'No timeline returned. Try again or simplify your recipes.' }]
+    }
+    const parsed = JSON.parse(arrayMatch[0])
     // Sort chronologically (earliest first) — AI calculates backwards but we display forwards
     parsed.sort((a, b) => {
       const toMins = t => {
