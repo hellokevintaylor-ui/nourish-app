@@ -2287,48 +2287,33 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const isToday = date === new Date().toISOString().slice(0, 10)
 
   const slotLabel = isWholeDay ? 'the whole day' : slot
-  const prompt = `You are a cooking timeline planner. Build a timeline that works BACKWARDS from the eating time.
+  const prompt = `You are a cooking assistant. List the cooking steps needed for this meal and how long each step takes.
 
-MEAL DATE: ${mealDate}
-EATING TIME: ${targetTime} on ${mealDate} — this is when food hits the table. Work backwards from here.
-CURRENT TIME: ${currentTime}${isToday ? ' (this meal is tonight)' : ' — NOTE: this meal is NOT tonight, it is on ' + mealDate + '. Do NOT use current time to limit start times. Start times can be any reasonable time on ' + mealDate + '.'}
+MEAL: ${mealDate} at ${targetTime}
+${notes ? 'USER NOTES: ' + notes : ''}
 
-Here is what they are making:
-
+RECIPES:
 ${mealText}
 
-HOW TO BUILD THE TIMELINE:
-1. Start at ${targetTime} on ${mealDate} — that is the last step (serving). Work backwards.
-2. What is the LAST cooking step before serving? Schedule it to finish at ${targetTime}.
-3. What comes before that? Keep going backwards.
-4. The FIRST step should be the earliest start time needed on ${mealDate}.
-${isToday ? '5. If any step would fall before ' + currentTime + ' (current time), show it as "Start now".' : '5. Do NOT show "Start now" — this is a future meal. Show actual times on ' + mealDate + '.'}
+List every step needed to cook this meal. For each step include:
+- What to do (with exact quantities)
+- How many minutes it takes (active time)
+- How many minutes of passive/wait time after (oven, simmer, rest) — 0 if none
 
-EXAMPLE of correct backward planning for dinner at 7:00 PM:
-- 5:00 PM — Preheat oven to 425°F
-- 5:15 PM — Prep the chicken — coat with 2 tbsp olive oil, season with salt and pepper
-- 6:00 PM — Put chicken in oven (45 min cook time)
-- 6:30 PM — Roast the potatoes alongside — toss with 1 tbsp butter
-- 6:45 PM — Make the sauce — simmer 1 cup cream with 2 cloves garlic
-- 7:00 PM — Dinner is served 🍽️
-
-RULES:
-- Include exact quantities inline: "2 tbsp butter" not just "butter"
-- Group related prep into one step
-- Use passive cook time (oven, simmer) to schedule parallel active prep
-- Oven preheat = 15-20 min, water to boil = 10-12 min
-- 6-8 steps for one recipe, up to 12 for multiple
-- Keep steps concise — under 20 words each
-${isWholeDay ? '- Include all meals: breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime : ''}
-${notes ? '- USER NOTES: ' + notes : ''}
-
-Return ONLY a JSON array, no preamble, no markdown, no backticks:
+Return ONLY a JSON array:
 [
-  {"time": "5:00 PM", "step": "Preheat oven to 425°F"},
-  {"time": "5:15 PM", "step": "Prep the chicken — coat with 2 tbsp olive oil, season"},
-  ...
-  {"time": "${targetTime}", "step": "${isWholeDay ? 'Dinner' : slot} is served 🍽️"}
-]`
+  {"step": "Preheat oven to 425°F", "active_min": 1, "passive_min": 20},
+  {"step": "Prep chicken thighs — pat dry, coat with 2 tbsp olive oil, season with salt and pepper", "active_min": 5, "passive_min": 0},
+  {"step": "Roast chicken in oven", "active_min": 2, "passive_min": 40},
+  {"step": "Make pan sauce — deglaze with 1/2 cup white wine, add 2 tbsp butter", "active_min": 8, "passive_min": 0},
+  {"step": "Rest chicken, plate and serve", "active_min": 3, "passive_min": 0}
+]
+
+Rules:
+- Include exact amounts inline ("2 tbsp olive oil" not "olive oil")
+- Overlap passive steps with active steps where realistic (prep veggies while chicken roasts)
+- 6-8 steps for one recipe, up to 12 for multiple
+- No markdown, no backticks, just the JSON array`
 
   try {
     let resp, attempts = 0
@@ -2358,26 +2343,53 @@ Return ONLY a JSON array, no preamble, no markdown, no backticks:
     const text = data.content?.[0]?.text?.trim() || ''
     console.log('Game plan raw response:', text.slice(0, 300))
     const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
-    // Find the JSON array even if there's surrounding text
     const arrayMatch = clean.match(/\[[\s\S]*\]/)
     if (!arrayMatch) {
       console.error('No JSON array found in response:', clean.slice(0, 200))
-      return [{ time: '!', step: 'No timeline returned. Try again or simplify your recipes.' }]
+      return null
     }
-    const parsed = JSON.parse(arrayMatch[0])
-    // Sort chronologically (earliest first) — AI calculates backwards but we display forwards
-    parsed.sort((a, b) => {
-      const toMins = t => {
-        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
-        if (!m) return 0
-        let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
-        if (ampm === 'PM' && h !== 12) h += 12
-        if (ampm === 'AM' && h === 12) h = 0
-        return h * 60 + min
-      }
-      return toMins(a.time) - toMins(b.time)
-    })
-    return parsed
+    const steps = JSON.parse(arrayMatch[0])
+
+    // Calculate times ourselves working BACKWARD from targetTime
+    const parseTime = (t) => {
+      const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+      if (!m) return 0
+      let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
+      if (ampm === 'PM' && h !== 12) h += 12
+      if (ampm === 'AM' && h === 12) h = 0
+      return h * 60 + min
+    }
+    const formatTime = (totalMins) => {
+      const h = Math.floor(((totalMins % (24*60)) + 24*60) % (24*60) / 60)
+      const m = ((totalMins % 60) + 60) % 60
+      const ampm = h >= 12 ? 'PM' : 'AM'
+      const hour = h % 12 || 12
+      return hour + ':' + String(m).padStart(2, '0') + ' ' + ampm
+    }
+
+    // Work backward: dinner time minus total duration of each step from the end
+    const dinnerMins = parseTime(targetTime)
+    const now = new Date()
+    const nowMins = now.getHours() * 60 + now.getMinutes()
+    const isTodayMeal = date === now.toISOString().slice(0, 10)
+
+    // Calculate cumulative time from end, assign start times
+    const result = []
+    let cursor = dinnerMins
+
+    // Process steps in reverse to assign times backward from dinner
+    const reversed = [...steps].reverse()
+    for (const s of reversed) {
+      const total = (s.active_min || 0) + (s.passive_min || 0)
+      cursor -= total
+      const stepTime = isTodayMeal && cursor < nowMins ? nowMins : cursor
+      result.unshift({ time: formatTime(stepTime), step: s.step })
+    }
+
+    // Add serving step at dinner time
+    result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
+
+    return result
   } catch(e) {
     console.error('Game plan error:', e)
     return null
