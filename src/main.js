@@ -2283,25 +2283,29 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const now = new Date()
   const currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
+  const mealDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'today'
+  const isToday = date === new Date().toISOString().slice(0, 10)
+
   const slotLabel = isWholeDay ? 'the whole day' : slot
   const prompt = `You are a cooking timeline planner. Build a timeline that works BACKWARDS from the eating time.
 
-EATING TIME: ${targetTime} — this is when food hits the table. Work backwards from here.
-CURRENT TIME: ${currentTime} — do not schedule anything before this.
+MEAL DATE: ${mealDate}
+EATING TIME: ${targetTime} on ${mealDate} — this is when food hits the table. Work backwards from here.
+CURRENT TIME: ${currentTime}${isToday ? ' (this meal is tonight)' : ' — NOTE: this meal is NOT tonight, it is on ' + mealDate + '. Do NOT use current time to limit start times. Start times can be any reasonable time on ' + mealDate + '.'}
 
 Here is what they are making:
 
 ${mealText}
 
 HOW TO BUILD THE TIMELINE:
-1. Start at ${targetTime} — that is step 1 (serving). Work backwards.
+1. Start at ${targetTime} on ${mealDate} — that is the last step (serving). Work backwards.
 2. What is the LAST cooking step before serving? Schedule it to finish at ${targetTime}.
-3. What comes before that? Schedule it to finish before that last step. Keep going backwards.
-4. The FIRST step in the list should be the earliest start time needed.
-5. If any step would fall before ${currentTime}, show it as "Start now".
+3. What comes before that? Keep going backwards.
+4. The FIRST step should be the earliest start time needed on ${mealDate}.
+${isToday ? '5. If any step would fall before ' + currentTime + ' (current time), show it as "Start now".' : '5. Do NOT show "Start now" — this is a future meal. Show actual times on ' + mealDate + '.'}
 
 EXAMPLE of correct backward planning for dinner at 7:00 PM:
-- 5:00 PM — Start now: Preheat oven to 425°F
+- 5:00 PM — Preheat oven to 425°F
 - 5:15 PM — Prep the chicken — coat with 2 tbsp olive oil, season with salt and pepper
 - 6:00 PM — Put chicken in oven (45 min cook time)
 - 6:30 PM — Roast the potatoes alongside — toss with 1 tbsp butter
@@ -2320,7 +2324,7 @@ ${notes ? '- USER NOTES: ' + notes : ''}
 
 Return ONLY a JSON array, no preamble, no markdown, no backticks:
 [
-  {"time": "5:00 PM", "step": "Start now: Preheat oven to 425°F"},
+  {"time": "5:00 PM", "step": "Preheat oven to 425°F"},
   {"time": "5:15 PM", "step": "Prep the chicken — coat with 2 tbsp olive oil, season"},
   ...
   {"time": "${targetTime}", "step": "${isWholeDay ? 'Dinner' : slot} is served 🍽️"}
@@ -2427,9 +2431,10 @@ function renderGamePlanModal() {
         '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--cream3);flex-shrink:0">' +
           '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--forest);padding:0;line-height:1;font-family:inherit">←</button>' +
           '<div style="flex:1">' +
-            '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Tweaking with AI</div>' +
+            '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Game Plan</div>' +
             '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
           '</div>' +
+          '<button id="gp-start-over" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit;margin-right:8px">↺ Redo</button>' +
           '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
         '</div>' +
         '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
@@ -2478,6 +2483,9 @@ function renderGamePlanModal() {
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
         '<span style="font-size:13px;font-weight:600">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at:</span>' +
         '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;display:flex;align-items:center;gap:5px">' +
+        '📅 ' + dateLabel +
       '</div>' +
       '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, skipping the potatoes tonight, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px">' + esc(savedNotes) + '</textarea>' +
       '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
@@ -4253,6 +4261,16 @@ async function estimateCaloriesAI(description) {
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
+  })
+
+  document.getElementById('gp-start-over')?.addEventListener('click', () => {
+    const { date, slot } = state.gamePlanModal || {}
+    const chatKey = (date || 'today') + '-' + (slot || 'Dinner')
+    state.gamePlanChats[chatKey] = []
+    state.gamePlanResult = null
+    state.gamePlanView = 'timeline'
+    state._lastGamePlan = null
+    render()
   })
 
   document.getElementById('gp-back-to-timeline')?.addEventListener('click', () => {
