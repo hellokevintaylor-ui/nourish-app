@@ -2316,19 +2316,29 @@ Return ONLY a JSON array, no other text, no markdown, no backticks:
 End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
 
   try {
-    const resp = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 3000,
-        messages: [{ role: 'user', content: prompt }]
+    let resp, attempts = 0
+    while (attempts < 3) {
+      resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 3000,
+          messages: [{ role: 'user', content: prompt }]
+        })
       })
-    })
+      if (resp.ok) break
+      if (resp.status === 429 || resp.status === 529) {
+        await new Promise(r => setTimeout(r, 2000 * (attempts + 1)))
+        attempts++
+        continue
+      }
+      break
+    }
     const data = await resp.json()
     if (!resp.ok) {
       console.error('Game plan API error:', resp.status, data)
-      return [{ time: '!', step: 'API error ' + resp.status + ': ' + (data?.error?.message || JSON.stringify(data)) }]
+      return null
     }
     const text = data.content?.[0]?.text?.trim() || ''
     console.log('Game plan raw response:', text.slice(0, 300))
