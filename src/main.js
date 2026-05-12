@@ -2284,36 +2284,47 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
   const slotLabel = isWholeDay ? 'the whole day' : slot
-  const prompt = `You are a practical cooking timeline planner. The current time is ${currentTime}. The user wants to eat ${isWholeDay ? 'dinner' : slot} at ${targetTime}.
+  const prompt = `You are a cooking timeline planner. Build a timeline that works BACKWARDS from the eating time.
+
+EATING TIME: ${targetTime} — this is when food hits the table. Work backwards from here.
+CURRENT TIME: ${currentTime} — do not schedule anything before this.
 
 Here is what they are making:
 
 ${mealText}
 
-Create a cooking timeline working STRICTLY BACKWARDS from ${targetTime}. Anchor on ${targetTime} as the finish line and subtract prep times to find each start time.
+HOW TO BUILD THE TIMELINE:
+1. Start at ${targetTime} — that is step 1 (serving). Work backwards.
+2. What is the LAST cooking step before serving? Schedule it to finish at ${targetTime}.
+3. What comes before that? Schedule it to finish before that last step. Keep going backwards.
+4. The FIRST step in the list should be the earliest start time needed.
+5. If any step would fall before ${currentTime}, show it as "Start now".
 
-CRITICAL RULES:
-- Work BACKWARDS from ${targetTime}. The last step is serving at ${targetTime}. Everything else flows backward from there.
-- Current time is ${currentTime}. If any calculated step falls before ${currentTime}, mark it as "Start now:" instead of showing a past time. Never show a time that has already passed.
-- ALWAYS include exact quantities inline with each step — but keep steps concise. "Mince 3 cloves garlic, dice 1 onion" not a sentence per ingredient.
-- Group related prep into ONE entry. One step per task, not per ingredient.
-- New timestamp only when the cook starts something new or needs to check something.
-- Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min.
-- Use passive time (oven, simmering) for active prep of other components.
-- Aim for 6-8 steps for a single meal, 10-12 for multiple recipes. Be ruthlessly concise — combine steps wherever possible.
-- Keep each step under 20 words where possible.
-${isWholeDay ? '- Include all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ').' : ''}
-${notes ? '\nUSER NOTES (factor these in): ' + notes : ''}
+EXAMPLE of correct backward planning for dinner at 7:00 PM:
+- 5:00 PM — Start now: Preheat oven to 425°F
+- 5:15 PM — Prep the chicken — coat with 2 tbsp olive oil, season with salt and pepper
+- 6:00 PM — Put chicken in oven (45 min cook time)
+- 6:30 PM — Roast the potatoes alongside — toss with 1 tbsp butter
+- 6:45 PM — Make the sauce — simmer 1 cup cream with 2 cloves garlic
+- 7:00 PM — Dinner is served 🍽️
 
-Return ONLY a JSON array, no other text, no markdown, no backticks:
+RULES:
+- Include exact quantities inline: "2 tbsp butter" not just "butter"
+- Group related prep into one step
+- Use passive cook time (oven, simmer) to schedule parallel active prep
+- Oven preheat = 15-20 min, water to boil = 10-12 min
+- 6-8 steps for one recipe, up to 12 for multiple
+- Keep steps concise — under 20 words each
+${isWholeDay ? '- Include all meals: breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime : ''}
+${notes ? '- USER NOTES: ' + notes : ''}
+
+Return ONLY a JSON array, no preamble, no markdown, no backticks:
 [
-  {"time": "6:00 PM", "step": "Preheat oven to 425°F — takes about 20 min"},
-  {"time": "6:05 PM", "step": "Prep the chickpeas — drain and rinse one 15oz can, pat dry with a towel"},
-  {"time": "6:10 PM", "step": "Toss chickpeas with 2 tbsp olive oil, 1 tsp cumin, ½ tsp paprika, salt and pepper — spread on baking sheet"},
+  {"time": "5:00 PM", "step": "Start now: Preheat oven to 425°F"},
+  {"time": "5:15 PM", "step": "Prep the chicken — coat with 2 tbsp olive oil, season"},
   ...
-]
-
-End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
+  {"time": "${targetTime}", "step": "${isWholeDay ? 'Dinner' : slot} is served 🍽️"}
+]`
 
   try {
     let resp, attempts = 0
