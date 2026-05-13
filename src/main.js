@@ -1104,14 +1104,26 @@ function renderRecipeCard(r) {
   const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe">+ Tag</button>'
   const isPickerOpen = state.tagPickerOpen === r.id + '-recipe'
   const mealTags = getTagsForNamespace('recipe').slice().sort((a, b) => a.name.localeCompare(b.name))
+  const pickerCategories = mealTags.filter(t => !t.tag_type || t.tag_type === 'category')
+  const pickerStyles = mealTags.filter(t => t.tag_type === 'style')
+  const hasTwoTiers = pickerStyles.length > 0
   const tagPicker = isPickerOpen ? (
     '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
-    mealTags.map(t => {
+    (hasTwoTiers ? (
+      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
+      pickerCategories.map(t => {
+        const checked = (r.tags||[]).includes(t.name)
+        return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
+      }).join('') +
+      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:1px solid var(--cream3);margin-top:4px">Style</div>' : '') +
+      pickerStyles.map(t => {
+        const checked = (r.tags||[]).includes(t.name)
+        return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
+      }).join('')
+    ) : mealTags.map(t => {
       const checked = (r.tags||[]).includes(t.name)
-      return '<label class="tag-picker-option">' +
-        '<input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' +
-        esc(t.name) + '</label>'
-    }).join('') +
+      return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
+    }).join('')) +
     '<div class="tag-picker-new">' +
       '<input class="tag-picker-input" id="new-tag-' + r.id + '-recipe" placeholder="New tag..." />' +
       '<button class="tag-picker-add" data-new-tag-item="' + r.id + '" data-new-tag-ns="recipe">Add</button>' +
