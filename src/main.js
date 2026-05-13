@@ -1622,7 +1622,7 @@ function renderLogInner() {
       '<button class="cal-nav" id="log-next-day" ' + (isToday ? 'disabled style="opacity:0.3"' : '') + '>&#8250;</button>' +
     '</div>' +
 
-    // 2. Daily summary
+    // 2. Daily summary (today)
     '<div class="log-total">' +
       '<div>' +
         '<div class="log-total-label">' + (isToday ? 'Today' : dayLabel) + '</div>' +
@@ -1638,9 +1638,20 @@ function renderLogInner() {
       '</div>' +
     '</div>' +
 
-    // 3. Log weight
+    // 3. Last 7 days summary bar
+    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-top:10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
+      '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
+      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
+    '</div>' +
+
+    // 4. Day-by-day breakdown
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">This week</div>' +
+    weekRows +
+
+    // 5. Log weight
     (state.goals.target_weight ? (
-      '<div class="log-add-row" style="margin-bottom:10px">' +
+      '<div class="log-add-row" style="margin-top:16px;margin-bottom:10px">' +
         '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" value="' + ((() => {
           const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr)
           return existing ? existing.weight : ''
@@ -1649,11 +1660,11 @@ function renderLogInner() {
       '</div>'
     ) : '') +
 
-    // 4. Today's meals
+    // 6. Today's meals
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
-    // 5. Search recipes + tags + add food
+    // 7. Search recipes + tags + add food
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
@@ -1675,7 +1686,7 @@ function renderLogInner() {
     '</div>' +
     (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
 
-    // 6. Exercise
+    // 8. Exercise
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
     '<div class="log-add-row">' +
       '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
@@ -1698,19 +1709,8 @@ function renderLogInner() {
       ).join('')
     : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
 
-    // 7. Weight progress graph
+    // 9. Weight progress graph
     renderWeightProgress() +
-
-    // 8. Last 7 days summary bar
-    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-top:16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
-      '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
-      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
-    '</div>' +
-
-    // 9. This week day-by-day breakdown (newest first)
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">This week</div>' +
-    weekRows +
 
   '</div>'
 }
