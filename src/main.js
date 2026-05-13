@@ -14,7 +14,7 @@ const state = {
   recipeView: 'list',    // 'cards' or 'list'
   recipeSort: 'newest',  // 'newest', 'az', 'za'
   tagOrganizerModal: false,
-  chartWindow: '1M',  // '2W', '1M', '3M', 'All'
+  chartWindow: '1M',  // '1W', '2W', '1M', '3M', 'All'
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
@@ -1518,9 +1518,9 @@ function renderLogInner() {
   // Day label
   const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-  // Build week data from historyLog + today's log
+  // Build week data from historyLog — last 7 completed days (yesterday and prior, not today)
   const weekDays = []
-  for (let i = 0; i <= 6; i++) {
+  for (let i = 1; i <= 7; i++) {
     const d = new Date(now)
     d.setDate(now.getDate() - i)
     weekDays.push(d.toLocaleDateString('sv'))
@@ -1792,7 +1792,7 @@ function renderWeightProgress() {
     })).filter(p => p.day >= 0)
 
   // Apply window filter
-  const windowDays = state.chartWindow === '2W' ? 14 : state.chartWindow === '1M' ? 30 : state.chartWindow === '3M' ? 90 : null
+  const windowDays = state.chartWindow === '1W' ? 7 : state.chartWindow === '2W' ? 14 : state.chartWindow === '1M' ? 30 : state.chartWindow === '3M' ? 90 : null
   const windowStartDay = windowDays ? Math.max(0, (allActualPoints.length > 0 ? allActualPoints[allActualPoints.length-1].day : 0) - windowDays) : 0
   const actualPoints = windowDays ? allActualPoints.filter(p => p.day >= windowStartDay) : allActualPoints
 
@@ -1820,8 +1820,9 @@ function renderWeightProgress() {
   // Month/week labels for window
   const windowLabels = []
   if (windowDays && windowDays <= 14) {
-    // 2W — show day labels
-    for (let d = 0; d <= windowTotalDays; d += 2) {
+    // 1W/2W — show day labels
+    const step = windowDays <= 7 ? 1 : 2
+    for (let d = 0; d <= windowTotalDays; d += step) {
       const labelDate = new Date(startDate.getTime() + (windowStartDay + d) * 86400000)
       windowLabels.push({ day: windowStartDay + d, label: labelDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) })
     }
@@ -1865,7 +1866,7 @@ function renderWeightProgress() {
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
       '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
       '<div style="display:flex;gap:3px">' +
-        ['2W','1M','3M','All'].map(w =>
+        ['1W','2W','1M','3M','All'].map(w =>
           '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--forest)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--forest)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
         ).join('') +
       '</div>' +
