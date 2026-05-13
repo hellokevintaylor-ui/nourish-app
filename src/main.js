@@ -1713,6 +1713,18 @@ function renderLogInner() {
     // 7. Weight progress chart
     renderWeightProgress() +
 
+    // Today's calorie summary (compact, between chart and log weight)
+    '<div style="background:var(--cream2);border-radius:10px;padding:8px 14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Today</div>' +
+      '<div style="font-size:13px;font-weight:700;color:var(--ink)">' +
+        (burned > 0
+          ? cals + ' in · ' + burned + ' burned · <span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + net + ' net</span>'
+          : '<span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + cals + '</span> cal'
+        ) +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--ink3)">' + (rem >= 0 ? rem + ' left' : Math.abs(rem) + ' over') + ' · goal ' + goal + '</div>' +
+    '</div>' +
+
     // 8. Last 7 days summary bar
     '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
       '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
