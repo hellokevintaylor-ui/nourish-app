@@ -9,7 +9,6 @@ const state = {
   loading: true,
   showGoals: false,
   showSync: false,
-  showHeaderMenu: false,
   showArchived: false,
   recipeView: 'list',    // 'cards' or 'list'
   recipeSort: 'newest',  // 'newest', 'az', 'za'
@@ -758,19 +757,17 @@ function render() {
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
-          <button class="icon-btn ${state.showHeaderMenu?'active':''}" id="header-menu-btn" style="font-size:18px;padding:4px 10px;letter-spacing:1px">⋯</button>
         </div>
       </div>
 
-      <!-- HEADER MENU DROPDOWN -->
-      ${state.showHeaderMenu ? `
+      <!-- PERMANENT ACTION ROW -->
       <div style="background:var(--forest);padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid rgba(255,255,255,0.1)">
         <button class="icon-btn" id="clip-url-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">📎 Clip</button>
         <button class="icon-btn" id="paste-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">📋 Paste</button>
         <button class="icon-btn" id="force-update-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">↻ Update</button>
         <button class="icon-btn" id="sync-toggle" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">🔗 Sync</button>
         <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">⚙️ Goals</button>
-      </div>` : ''}
+      </div>
 
       <!-- GOALS PANEL -->
       ${state.showGoals ? `
@@ -2972,14 +2969,13 @@ function bindEvents() {
   })
 
   // Header menu
-  document.getElementById('header-menu-btn')?.addEventListener('click', () => {
-    state.showHeaderMenu = !state.showHeaderMenu
+  document.getElementById('goals-toggle')?.addEventListener('click', () => {
+    state.showGoals = !state.showGoals
+    state.showSync = false
     render()
   })
 
-  // Goals
   document.getElementById('save-goals-btn')?.addEventListener('click', async () => {
-    // Snapshot all current input values into state before saving
     document.querySelectorAll('input[data-goal]').forEach(el => {
       const f = el.dataset.goal
       state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
@@ -2989,13 +2985,6 @@ function bindEvents() {
     if (btn) { btn.textContent = '✓ Saved!'; btn.style.background = 'var(--sage4)' }
     await db.saveGoals(state.goals)
     setTimeout(() => render(), 1200)
-  })
-
-  document.getElementById('goals-toggle')?.addEventListener('click', () => {
-    state.showGoals = !state.showGoals
-    state.showSync = false
-    state.showHeaderMenu = false
-    render()
   })
 
   // ── TAG EVENTS ──
@@ -3095,7 +3084,6 @@ function bindEvents() {
     })
   })
   document.getElementById('force-update-btn')?.addEventListener('click', async () => {
-    state.showHeaderMenu = false
     const btn = document.getElementById('force-update-btn')
     if (btn) { btn.textContent = '↻ Updating...'; btn.disabled = true }
     try {
@@ -3117,7 +3105,6 @@ function bindEvents() {
   document.getElementById('sync-toggle')?.addEventListener('click', () => {
     state.showSync = !state.showSync
     state.showGoals = false
-    state.showHeaderMenu = false
     render()
   })
   document.getElementById('sync-copy-btn')?.addEventListener('click', () => {
@@ -4110,11 +4097,11 @@ async function estimateCaloriesAI(description) {
   })
 
   // Paste modal
-  document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; state.showHeaderMenu = false; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
 
   // Clip URL modal
   document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
-    state.clipUrlModal = true; state.showHeaderMenu = false; render()
+    state.clipUrlModal = true;  render()
     setTimeout(async () => {
       try {
         const text = await navigator.clipboard.readText()
