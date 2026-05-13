@@ -198,9 +198,13 @@ export async function fetchTags(namespace) {
   if (namespace) return (data || []).filter(t => t.namespace === namespace)
   return data || []
 }
-export async function saveTag(name, namespace) {
-  const { data } = await supabase.from('tags').upsert({ user_id: uid(), name, namespace }, { onConflict: 'user_id,name,namespace' }).select()
+export async function saveTag(name, namespace, tagType) {
+  const { data } = await supabase.from('tags').upsert({ user_id: uid(), name, namespace, tag_type: tagType || 'category' }, { onConflict: 'user_id,name,namespace' }).select()
   return data?.[0]
+}
+
+export async function updateTagType(id, tagType) {
+  await supabase.from('tags').update({ tag_type: tagType }).eq('id', id)
 }
 export async function deleteTag(id) {
   await supabase.from('tags').delete().eq('id', id)

@@ -13,6 +13,7 @@ const state = {
   showArchived: false,
   recipeView: 'cards',   // 'cards' or 'list'
   recipeSort: 'newest',  // 'newest', 'az', 'za'
+  tagOrganizerModal: false,
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
@@ -908,6 +909,7 @@ function render() {
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
+      ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
       ${state.gamePlanModal  ? renderGamePlanModal() : ''}
 
       <!-- SCROLL TO TOP -->
@@ -1031,24 +1033,38 @@ function renderTagInput(itemId, namespace, currentTags) {
 }
 
 function renderTagFilterChips(namespace) {
-  const tags = getTagsForNamespace(namespace).slice().sort((a, b) => a.name.localeCompare(b.name))
-  if (!tags.length) return ''
+  const allTags = getTagsForNamespace(namespace).slice().sort((a, b) => a.name.localeCompare(b.name))
+  if (!allTags.length) return ''
   const active = state.activeTagFilters[namespace]
   const isDefault = active === null || active === undefined
-  const allSelected = !isDefault && tags.every(t => active.has(t.name))
+  const categories = allTags.filter(t => !t.tag_type || t.tag_type === 'category')
+  const styles = allTags.filter(t => t.tag_type === 'style')
+  const hasTwoTiers = styles.length > 0 && categories.length > 0
+  const allSelected = !isDefault && allTags.every(t => active.has(t.name))
+
+  const chipBtn = (t) => {
+    const isActive = !isDefault && active.has(t.name)
+    return '<button class="tag-filter-chip ' + (isActive ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>'
+  }
+
+  const selectAllBtn = '<button class="tag-filter-chip ' + (allSelected ? 'active' : '') + '" data-filter-all="' + namespace + '" style="font-size:11px;font-weight:700">Select All</button>'
+
+  if (!hasTwoTiers) {
+    return '<div class="tag-filter-wrap">' +
+      '<div style="margin-bottom:5px">' + selectAllBtn + '</div>' +
+      '<div class="tag-filter-row">' + allTags.map(chipBtn).join('') + '</div>' +
+    '</div>'
+  }
 
   return '<div class="tag-filter-wrap">' +
-    '<div style="margin-bottom:5px">' +
-      '<button class="tag-filter-chip ' + (allSelected ? 'active' : '') + '" data-filter-all="' + namespace + '" style="font-size:11px;font-weight:700">Select All</button>' +
-    '</div>' +
-    '<div class="tag-filter-row">' +
-      tags.map(t => {
-        const isActive = !isDefault && active.has(t.name)
-        return '<button class="tag-filter-chip ' + (isActive ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>'
-      }).join('') +
-    '</div>' +
+    '<div style="margin-bottom:6px">' + selectAllBtn + '</div>' +
+    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Category</div>' +
+    '<div class="tag-filter-row" style="margin-bottom:8px">' + categories.map(chipBtn).join('') + '</div>' +
+    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Style</div>' +
+    '<div class="tag-filter-row">' + styles.map(chipBtn).join('') + '</div>' +
   '</div>'
 }
+
 
 function renderRecipeCard(r) {
   const isExpanded = state.expandedRecipe === r.id
@@ -1196,9 +1212,25 @@ function renderSearchBar(id, value, placeholder) {
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
   const activeTags = state.activeTagFilters['recipe']
-  const allFiltered = (activeTags === null || activeTags === undefined)
-    ? state.recipes  // default — show everything
-    : state.recipes.filter(r => [...activeTags].some(tag => (r.tags||[]).includes(tag)))
+  let allFiltered
+  if (!activeTags) {
+    allFiltered = state.recipes
+  } else {
+    const activeCategories = [...activeTags].filter(tag => {
+      const t = state.allTags.find(x => x.name === tag && x.namespace === 'recipe')
+      return !t?.tag_type || t.tag_type === 'category'
+    })
+    const activeStyles = [...activeTags].filter(tag => {
+      const t = state.allTags.find(x => x.name === tag && x.namespace === 'recipe')
+      return t?.tag_type === 'style'
+    })
+    allFiltered = state.recipes.filter(r => {
+      const rTags = r.tags || []
+      const categoryMatch = activeCategories.length === 0 || activeCategories.some(tag => rTags.includes(tag))
+      const styleMatch = activeStyles.length === 0 || activeStyles.some(tag => rTags.includes(tag))
+      return categoryMatch && styleMatch
+    })
+  }
   let filtered = allFiltered.filter(r => state.showArchived ? r.archived : !r.archived)
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
 
@@ -1236,6 +1268,7 @@ function renderRecipes() {
           <button class="add-btn" id="scan-recipe-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Scan</button>
           <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Clip URL</button>
           <button class="add-btn" id="add-recipe-btn">+ Add</button>
+          <button class="add-btn" id="organize-tags-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">🏷 Tags</button>
         </div>
       </div>
       <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
@@ -2463,7 +2496,42 @@ Rules:
   }
 }
 
-function gpChatKey() {
+function renderTagOrganizerModal() {
+  const m = state.tagOrganizerModal
+  if (!m) return ''
+  if (m.loading) {
+    return '<div class="modal-bg" id="tag-organizer-bg">' +
+      '<div class="modal-sheet">' +
+        '<div class="modal-title">🏷 Organize Tags</div>' +
+        '<div style="text-align:center;padding:30px 0;color:var(--ink3)">Asking AI to sort your tags...</div>' +
+      '</div>' +
+    '</div>'
+  }
+  const tags = m.tags || []
+  const renderTagRow = (t) => {
+    const type = t.tag_type || 'category'
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--cream3)">' +
+      '<div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">' + esc(t.name) + '</div>' +
+      '<div style="display:flex;gap:4px">' +
+        '<button class="tag-type-btn ' + (type === 'category' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="category" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='category'?'var(--forest)':'var(--border)') + ';background:' + (type==='category'?'var(--forest)':'white') + ';color:' + (type==='category'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Category</button>' +
+        '<button class="tag-type-btn ' + (type === 'style' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="style" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='style'?'var(--forest)':'var(--border)') + ';background:' + (type==='style'?'var(--forest)':'white') + ';color:' + (type==='style'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Style</button>' +
+      '</div>' +
+    '</div>'
+  }
+  return '<div class="modal-bg" id="tag-organizer-bg">' +
+    '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+        '<div class="modal-title" style="margin:0">🏷 Organize Tags</div>' +
+        '<button id="tag-organizer-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-bottom:14px">Category = what the dish is (Pork, Pasta). Style = how it\'s made (Sous Vide, Weeknight). Filtering uses Category as OR, then Style to narrow.</div>' +
+      tags.sort((a, b) => a.name.localeCompare(b.name)).map(renderTagRow).join('') +
+      '<div style="margin-top:16px">' +
+        '<button class="modal-save" id="tag-organizer-save" style="width:100%">Save</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
+}
   const { date, slot } = state.gamePlanModal || {}
   return (date || 'today') + '-' + (slot || 'Dinner')
 }
@@ -3281,7 +3349,70 @@ function bindEvents() {
     })
   })
 
-  // Recipe sort buttons
+  // Organize tags button
+  document.getElementById('organize-tags-btn')?.addEventListener('click', async () => {
+    const recipeTags = state.allTags.filter(t => t.namespace === 'recipe')
+    if (!recipeTags.length) return
+    // Open modal in loading state, ask AI to classify
+    state.tagOrganizerModal = { loading: true, tags: recipeTags }
+    render()
+    try {
+      const tagNames = recipeTags.map(t => t.name).join(', ')
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: `Classify these recipe tags as either "category" (what the dish IS — ingredient, protein, cuisine type like Chicken, Pork, Pasta, Salad, Soup, Italian) or "style" (how it's made or when it's served — like Sous Vide, Weeknight, Party Ideas, Meal Prep, Quick, Slow Cooker, Grilled). Return ONLY a JSON object like: {"Pork":"category","Sous Vide":"style"}. Tags: ${tagNames}` }]
+        })
+      })
+      const data = await resp.json()
+      const text = data.content?.[0]?.text || '{}'
+      const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+      const classified = JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0] || '{}')
+      // Apply AI suggestions to tags
+      const updatedTags = recipeTags.map(t => ({
+        ...t,
+        tag_type: classified[t.name] || t.tag_type || 'category'
+      }))
+      state.tagOrganizerModal = { loading: false, tags: updatedTags }
+    } catch(e) {
+      // If AI fails just show tags with current types for manual editing
+      state.tagOrganizerModal = { loading: false, tags: recipeTags }
+    }
+    render()
+  })
+
+  // Tag type toggle buttons in organizer
+  document.querySelectorAll('.tag-type-btn[data-tag-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      if (!state.tagOrganizerModal?.tags) return
+      const id = el.dataset.tagId
+      const type = el.dataset.tagType
+      const tag = state.tagOrganizerModal.tags.find(t => String(t.id) === String(id))
+      if (tag) { tag.tag_type = type; render() }
+    })
+  })
+
+  // Save tag organizer
+  document.getElementById('tag-organizer-save')?.addEventListener('click', async () => {
+    if (!state.tagOrganizerModal?.tags) return
+    for (const t of state.tagOrganizerModal.tags) {
+      await db.updateTagType(t.id, t.tag_type || 'category')
+      const existing = state.allTags.find(x => x.id === t.id)
+      if (existing) existing.tag_type = t.tag_type
+    }
+    state.tagOrganizerModal = false
+    render()
+  })
+
+  document.getElementById('tag-organizer-close')?.addEventListener('click', () => {
+    state.tagOrganizerModal = false; render()
+  })
+  document.getElementById('tag-organizer-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'tag-organizer-bg') { state.tagOrganizerModal = false; render() }
+  })
   document.querySelectorAll('.recipe-sort-btn[data-sort]').forEach(el => {
     el.addEventListener('click', () => { state.recipeSort = el.dataset.sort; render() })
   })
