@@ -11,7 +11,7 @@ const state = {
   showSync: false,
   showHeaderMenu: false,
   showArchived: false,
-  recipeView: 'cards',   // 'cards' or 'list'
+  recipeView: 'list',    // 'cards' or 'list'
   recipeSort: 'newest',  // 'newest', 'az', 'za'
   tagOrganizerModal: false,
   expandedRecipe: null,
@@ -850,6 +850,8 @@ function render() {
           </div>
           <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
         })()}
+
+        <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--forest);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
 
       </div>` : ''}
       <!-- SYNC PANEL -->
@@ -2920,6 +2922,19 @@ function bindEvents() {
   })
 
   // Goals
+  document.getElementById('save-goals-btn')?.addEventListener('click', async () => {
+    // Snapshot all current input values into state before saving
+    document.querySelectorAll('input[data-goal]').forEach(el => {
+      const f = el.dataset.goal
+      state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+        ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
+    })
+    const btn = document.getElementById('save-goals-btn')
+    if (btn) { btn.textContent = '✓ Saved!'; btn.style.background = 'var(--sage4)' }
+    await db.saveGoals(state.goals)
+    setTimeout(() => render(), 1200)
+  })
+
   document.getElementById('goals-toggle')?.addEventListener('click', () => {
     state.showGoals = !state.showGoals
     state.showSync = false
@@ -3089,17 +3104,21 @@ function bindEvents() {
     })
   })
   document.querySelectorAll('input[data-goal]').forEach(el => {
-    el.addEventListener('change', async () => {
+    const saveGoalField = async () => {
       const f = el.dataset.goal
-      state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+      const newVal = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
         ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
-      // Lock in start date when target weight is first set
+      // Only save if value actually changed
+      if (state.goals[f] === newVal) return
+      state.goals[f] = newVal
       if (f === 'target_weight' && el.value && !state.goals.goal_start_date) {
         state.goals.goal_start_date = new Date().toISOString().slice(0, 10)
       }
       await db.saveGoals(state.goals)
       render()
-    })
+    }
+    el.addEventListener('change', saveGoalField)
+    el.addEventListener('blur', saveGoalField)
   })
   document.querySelector('select[data-goal="activity_level"]')?.addEventListener('change', async e => {
     state.goals.activity_level = e.target.value
