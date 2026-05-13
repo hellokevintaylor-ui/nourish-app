@@ -2853,16 +2853,18 @@ function bindEvents() {
     el.addEventListener('click', () => {
       const ns = el.dataset.filterNs
       const tag = el.dataset.filterTag
-      const active = state.activeTagFilters[ns]
-      if (!active) {
-        // Was in default mode — switch to single-tag filter
+      if (!state.activeTagFilters[ns]) {
+        // First tap from default — create a Set with just this tag
         state.activeTagFilters[ns] = new Set([tag])
-      } else if (active.has(tag)) {
-        active.delete(tag)
-        // If nothing left selected, go back to default (show all)
-        if (active.size === 0) state.activeTagFilters[ns] = null
       } else {
-        active.add(tag)
+        const active = state.activeTagFilters[ns]
+        if (active.has(tag)) {
+          active.delete(tag)
+          // If nothing left, go back to default
+          if (active.size === 0) state.activeTagFilters[ns] = null
+        } else {
+          active.add(tag)
+        }
       }
       render()
     })
