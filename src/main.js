@@ -11,6 +11,8 @@ const state = {
   showSync: false,
   showHeaderMenu: false,
   showArchived: false,
+  recipeView: 'cards',   // 'cards' or 'list'
+  recipeSort: 'newest',  // 'newest', 'az', 'za'
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
@@ -1186,13 +1188,38 @@ function renderSearchBar(id, value, placeholder) {
 
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
-  // Split into active and archived
   const allFiltered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe')
     ? state.recipes.filter(r => state.activeTagFilter === '__untagged__' ? !(r.tags||[]).length : (r.tags||[]).includes(state.activeTagFilter))
     : state.recipes
   let filtered = allFiltered.filter(r => state.showArchived ? r.archived : !r.archived)
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
+
+  // Sort
+  const sort = state.recipeSort || 'newest'
+  if (sort === 'az') filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+  else if (sort === 'za') filtered = [...filtered].sort((a, b) => b.name.localeCompare(a.name))
+  // 'newest' is default order from Supabase (created_at desc)
+
   const archivedCount = state.recipes.filter(r => r.archived).length
+  const isListView = state.recipeView === 'list'
+
+  // Compact list row renderer
+  const renderListRow = (r) => {
+    const isExpanded = state.expandedRecipe === r.id
+    const tags = (r.tags || []).slice(0, 3).map(t => `<span style="background:var(--sage4);color:var(--forest);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600">${esc(t)}</span>`).join('')
+    if (!isExpanded) {
+      return `<div class="recipe-list-row" data-expand-recipe="${r.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--cream3);cursor:pointer;background:white">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
+          ${tags ? `<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">${tags}</div>` : ''}
+        </div>
+        <div style="font-size:18px;color:var(--ink3);flex-shrink:0">›</div>
+      </div>`
+    }
+    // Expanded — show full card inline
+    return `<div style="border-bottom:2px solid var(--forest2)">${renderRecipeCard(r)}</div>`
+  }
+
   return `
     <div class="tab-content">
       <div class="section-header">
@@ -1206,6 +1233,20 @@ function renderRecipes() {
       <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
       ${renderSearchBar('recipe-search', state.recipeSearch || '', 'Search recipes...')}
       ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
+
+      <!-- Sort + View controls -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+        <div style="display:flex;gap:4px">
+          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--forest)':'var(--border)'};background:${sort==='newest'?'var(--forest)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
+          <button class="recipe-sort-btn ${sort==='az'?'active':''}" data-sort="az" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='az'?'var(--forest)':'var(--border)'};background:${sort==='az'?'var(--forest)':'white'};color:${sort==='az'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">A→Z</button>
+          <button class="recipe-sort-btn ${sort==='za'?'active':''}" data-sort="za" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='za'?'var(--forest)':'var(--border)'};background:${sort==='za'?'var(--forest)':'white'};color:${sort==='za'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Z→A</button>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button id="view-cards-btn" title="Card view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${!isListView?'var(--forest)':'var(--border)'};background:${!isListView?'var(--sage4)':'white'};cursor:pointer">⊟</button>
+          <button id="view-list-btn" title="List view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${isListView?'var(--forest)':'var(--border)'};background:${isListView?'var(--sage4)':'white'};cursor:pointer">☰</button>
+        </div>
+      </div>
+
       ${archivedCount > 0 ? `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <button id="toggle-archived-btn" style="font-size:12px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit">
@@ -1234,7 +1275,10 @@ function renderRecipes() {
       ` : ''}
       ${filtered.length === 0 && !state.addRecipeModal ? `
         <div class="empty-state">${state.activeCategory !== 'All' ? `No ${state.activeCategory} recipes yet.` : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!'} 🥗</div>
-      ` : filtered.map(r => renderRecipeCard(r)).join('')}
+      ` : isListView
+          ? `<div style="border-radius:12px;overflow:hidden;border:1px solid var(--cream3)">${filtered.map(r => renderListRow(r)).join('')}</div>`
+          : filtered.map(r => renderRecipeCard(r)).join('')
+      }
     </div>`
 }
 
@@ -3199,6 +3243,24 @@ function bindEvents() {
         state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
         render()
       }
+    })
+  })
+
+  // Recipe sort buttons
+  document.querySelectorAll('.recipe-sort-btn[data-sort]').forEach(el => {
+    el.addEventListener('click', () => { state.recipeSort = el.dataset.sort; render() })
+  })
+
+  // View toggle
+  document.getElementById('view-cards-btn')?.addEventListener('click', () => { state.recipeView = 'cards'; render() })
+  document.getElementById('view-list-btn')?.addEventListener('click', () => { state.recipeView = 'list'; render() })
+
+  // List row expand/collapse
+  document.querySelectorAll('[data-expand-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.expandRecipe
+      state.expandedRecipe = state.expandedRecipe === id ? null : id
+      render()
     })
   })
 
