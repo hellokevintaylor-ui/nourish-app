@@ -16,7 +16,7 @@ const state = {
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
-  activeTagFilter: null,
+  activeTagFilters: {},   // keyed by namespace, values are Sets of selected tag names
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
@@ -1033,12 +1033,13 @@ function renderTagInput(itemId, namespace, currentTags) {
 function renderTagFilterChips(namespace) {
   const tags = getTagsForNamespace(namespace)
   if (!tags.length) return ''
-  const activeTag = state.activeTagFilterNs === namespace ? state.activeTagFilter : null
+  const active = state.activeTagFilters[namespace] || new Set()
+  const allActive = active.size === 0
   return '<div class="tag-filter-wrap">' +
     '<div class="tag-filter-row">' +
-      '<button class="tag-filter-chip ' + (!activeTag ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
-      tags.map(t => '<button class="tag-filter-chip ' + (activeTag===t.name ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
-      '<button class="tag-filter-chip ' + (activeTag==='__untagged__' ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
+      '<button class="tag-filter-chip ' + (allActive ? 'active' : '') + '" data-filter-all="' + namespace + '">All</button>' +
+      tags.map(t => '<button class="tag-filter-chip ' + (active.has(t.name) ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
+      '<button class="tag-filter-chip ' + (active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
     '</div>' +
   '</div>'
 }
@@ -1188,9 +1189,13 @@ function renderSearchBar(id, value, placeholder) {
 
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
-  const allFiltered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe')
-    ? state.recipes.filter(r => state.activeTagFilter === '__untagged__' ? !(r.tags||[]).length : (r.tags||[]).includes(state.activeTagFilter))
-    : state.recipes
+  const activeTags = state.activeTagFilters['recipe'] || new Set()
+  const allFiltered = activeTags.size === 0
+    ? state.recipes
+    : state.recipes.filter(r => {
+        if (activeTags.has('__untagged__')) return !(r.tags||[]).length
+        return [...activeTags].some(tag => (r.tags||[]).includes(tag))
+      })
   let filtered = allFiltered.filter(r => state.showArchived ? r.archived : !r.archived)
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
 
@@ -1283,10 +1288,10 @@ function renderRecipes() {
 }
 
 function renderPantry() {
-  const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
+  const locationTags = state.activeTagFilters['location'] || new Set()
   const search = (state.pantrySearch || '').toLowerCase()
   const filtered = state.pantry.filter(item =>
-    (!activeTag || (activeTag === '__untagged__' ? !(item.tags||[]).length : (item.tags||[]).includes(activeTag))) &&
+    (locationTags.size === 0 || (locationTags.has('__untagged__') ? !(item.tags||[]).length : [...locationTags].some(t => (item.tags||[]).includes(t)))) &&
     (!search || item.name.toLowerCase().includes(search))
   )
   return '<div class="tab-content">' +
@@ -1375,13 +1380,12 @@ function renderShopItems(items) {
 }
 
 function renderShop() {
-  const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
+  const locationTags = state.activeTagFilters['location'] || new Set()
   const search = (state.shopSearch || '').toLowerCase()
 
-  // Split into unchecked (need) and checked (done) — filter by tag/search on need only
   const need = sortShopList(state.shopList.filter(i =>
     !i.have &&
-    (!activeTag || (activeTag === '__untagged__' ? !(i.tags||[]).length : (i.tags||[]).includes(activeTag))) &&
+    (locationTags.size === 0 || (locationTags.has('__untagged__') ? !(i.tags||[]).length : [...locationTags].some(t => (i.tags||[]).includes(t)))) &&
     (!search || i.name.toLowerCase().includes(search))
   ))
   const done = state.shopList.filter(i => i.have)
@@ -2825,12 +2829,25 @@ function bindEvents() {
     })
   })
 
-  // Filter chips
+  // Filter chips — multi-select toggle
+  document.querySelectorAll('.tag-filter-chip[data-filter-all]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ns = el.dataset.filterAll
+      state.activeTagFilters[ns] = new Set()
+      render()
+    })
+  })
   document.querySelectorAll('.tag-filter-chip[data-filter-tag]').forEach(el => {
     el.addEventListener('click', () => {
-      state.activeTagFilter = el.dataset.filterTag || null
-      state.activeTagFilterNs = el.dataset.filterNs || null
-      state.showTagFilter = false
+      const ns = el.dataset.filterNs
+      const tag = el.dataset.filterTag
+      if (!state.activeTagFilters[ns]) state.activeTagFilters[ns] = new Set()
+      const current = state.activeTagFilters[ns]
+      if (current.has(tag)) {
+        current.delete(tag)
+      } else {
+        current.add(tag)
+      }
       render()
     })
   })
