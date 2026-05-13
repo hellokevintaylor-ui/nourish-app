@@ -14,6 +14,7 @@ const state = {
   recipeView: 'list',    // 'cards' or 'list'
   recipeSort: 'newest',  // 'newest', 'az', 'za'
   tagOrganizerModal: false,
+  chartWindow: '1M',  // '2W', '1M', '3M', 'All'
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
@@ -1781,7 +1782,7 @@ function renderWeightProgress() {
   })) : []
 
   // Actual weigh-in points plotted by date — filter out any bad values
-  const actualPoints = weightLog
+  const allActualPoints = weightLog
     .filter(e => parseFloat(e.weight) > 0)
     .map(e => ({
       day: Math.round((new Date(e.logged_at) - startDate) / 86400000),
@@ -1789,6 +1790,15 @@ function renderWeightProgress() {
       id: e.id,
       date: new Date(e.logged_at)
     })).filter(p => p.day >= 0)
+
+  // Apply window filter
+  const windowDays = state.chartWindow === '2W' ? 14 : state.chartWindow === '1M' ? 30 : state.chartWindow === '3M' ? 90 : null
+  const windowStartDay = windowDays ? Math.max(0, (allActualPoints.length > 0 ? allActualPoints[allActualPoints.length-1].day : 0) - windowDays) : 0
+  const actualPoints = windowDays ? allActualPoints.filter(p => p.day >= windowStartDay) : allActualPoints
+
+  // Recalculate totalDays based on window
+  const windowTotalDays = windowDays ? windowDays : totalDays
+  const windowStartDate = new Date(startDate.getTime() + windowStartDay * 86400000)
 
   // Current trajectory line from latest actual point
   const trajPoints = (actualPoints.length >= 1 && weightLog.length >= 2) ? (() => {
@@ -1807,21 +1817,34 @@ function renderWeightProgress() {
     return pts
   })() : []
 
-  // Month labels
-  const monthLabels = []
-  const cursor = new Date(startDate)
-  cursor.setDate(1); cursor.setMonth(cursor.getMonth() + 1)
-  while (cursor <= endDate) {
-    monthLabels.push({ day: Math.round((cursor - startDate) / 86400000), label: cursor.toLocaleDateString('en-US', {month:'short'}) })
-    cursor.setMonth(cursor.getMonth() + 1)
+  // Month/week labels for window
+  const windowLabels = []
+  if (windowDays && windowDays <= 14) {
+    // 2W — show day labels
+    for (let d = 0; d <= windowTotalDays; d += 2) {
+      const labelDate = new Date(startDate.getTime() + (windowStartDay + d) * 86400000)
+      windowLabels.push({ day: windowStartDay + d, label: labelDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) })
+    }
+  } else {
+    // 1M, 3M, All — show month labels
+    const cursor = new Date(windowStartDate)
+    cursor.setDate(1); cursor.setMonth(cursor.getMonth() + 1)
+    const windowEndDate = new Date(startDate.getTime() + (windowStartDay + windowTotalDays) * 86400000)
+    while (cursor <= windowEndDate) {
+      windowLabels.push({ day: Math.round((cursor - startDate) / 86400000), label: cursor.toLocaleDateString('en-US', {month:'short'}) })
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
   }
 
-  // SVG
-  const allW = [startWeight + 2, parseFloat(target_weight) - 1, ...actualPoints.map(p => p.weight)]
-  const minW = Math.floor(Math.min(...allW))
-  const maxW = Math.ceil(Math.max(...allW))
+  // SVG — auto-fit Y to visible data range
+  const visibleWeights = [parseFloat(target_weight), ...actualPoints.map(p => p.weight)]
+  if (windowDays && allActualPoints.length > 0) visibleWeights.push(allActualPoints[allActualPoints.length-1].weight)
+  const minW = Math.floor(Math.min(...visibleWeights)) - 1
+  const maxW = Math.ceil(Math.max(...visibleWeights)) + 1
   const W = 320, H = 155, padL = 32, padR = 12, padT = 12, padB = 28
-  const xScale = d => padL + (Math.min(Math.max(d,0), totalDays) / totalDays) * (W - padL - padR)
+
+  // X scale based on window — map day offsets within the window
+  const xScale = d => padL + (Math.min(Math.max(d - windowStartDay, 0), windowTotalDays) / windowTotalDays) * (W - padL - padR)
   const yScale = w => padT + ((maxW - w) / (maxW - minW)) * (H - padT - padB)
 
   const yStep = (maxW - minW) <= 10 ? 2 : 5
@@ -1839,7 +1862,14 @@ function renderWeightProgress() {
   const startDotX = xScale(0)
 
   return '<div style="margin-top:16px">' +
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#9878; Weight Progress</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
+      '<div style="display:flex;gap:3px">' +
+        ['2W','1M','3M','All'].map(w =>
+          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--forest)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--forest)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
+        ).join('') +
+      '</div>' +
+    '</div>' +
     '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
 
       // Stats: Start · Current · Lost · To go · Target
@@ -1863,12 +1893,14 @@ function renderWeightProgress() {
         // Target line
         '<line x1="' + padL + '" y1="' + yScale(parseFloat(target_weight)).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(parseFloat(target_weight)).toFixed(1) + '" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>' +
 
-        // Start date marker
-        '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (H-padB) + '" stroke="var(--forest2)" stroke-width="1" opacity="0.4"/>' +
-        '<text x="' + padL + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" font-weight="bold" fill="var(--forest2)">' + startDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + '</text>' +
+        // Start date marker — only show on All view
+        (!windowDays ? (
+          '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (H-padB) + '" stroke="var(--forest2)" stroke-width="1" opacity="0.4"/>' +
+          '<text x="' + padL + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" font-weight="bold" fill="var(--forest2)">' + startDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + '</text>'
+        ) : '') +
 
-        // Month labels
-        monthLabels.map(m =>
+        // Window labels
+        windowLabels.map(m =>
           '<line x1="' + xScale(m.day).toFixed(1) + '" y1="' + padT + '" x2="' + xScale(m.day).toFixed(1) + '" y2="' + (H-padB) + '" stroke="var(--cream3)" stroke-width="1" stroke-dasharray="2,3"/>' +
           '<text x="' + xScale(m.day).toFixed(1) + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" fill="var(--ink3)">' + m.label + '</text>'
         ).join('') +
@@ -3475,6 +3507,10 @@ function bindEvents() {
   document.getElementById('tag-organizer-bg')?.addEventListener('click', e => {
     if (e.target.id === 'tag-organizer-bg') { state.tagOrganizerModal = false; render() }
   })
+  document.querySelectorAll('.chart-window-btn[data-window]').forEach(el => {
+    el.addEventListener('click', () => { state.chartWindow = el.dataset.window; render() })
+  })
+
   document.querySelectorAll('.recipe-sort-btn[data-sort]').forEach(el => {
     el.addEventListener('click', () => { state.recipeSort = el.dataset.sort; render() })
   })
