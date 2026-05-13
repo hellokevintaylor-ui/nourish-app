@@ -251,7 +251,16 @@ export async function fetchFullLog(days) {
     .order('logged_at', { ascending: false })
   return data || []
 }
-export async function fetchFullMealPlan(days) {
+export async function fetchFullExerciseLog(days) {
+  const since = new Date()
+  since.setDate(since.getDate() - (days || 30))
+  const { data } = await supabase.from('exercise_log')
+    .select('*')
+    .eq('user_id', uid())
+    .gte('logged_at', since.toISOString())
+    .order('logged_at', { ascending: false })
+  return data || []
+}
   const since = new Date()
   since.setDate(since.getDate() - (days || 90))
   const sinceDate = since.toISOString().slice(0,10)

@@ -4,7 +4,7 @@ import { getUserId } from './supabase.js'
 // ── STATE ─────────────────────────────────────────────────────────────────────
 const state = {
   tab: localStorage.getItem('mep_tab') || 'recipes',
-  recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [], weightLog: [],
+  recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [], weightLog: [], historyExerciseLog: [],
   goals: { calories: 2000, goal: 'maintain' },
   loading: true,
   showGoals: false,
@@ -258,16 +258,16 @@ async function removeTagFromItem(name, namespace, itemId) {
 async function init() {
   render()
   const weekDates = getWeekDates(0)
-  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog, weightLog, gamePlans] = await Promise.all([
+  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog, weightLog, gamePlans, historyExerciseLog] = await Promise.all([
     db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags(),
     db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90), db.fetchExerciseLog(), db.fetchWeightLog(),
-    db.fetchGamePlans()
+    db.fetchGamePlans(), db.fetchFullExerciseLog(30)
   ])
   state.allTags = allTags || []
   state.mealPlan = mealPlan || []
   state.historyLog = historyLog || []
   state.exerciseLog = exerciseLog || []
-  state.weightLog = weightLog || []
+  state.historyExerciseLog = historyExerciseLog || []
   state.agentProfile = buildAgentProfile(state.historyLog, [])
   state.recipes  = recipes.map(normalizeRecipe)
   state.pantry   = pantry
@@ -1535,8 +1535,16 @@ function renderLogInner() {
   })
   byDate[today] = state.log
 
+  const byDateExercise = {}
+  ;(state.historyExerciseLog || []).forEach(e => {
+    const d = new Date(e.logged_at).toLocaleDateString('sv')
+    if (!byDateExercise[d]) byDateExercise[d] = []
+    byDateExercise[d].push(e)
+  })
+  byDateExercise[today] = state.exerciseLog || []
+
   const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
-  const weeklyOut = 0 // exercise history not yet stored — today only
+  const weeklyOut = weekDays.reduce((sum, d) => sum + (byDateExercise[d] || []).reduce((s,e) => s+(e.calories_burned||0), 0), 0)
   const weeklyNet = weeklyIn - weeklyOut
   const weeklyGoal = goal * 7
   const weeklyDiff = weeklyNet - weeklyGoal
@@ -1593,7 +1601,10 @@ function renderLogInner() {
   // Weekly breakdown rows
   const weekRows = weekDays.map(d => {
     const entries = byDate[d] || []
-    const dayCals = entries.reduce((s, e) => s + (e.calories || 0), 0)
+    const exercise = byDateExercise[d] || []
+    const dayCalsIn = entries.reduce((s, e) => s + (e.calories || 0), 0)
+    const dayBurned = exercise.reduce((s, e) => s + (e.calories_burned || 0), 0)
+    const dayCals = dayCalsIn - dayBurned
     const isDayToday = d === today
     const diff = dayCals - goal
     const wDayLabel = isDayToday ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -1603,9 +1614,9 @@ function renderLogInner() {
     return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
         '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--forest)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
-        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCals > 0 ? dayCals + ' cal' : '--') + '</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCalsIn > 0 ? dayCals + ' net cal' + (dayBurned > 0 ? ' <span style="font-size:10px;color:var(--forest)">(-' + dayBurned + ' burned)</span>' : '') : '--') + '</span>' +
       '</div>' +
-      (dayCals > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
+      (dayCalsIn > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
       (foods ? '<div style="font-size:10px;color:var(--ink3)">' + foods + '</div>' : '') +
     '</div>'
   }).join('')
