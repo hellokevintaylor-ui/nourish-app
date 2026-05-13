@@ -2250,31 +2250,60 @@ function renderHistory() {
 
 function renderTags() {
   const search = (state.tagSearch || '').toLowerCase()
-  const namespaces = [
-    { key: 'recipe', label: 'Recipe Tags', hint: 'For recipes - meal type, occasion, cooking method, main ingredient' },
-    { key: 'location', label: 'Pantry/Store Tags', hint: 'For pantry items and shopping list - store aisle or home storage location' },
-  ]
+  const recipeTags = getTagsForNamespace('recipe').filter(t => !search || t.name.toLowerCase().includes(search))
+    .slice().sort((a, b) => a.name.localeCompare(b.name))
+  const locationTags = getTagsForNamespace('location').filter(t => !search || t.name.toLowerCase().includes(search))
+    .slice().sort((a, b) => a.name.localeCompare(b.name))
+
+  const categoryTags = recipeTags.filter(t => !t.tag_type || t.tag_type === 'category')
+  const styleTags = recipeTags.filter(t => t.tag_type === 'style')
+  const hasTyped = recipeTags.some(t => t.tag_type === 'style')
+
+  const renderChip = (t, ns) =>
+    '<span class="tag-library-chip" style="display:inline-flex;align-items:center;gap:4px;margin:3px">' +
+      esc(t.name) +
+      '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns + '" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+    '</span>'
+
+  const renderSection = (title, hint, tags, ns, addId, tagType) =>
+    '<div class="tags-section">' +
+      '<div class="tags-section-title">' + title + '</div>' +
+      '<div class="tags-section-hint" style="font-size:11px;color:var(--ink3);margin-bottom:8px">' + hint + '</div>' +
+      '<div class="tags-section-chips" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">' +
+        (tags.length ? tags.map(t => renderChip(t, ns)).join('') : '<span style="font-size:12px;color:var(--ink4);font-style:italic">None yet</span>') +
+      '</div>' +
+      '<div class="tag-add-row" style="display:flex;gap:6px">' +
+        '<input class="tag-lib-input" id="' + addId + '" placeholder="Add tag..." style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
+        '<button class="add-btn" data-add-lib-tag="' + ns + '" data-tag-type="' + tagType + '" data-input-id="' + addId + '">+ Add</button>' +
+      '</div>' +
+    '</div>'
+
   return '<div class="tab-content">' +
-    '<div class="section-title">Tag Library</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+      '<div class="section-title">Tag Library</div>' +
+      '<button class="add-btn" id="organize-tags-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2);font-size:12px">' +
+        (hasTyped ? '✦ Re-organize' : '✦ Auto-organize') +
+      '</button>' +
+    '</div>' +
     renderSearchBar('tag-search', state.tagSearch || '', 'Search tags...') +
-    namespaces.map(ns => {
-      const tags = getTagsForNamespace(ns.key).filter(t => !search || t.name.toLowerCase().includes(search))
-      return '<div class="tags-section">' +
-        '<div class="tags-section-title">' + ns.label + '</div>' +
-        '<div class="tags-section-hint">' + ns.hint + '</div>' +
-        '<div class="tags-section-chips">' +
-          tags.map(t =>
-            '<span class="tag-library-chip">' + esc(t.name) +
-            '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns.key + '">×</button>' +
-            '</span>'
-          ).join('') +
-        '</div>' +
-        '<div class="tag-add-row">' +
-          '<input class="tag-lib-input" id="new-lib-tag-' + ns.key + '" placeholder="New ' + ns.label.toLowerCase() + '..." />' +
-          '<button class="add-btn" data-add-lib-tag="' + ns.key + '">+ Add</button>' +
-        '</div>' +
-      '</div>'
-    }).join('') +
+
+    // Recipe tags — split into Category and Style if typed, flat if not
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🥘 Recipe Tags</div>' +
+      (hasTyped ? (
+        renderSection('Category', 'What the dish IS — protein, cuisine, main ingredient (Pork, Pasta, Salad)', categoryTags, 'recipe', 'new-lib-tag-recipe-category', 'category') +
+        renderSection('Style', 'How it\'s made or when — method, occasion (Sous Vide, Weeknight, Party)', styleTags, 'recipe', 'new-lib-tag-recipe-style', 'style')
+      ) : (
+        '<div style="font-size:12px;color:var(--ink3);margin-bottom:10px">Tap <strong>✦ Auto-organize</strong> to split into Category and Style for better filtering.</div>' +
+        renderSection('All Recipe Tags', 'Meal type, occasion, cooking method, main ingredient', recipeTags, 'recipe', 'new-lib-tag-recipe', 'category')
+      )) +
+    '</div>' +
+
+    // Location tags
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🛒 Pantry & Store Tags</div>' +
+      renderSection('Location Tags', 'Store aisle, fridge section, pantry shelf', locationTags, 'location', 'new-lib-tag-location', 'category') +
+    '</div>' +
   '</div>'
 }
 
@@ -4160,11 +4189,16 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-add-lib-tag]').forEach(el => {
     el.addEventListener('click', async () => {
       const ns = el.dataset.addLibTag
-      const input = document.getElementById('new-lib-tag-' + ns)
+      const tagType = el.dataset.tagType || 'category'
+      const inputId = el.dataset.inputId || ('new-lib-tag-' + ns)
+      const input = document.getElementById(inputId)
       const name = input?.value?.trim()
       if (!name) return
-      const saved = await db.saveTag(name, ns)
-      if (saved && !state.allTags.find(t => t.name === name && t.namespace === ns)) state.allTags.push(saved)
+      const saved = await db.saveTag(name, ns, tagType)
+      if (saved) {
+        saved.tag_type = tagType
+        if (!state.allTags.find(t => t.name === name && t.namespace === ns)) state.allTags.push(saved)
+      }
       if (input) input.value = ''
       render()
     })
