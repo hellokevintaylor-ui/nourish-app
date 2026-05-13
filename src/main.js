@@ -10,6 +10,7 @@ const state = {
   showGoals: false,
   showSync: false,
   showHeaderMenu: false,
+  showArchived: false,
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
@@ -421,7 +422,7 @@ function parseIngredientLine(line) {
 
 function buildClaudeContext() {
   const recipeList = state.recipes.length === 0 ? "No recipes saved yet."
-    : state.recipes.map((r,i) => (i+1) + ". " + r.name + "\nIngredients:\n" + (r.ingredients||"") + (r.cookingNotes ? "\nNotes: " + r.cookingNotes : "")).join("\n\n")
+    : state.recipes.filter(r => !r.archived).map((r,i) => (i+1) + ". " + r.name + "\nIngredients:\n" + (r.ingredients||"") + (r.cookingNotes ? "\nNotes: " + r.cookingNotes : "")).join("\n\n")
   const pantryList = state.pantry.length === 0 ? "Empty."
     : state.pantry.map(p => p.name + (p.qty ? " (" + p.qty + ")" : "")).join(", ")
   const shopList = state.shopList.filter(i => !i.have).length === 0 ? "Empty."
@@ -1166,6 +1167,9 @@ function renderRecipeCard(r) {
       '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
       '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '">📋 Plan</button>' +
       '<button class="ra-btn ra-ask" data-ask="' + r.id + '">Ask AI</button>' +
+      (r.archived
+        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest)">↩ Restore</button>'
+        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3)">📦 Archive</button>') +
       '<button class="ra-btn ra-del" data-del="' + r.id + '">Del</button>' +
     '</div>' +
   '</div>'
@@ -1182,8 +1186,13 @@ function renderSearchBar(id, value, placeholder) {
 
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
-  let filtered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe') ? state.recipes.filter(r => state.activeTagFilter === '__untagged__' ? !(r.tags||[]).length : (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
+  // Split into active and archived
+  const allFiltered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe')
+    ? state.recipes.filter(r => state.activeTagFilter === '__untagged__' ? !(r.tags||[]).length : (r.tags||[]).includes(state.activeTagFilter))
+    : state.recipes
+  let filtered = allFiltered.filter(r => state.showArchived ? r.archived : !r.archived)
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
+  const archivedCount = state.recipes.filter(r => r.archived).length
   return `
     <div class="tab-content">
       <div class="section-header">
@@ -1197,6 +1206,13 @@ function renderRecipes() {
       <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
       ${renderSearchBar('recipe-search', state.recipeSearch || '', 'Search recipes...')}
       ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
+      ${archivedCount > 0 ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <button id="toggle-archived-btn" style="font-size:12px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit">
+            ${state.showArchived ? '← Back to recipes' : '📦 Archived (' + archivedCount + ')'}
+          </button>
+        </div>
+      ` : ''}
       ${state.addRecipeModal ? `
         <div class="recipe-add-box">
           <input id="r-name" placeholder="Recipe name" />
@@ -3183,6 +3199,28 @@ function bindEvents() {
         state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
         render()
       }
+    })
+  })
+
+  document.getElementById('toggle-archived-btn')?.addEventListener('click', () => {
+    state.showArchived = !state.showArchived; render()
+  })
+
+  document.querySelectorAll('[data-archive-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.archiveRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (r) { r.archived = true; await db.archiveRecipe(id, true); render() }
+    })
+  })
+
+  document.querySelectorAll('[data-restore-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.restoreRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (r) { r.archived = false; await db.archiveRecipe(id, false); render() }
     })
   })
 

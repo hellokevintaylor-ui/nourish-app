@@ -38,6 +38,9 @@ export async function updateRecipe(id, fields) {
   const { data } = await supabase.from('recipes').update(mapped).eq('id', id).select()
   return data?.[0]
 }
+export async function archiveRecipe(id, archived) {
+  await supabase.from('recipes').update({ archived: !!archived }).eq('id', id)
+}
 export async function deleteRecipe(id) {
   await supabase.from('recipes').delete().eq('id', id)
 }
