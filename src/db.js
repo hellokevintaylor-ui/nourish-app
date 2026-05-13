@@ -261,6 +261,8 @@ export async function fetchFullExerciseLog(days) {
     .order('logged_at', { ascending: false })
   return data || []
 }
+
+export async function fetchFullMealPlan(days) {
   const since = new Date()
   since.setDate(since.getDate() - (days || 90))
   const sinceDate = since.toISOString().slice(0,10)
