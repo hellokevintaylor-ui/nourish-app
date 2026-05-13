@@ -1849,9 +1849,8 @@ function renderWeightProgress() {
     }
   }
 
-  // SVG — auto-fit Y to visible data range
-  const visibleWeights = [parseFloat(target_weight), ...actualPoints.map(p => p.weight)]
-  if (windowDays && allActualPoints.length > 0) visibleWeights.push(allActualPoints[allActualPoints.length-1].weight)
+  // SVG — Y range must always include start weight and target
+  const visibleWeights = [startWeight, latestWeight, parseFloat(target_weight), ...actualPoints.map(p => p.weight)]
   const minW = Math.floor(Math.min(...visibleWeights)) - 1
   const maxW = Math.ceil(Math.max(...visibleWeights)) + 1
   const W = 320, H = 155, padL = 32, padR = 12, padT = 12, padB = 28
