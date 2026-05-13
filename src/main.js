@@ -1031,17 +1031,17 @@ function renderTagInput(itemId, namespace, currentTags) {
 }
 
 function renderTagFilterChips(namespace) {
-  const tags = getTagsForNamespace(namespace)
+  const tags = getTagsForNamespace(namespace).slice().sort((a, b) => a.name.localeCompare(b.name))
   if (!tags.length) return ''
   const active = state.activeTagFilters[namespace]
-  // null = show all (default, no chips lit)
-  // Set = explicit selection (All was tapped, individual tags can be toggled off)
   const isDefault = active === null || active === undefined
-  const allNames = new Set(tags.map(t => t.name))
+  const allSelected = !isDefault && tags.every(t => active.has(t.name))
 
   return '<div class="tag-filter-wrap">' +
+    '<div style="margin-bottom:5px">' +
+      '<button class="tag-filter-chip ' + (allSelected ? 'active' : '') + '" data-filter-all="' + namespace + '" style="font-size:11px;font-weight:700">Select All</button>' +
+    '</div>' +
     '<div class="tag-filter-row">' +
-      '<button class="tag-filter-chip ' + (isDefault ? '' : 'active') + '" data-filter-all="' + namespace + '">All</button>' +
       tags.map(t => {
         const isActive = !isDefault && active.has(t.name)
         return '<button class="tag-filter-chip ' + (isActive ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>'
@@ -2837,8 +2837,15 @@ function bindEvents() {
     el.addEventListener('click', () => {
       const ns = el.dataset.filterAll
       const tags = getTagsForNamespace(ns)
-      // Light up all tags so user can deselect individual ones
-      state.activeTagFilters[ns] = new Set(tags.map(t => t.name))
+      const active = state.activeTagFilters[ns]
+      const allSelected = active && tags.every(t => active.has(t.name))
+      if (allSelected) {
+        // All were selected — clicking again clears back to default (show all, nothing lit)
+        state.activeTagFilters[ns] = null
+      } else {
+        // Select all tags
+        state.activeTagFilters[ns] = new Set(tags.map(t => t.name))
+      }
       render()
     })
   })
