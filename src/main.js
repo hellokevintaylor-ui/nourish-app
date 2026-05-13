@@ -16,7 +16,7 @@ const state = {
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
-  activeTagFilters: {},   // keyed by namespace, values are Sets of selected tag names
+  activeTagFilters: {},   // keyed by namespace, null=default/show all, Set=explicit selection
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
@@ -1033,13 +1033,19 @@ function renderTagInput(itemId, namespace, currentTags) {
 function renderTagFilterChips(namespace) {
   const tags = getTagsForNamespace(namespace)
   if (!tags.length) return ''
-  const active = state.activeTagFilters[namespace] || new Set()
-  const allActive = active.size === 0
+  const active = state.activeTagFilters[namespace]
+  // null = show all (default, no chips lit)
+  // Set = explicit selection (All was tapped, individual tags can be toggled off)
+  const isDefault = active === null || active === undefined
+  const allNames = new Set(tags.map(t => t.name))
+
   return '<div class="tag-filter-wrap">' +
     '<div class="tag-filter-row">' +
-      '<button class="tag-filter-chip ' + (allActive ? 'active' : '') + '" data-filter-all="' + namespace + '">All</button>' +
-      tags.map(t => '<button class="tag-filter-chip ' + (active.has(t.name) ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
-      '<button class="tag-filter-chip ' + (active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
+      '<button class="tag-filter-chip ' + (isDefault ? '' : 'active') + '" data-filter-all="' + namespace + '">All</button>' +
+      tags.map(t => {
+        const isActive = !isDefault && active.has(t.name)
+        return '<button class="tag-filter-chip ' + (isActive ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>'
+      }).join('') +
     '</div>' +
   '</div>'
 }
@@ -1081,7 +1087,7 @@ function renderRecipeCard(r) {
   ).join('')
   const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe">+ Tag</button>'
   const isPickerOpen = state.tagPickerOpen === r.id + '-recipe'
-  const mealTags = getTagsForNamespace('recipe')
+  const mealTags = getTagsForNamespace('recipe').slice().sort((a, b) => a.name.localeCompare(b.name))
   const tagPicker = isPickerOpen ? (
     '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
     mealTags.map(t => {
@@ -1189,13 +1195,10 @@ function renderSearchBar(id, value, placeholder) {
 
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
-  const activeTags = state.activeTagFilters['recipe'] || new Set()
-  const allFiltered = activeTags.size === 0
-    ? state.recipes
-    : state.recipes.filter(r => {
-        if (activeTags.has('__untagged__')) return !(r.tags||[]).length
-        return [...activeTags].some(tag => (r.tags||[]).includes(tag))
-      })
+  const activeTags = state.activeTagFilters['recipe']
+  const allFiltered = (activeTags === null || activeTags === undefined)
+    ? state.recipes  // default — show everything
+    : state.recipes.filter(r => [...activeTags].some(tag => (r.tags||[]).includes(tag)))
   let filtered = allFiltered.filter(r => state.showArchived ? r.archived : !r.archived)
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
 
@@ -1288,10 +1291,10 @@ function renderRecipes() {
 }
 
 function renderPantry() {
-  const locationTags = state.activeTagFilters['location'] || new Set()
+  const locationTags = state.activeTagFilters['location']
   const search = (state.pantrySearch || '').toLowerCase()
   const filtered = state.pantry.filter(item =>
-    (locationTags.size === 0 || (locationTags.has('__untagged__') ? !(item.tags||[]).length : [...locationTags].some(t => (item.tags||[]).includes(t)))) &&
+    (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (item.tags||[]).includes(t))) &&
     (!search || item.name.toLowerCase().includes(search))
   )
   return '<div class="tab-content">' +
@@ -1321,7 +1324,7 @@ function renderPantry() {
         const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="location">x</button></span>').join('')
         const pickerId = item.id + '-location'
         const isOpen = state.tagPickerOpen === pickerId
-        const pantryTags = getTagsForNamespace('location')
+        const pantryTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
         const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
         const isEditing = state.editingPantryId === String(item.id)
         return '<div class="pantry-row pantry-row-wrap">' +
@@ -1353,7 +1356,7 @@ function renderShopItems(items) {
     const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">x</button></span>').join('')
     const pickerId = i.id + '-location'
     const isOpen = state.tagPickerOpen === pickerId
-    const storeTags = getTagsForNamespace('location')
+    const storeTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
     const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
     const isEditingS = state.editingShopId === String(i.id)
 
@@ -1380,12 +1383,12 @@ function renderShopItems(items) {
 }
 
 function renderShop() {
-  const locationTags = state.activeTagFilters['location'] || new Set()
+  const locationTags = state.activeTagFilters['location']
   const search = (state.shopSearch || '').toLowerCase()
 
   const need = sortShopList(state.shopList.filter(i =>
     !i.have &&
-    (locationTags.size === 0 || (locationTags.has('__untagged__') ? !(i.tags||[]).length : [...locationTags].some(t => (i.tags||[]).includes(t)))) &&
+    (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (i.tags||[]).includes(t))) &&
     (!search || i.name.toLowerCase().includes(search))
   ))
   const done = state.shopList.filter(i => i.have)
@@ -2829,11 +2832,13 @@ function bindEvents() {
     })
   })
 
-  // Filter chips — multi-select toggle
+  // Filter chips — All lights up everything, individual tags toggle off
   document.querySelectorAll('.tag-filter-chip[data-filter-all]').forEach(el => {
     el.addEventListener('click', () => {
       const ns = el.dataset.filterAll
-      state.activeTagFilters[ns] = new Set()
+      const tags = getTagsForNamespace(ns)
+      // Light up all tags so user can deselect individual ones
+      state.activeTagFilters[ns] = new Set(tags.map(t => t.name))
       render()
     })
   })
@@ -2841,12 +2846,16 @@ function bindEvents() {
     el.addEventListener('click', () => {
       const ns = el.dataset.filterNs
       const tag = el.dataset.filterTag
-      if (!state.activeTagFilters[ns]) state.activeTagFilters[ns] = new Set()
-      const current = state.activeTagFilters[ns]
-      if (current.has(tag)) {
-        current.delete(tag)
+      const active = state.activeTagFilters[ns]
+      if (!active) {
+        // Was in default mode — switch to single-tag filter
+        state.activeTagFilters[ns] = new Set([tag])
+      } else if (active.has(tag)) {
+        active.delete(tag)
+        // If nothing left selected, go back to default (show all)
+        if (active.size === 0) state.activeTagFilters[ns] = null
       } else {
-        current.add(tag)
+        active.add(tag)
       }
       render()
     })
