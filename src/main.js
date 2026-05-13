@@ -1649,11 +1649,17 @@ function renderLogInner() {
       '</div>'
     ) : '') +
 
-    // 4. Today's meals
+    // 4. Today's Meals — what's already logged
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
-    // 4. Add food
+    // 5. Log Meals — manual entry first, then recipe search
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">Log Meals</div>' +
+    '<div class="log-add-row">' +
+      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
+      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
+    '</div>' +
+    (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
@@ -1669,13 +1675,8 @@ function renderLogInner() {
         recipeTags.map(t => '<button class="tag-filter-chip ' + (logTagFilter === t.name ? 'active' : '') + '" data-log-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>').join('') +
       '</div>'
     : '') +
-    '<div class="log-add-row">' +
-      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
-      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
-    '</div>' +
-    (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
 
-    // 5. Exercise
+    // 6. Exercise
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
     '<div class="log-add-row">' +
       '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
@@ -1698,7 +1699,7 @@ function renderLogInner() {
       ).join('')
     : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
 
-    // 6. Weight progress chart
+    // 7. Weight progress chart
     renderWeightProgress() +
 
     // 8. Last 7 days summary bar
