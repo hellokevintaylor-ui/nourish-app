@@ -2532,6 +2532,8 @@ function renderTagOrganizerModal() {
     '</div>' +
   '</div>'
 }
+
+function gpChatKey() {
   const { date, slot } = state.gamePlanModal || {}
   return (date || 'today') + '-' + (slot || 'Dinner')
 }
