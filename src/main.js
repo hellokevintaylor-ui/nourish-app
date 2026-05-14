@@ -1598,7 +1598,11 @@ function renderLogInner() {
     byDateExercise[state._viewedDateStr] = state.viewedDayExercise
   }
 
-  const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
+  // Debug — log what we have for each weekDay
+  console.log('weekDays:', weekDays)
+  console.log('byDate keys:', Object.keys(byDate))
+  weekDays.forEach(d => console.log(d, '->', (byDate[d]||[]).length, 'entries', (byDate[d]||[]).reduce((s,e)=>s+(e.calories||0),0), 'cal'))
+  console.log('historyLog total:', (state.historyLog||[]).length, 'viewedDayLog:', (state.viewedDayLog||[]).length, '_viewedDateStr:', state._viewedDateStr)
   const weeklyOut = weekDays.reduce((sum, d) => sum + (byDateExercise[d] || []).reduce((s,e) => s+(e.calories_burned||0), 0), 0)
   const weeklyNet = weeklyIn - weeklyOut
   const weeklyGoal = goal * 7
