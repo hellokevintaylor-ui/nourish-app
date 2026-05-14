@@ -1575,17 +1575,20 @@ function renderLogInner() {
 
   const byDate = {}
   ;(state.historyLog || []).forEach(e => {
-    const d = new Date(e.logged_at).toLocaleDateString('sv')
-    if (!byDate[d]) byDate[d] = []
-    byDate[d].push(e)
+    // Use local date string to avoid UTC timezone shift
+    const d = new Date(e.logged_at)
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+    if (!byDate[key]) byDate[key] = []
+    byDate[key].push(e)
   })
   byDate[today] = state.log
 
   const byDateExercise = {}
   ;(state.historyExerciseLog || []).forEach(e => {
-    const d = new Date(e.logged_at).toLocaleDateString('sv')
-    if (!byDateExercise[d]) byDateExercise[d] = []
-    byDateExercise[d].push(e)
+    const d = new Date(e.logged_at)
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+    if (!byDateExercise[key]) byDateExercise[key] = []
+    byDateExercise[key].push(e)
   })
   byDateExercise[today] = state.exerciseLog || []
 
@@ -1976,7 +1979,7 @@ function renderWeightProgress() {
 
         // Plan line (solid grey — the ideal straight path from start to goal)
         // Original projection line (darker grey dashed, more visible)
-        (projPath ? '<path d="' + projPath + '" fill="none" stroke="#999" stroke-width="2" stroke-dasharray="6,4" opacity="0.9"/>' : '') +
+        (projPath ? '<path d="' + projPath + '" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.9"/>' : '') +
         // Adjusted projection from current weight — same rate, new starting point (green dashed)
         (adjProjPath ? '<path d="' + adjProjPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.85"/>' : '') +
 
