@@ -1817,30 +1817,8 @@ function renderWeightProgress() {
     endDate.setMonth(startDate.getMonth() + 6)
   }
 
-  // Actual trajectory from latest weigh-in
-  let actualTrajectoryDate = null
+  // Compare updated plan end date vs original to show ahead/behind message
   let nudgeMsg = '', nudgeColor = 'var(--ink3)'
-  if (weightLog.length >= 2) {
-    const first = weightLog[0], last = weightLog[weightLog.length-1]
-    const daysBetween = Math.round((new Date(last.logged_at) - new Date(first.logged_at)) / (1000*60*60*24))
-    if (daysBetween > 0) {
-      const actualLbsPerDay = (parseFloat(first.weight) - parseFloat(last.weight)) / daysBetween
-      if (actualLbsPerDay > 0) {
-        const daysToGoal = (parseFloat(last.weight) - parseFloat(target_weight)) / actualLbsPerDay
-        actualTrajectoryDate = new Date(new Date(last.logged_at))
-        actualTrajectoryDate.setDate(actualTrajectoryDate.getDate() + Math.round(daysToGoal))
-        if (actualTrajectoryDate > endDate) endDate = new Date(actualTrajectoryDate)
-        const projEndDate = projection ? new Date(startDate.getTime() + projection.days * 86400000) : null
-        const diffDays = projEndDate ? Math.round((projEndDate - actualTrajectoryDate) / 86400000) : 0
-        const diffWeeks = Math.round(Math.abs(diffDays) / 7)
-        if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of schedule!'; nudgeColor = 'var(--forest)' }
-        else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead!'; nudgeColor = 'var(--forest2)' }
-        else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind — tighten up a bit.'; nudgeColor = 'var(--terra)' }
-        else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind — keep going!'; nudgeColor = 'var(--gold)' }
-        else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
-      }
-    }
-  }
 
   const totalDays = Math.max(Math.round((endDate - startDate) / 86400000), 30)
   const lbsPerDay = projection ? (startWeight - parseFloat(target_weight)) / projection.days : 0
@@ -1891,23 +1869,6 @@ function renderWeightProgress() {
   const windowTotalDays = windowDays ? windowDays : totalDays
   const windowStartDate = new Date(startDate.getTime() + windowStartDay * 86400000)
 
-  // Current trajectory line from latest actual point
-  const trajPoints = (actualPoints.length >= 1 && weightLog.length >= 2) ? (() => {
-    const last = actualPoints[actualPoints.length-1]
-    const first = actualPoints[0]
-    const daysBetween = last.day - first.day
-    if (daysBetween <= 0) return []
-    const actualLbsPerDay = (first.weight - last.weight) / daysBetween
-    if (actualLbsPerDay <= 0) return [last]
-    const daysToGoal = (last.weight - parseFloat(target_weight)) / actualLbsPerDay
-    const pts = []
-    const steps = Math.min(Math.ceil(daysToGoal), totalDays - last.day)
-    for (let i = 0; i <= steps; i += Math.max(1, Math.floor(steps/20))) {
-      pts.push({ day: last.day + i, weight: Math.max(last.weight - actualLbsPerDay * i, parseFloat(target_weight)) })
-    }
-    return pts
-  })() : []
-
   // Month/week labels for window
   const windowLabels = []
   if (windowDays && windowDays <= 14) {
@@ -1947,7 +1908,19 @@ function renderWeightProgress() {
   const projPath = projPoints.length > 1 ? mkPath(projPoints.filter((_,i)=>i%3===0||i===projPoints.length-1)) : ''
   const adjProjPath = adjustedProjPoints.length > 1 ? mkPath(adjustedProjPoints.filter((_,i)=>i%3===0||i===adjustedProjPoints.length-1)) : ''
   const actualPath = actualPoints.length > 1 ? mkPath(actualPoints) : ''
-  const trajPath = trajPoints.length > 1 ? mkPath(trajPoints) : ''
+
+  // Nudge message — compare adjusted end date vs original
+  if (projection && adjustedProjPoints.length > 0 && latestWeight !== startWeight) {
+    const origEndDay = projection.days
+    const adjEndDay = todayDay + daysToTargetFromNow
+    const diffDays = origEndDay - adjEndDay
+    const diffWeeks = Math.round(Math.abs(diffDays) / 7)
+    if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of plan!'; nudgeColor = 'var(--forest)' }
+    else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead of plan!'; nudgeColor = 'var(--forest2)' }
+    else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind plan — keep at it.'; nudgeColor = 'var(--terra)' }
+    else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind plan — keep going!'; nudgeColor = 'var(--gold)' }
+    else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
+  }
 
   // Start dot (at startWeight on startDate)
   const startDotY = yScale(startWeight)
@@ -2002,13 +1975,10 @@ function renderWeightProgress() {
         '<text x="' + (startDotX+7).toFixed(1) + '" y="' + (startDotY-5).toFixed(1) + '" font-size="8" font-weight="bold" fill="var(--ink3)">' + startWeight + '</text>' +
 
         // Plan line (solid grey — the ideal straight path from start to goal)
-        // Original projection line (grey dashed)
-        (projPath ? '<path d="' + projPath + '" fill="none" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/>' : '') +
         // Adjusted projection from current weight — same rate, new starting point (green dashed)
         (adjProjPath ? '<path d="' + adjProjPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.85"/>' : '') +
 
         // Actual trajectory forward (colored dashed — extrapolated from your actual pace)
-        (trajPath ? '<path d="' + trajPath + '" fill="none" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.8"/>' : '') +
 
         // Actual logged weights (dotted green — your real journey connecting weigh-ins)
         (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
@@ -2031,7 +2001,7 @@ function renderWeightProgress() {
 
       // Dates line
       (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
-        (actualTrajectoryDate ? ' &nbsp;·&nbsp; At your pace: <strong style="color:' + nudgeColor + '">' + actualTrajectoryDate.toLocaleDateString('en-US', {month:'long', day:'numeric'}) + '</strong>' : '') +
+        (adjProjPath && daysToTargetFromNow > 0 ? ' &nbsp;·&nbsp; Updated: <strong style="color:var(--forest2)">' + new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</strong>' : '') +
       '</div>' : '') +
 
       // Nudge
@@ -2040,7 +2010,6 @@ function renderWeightProgress() {
       // Legend
       '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
-        (trajPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="5,3"/></svg>Your pace</div>' : '') +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
         (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
