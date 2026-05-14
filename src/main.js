@@ -1565,39 +1565,38 @@ function renderLogInner() {
   const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   // Build week data from historyLog — last 7 completed days (yesterday and prior, not today)
+  const toDateKey = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
   const weekDays = []
   for (let i = 1; i <= 7; i++) {
     const d = new Date(now)
     d.setDate(now.getDate() - i)
-    weekDays.push(d.toLocaleDateString('sv'))
+    weekDays.push(toDateKey(d))
   }
-  const today = now.toLocaleDateString('sv')
+  const today = toDateKey(now)
 
   const byDate = {}
   ;(state.historyLog || []).forEach(e => {
-    // Use local date string to avoid UTC timezone shift
-    const d = new Date(e.logged_at)
-    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+    const key = toDateKey(new Date(e.logged_at))
     if (!byDate[key]) byDate[key] = []
     byDate[key].push(e)
   })
   byDate[today] = state.log
-  // Also merge in any viewed day data that might be more current than historyLog
+
+  const byDateExercise = {}
+  ;(state.historyExerciseLog || []).forEach(e => {
+    const key = toDateKey(new Date(e.logged_at))
+    if (!byDateExercise[key]) byDateExercise[key] = []
+    byDateExercise[key].push(e)
+  })
+  byDateExercise[today] = state.exerciseLog || []
+
+  // Merge in freshly-fetched viewed day data (more current than historyLog)
   if (state.viewedDayLog && state._viewedDateStr) {
     byDate[state._viewedDateStr] = state.viewedDayLog
   }
   if (state.viewedDayExercise && state._viewedDateStr) {
     byDateExercise[state._viewedDateStr] = state.viewedDayExercise
   }
-
-  const byDateExercise = {}
-  ;(state.historyExerciseLog || []).forEach(e => {
-    const d = new Date(e.logged_at)
-    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
-    if (!byDateExercise[key]) byDateExercise[key] = []
-    byDateExercise[key].push(e)
-  })
-  byDateExercise[today] = state.exerciseLog || []
 
   const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
   const weeklyOut = weekDays.reduce((sum, d) => sum + (byDateExercise[d] || []).reduce((s,e) => s+(e.calories_burned||0), 0), 0)
@@ -3940,10 +3939,10 @@ async function estimateCaloriesAI(description) {
     const now = new Date()
     const d = new Date(now)
     d.setDate(now.getDate() + state.logDayOffset)
-    const dateStr = d.toLocaleDateString('sv')
+    const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
     state._viewedDateStr = dateStr
-    state.viewedDayLog = await db.fetchLogForDate(dateStr)
-    state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
+    state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
+    state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
     render()
   })
   document.getElementById('log-next-day')?.addEventListener('click', async () => {
@@ -3957,10 +3956,10 @@ async function estimateCaloriesAI(description) {
       const now = new Date()
       const d = new Date(now)
       d.setDate(now.getDate() + state.logDayOffset)
-      const dateStr = d.toLocaleDateString('sv')
+      const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
       state._viewedDateStr = dateStr
-      state.viewedDayLog = await db.fetchLogForDate(dateStr)
-      state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
+      state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
+      state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
     }
     render()
   })
