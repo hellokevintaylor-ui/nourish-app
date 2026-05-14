@@ -1564,12 +1564,11 @@ function renderLogInner() {
   // Day label
   const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-  // Build week data from historyLog — last 7 completed days (yesterday and prior, not today)
-  const toDateKey = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+  // Use UTC date keys — matches exactly how Supabase stores logged_at
+  const toDateKey = (d) => d.toISOString().slice(0, 10)
   const weekDays = []
   for (let i = 1; i <= 7; i++) {
-    const d = new Date(now)
-    d.setDate(now.getDate() - i)
+    const d = new Date(now.getTime() - i * 86400000)
     weekDays.push(toDateKey(d))
   }
   const today = toDateKey(now)
@@ -1580,14 +1579,6 @@ function renderLogInner() {
     if (!byDate[key]) byDate[key] = []
     byDate[key].push(e)
   })
-  // Only use state.log for today if historyLog doesn't have today's entries yet
-  if (!byDate[today] || byDate[today].length === 0) {
-    byDate[today] = state.log
-  }
-  // Also merge in any freshly-fetched viewed day data
-  if (state.viewedDayLog && state._viewedDateStr) {
-    byDate[state._viewedDateStr] = state.viewedDayLog
-  }
 
   const byDateExercise = {}
   ;(state.historyExerciseLog || []).forEach(e => {
@@ -1595,9 +1586,10 @@ function renderLogInner() {
     if (!byDateExercise[key]) byDateExercise[key] = []
     byDateExercise[key].push(e)
   })
-  // Only use state.exerciseLog for today if not in historyExerciseLog
-  if (!byDateExercise[today] || byDateExercise[today].length === 0) {
-    byDateExercise[today] = state.exerciseLog || []
+
+  // Merge in freshly-fetched viewed day data
+  if (state.viewedDayLog && state._viewedDateStr) {
+    byDate[state._viewedDateStr] = state.viewedDayLog
   }
   if (state.viewedDayExercise && state._viewedDateStr) {
     byDateExercise[state._viewedDateStr] = state.viewedDayExercise
