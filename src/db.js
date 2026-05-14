@@ -149,10 +149,10 @@ export async function fetchLog() {
 export async function addLogEntry(food, calories, recipeId, dateStr) {
   const row = { user_id: uid(), food, calories }
   if (recipeId) row.recipe_id = recipeId
-  if (dateStr) {
-    const d = new Date(dateStr + 'T12:00:00')
-    row.logged_at = d.toISOString()
-  }
+  // Always set explicit logged_at using local date (noon) to avoid UTC midnight shift
+  const now = new Date()
+  const localDate = dateStr || (now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0'))
+  row.logged_at = new Date(localDate + 'T12:00:00').toISOString()
   const { data } = await supabase.from('food_log').insert(row).select()
   return data?.[0]
 }

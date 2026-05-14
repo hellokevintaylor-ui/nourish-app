@@ -1580,7 +1580,14 @@ function renderLogInner() {
     if (!byDate[key]) byDate[key] = []
     byDate[key].push(e)
   })
-  byDate[today] = state.log
+  // Only use state.log for today if historyLog doesn't have today's entries yet
+  if (!byDate[today] || byDate[today].length === 0) {
+    byDate[today] = state.log
+  }
+  // Also merge in any freshly-fetched viewed day data
+  if (state.viewedDayLog && state._viewedDateStr) {
+    byDate[state._viewedDateStr] = state.viewedDayLog
+  }
 
   const byDateExercise = {}
   ;(state.historyExerciseLog || []).forEach(e => {
@@ -1588,11 +1595,9 @@ function renderLogInner() {
     if (!byDateExercise[key]) byDateExercise[key] = []
     byDateExercise[key].push(e)
   })
-  byDateExercise[today] = state.exerciseLog || []
-
-  // Merge in freshly-fetched viewed day data (more current than historyLog)
-  if (state.viewedDayLog && state._viewedDateStr) {
-    byDate[state._viewedDateStr] = state.viewedDayLog
+  // Only use state.exerciseLog for today if not in historyExerciseLog
+  if (!byDateExercise[today] || byDateExercise[today].length === 0) {
+    byDateExercise[today] = state.exerciseLog || []
   }
   if (state.viewedDayExercise && state._viewedDateStr) {
     byDateExercise[state._viewedDateStr] = state.viewedDayExercise
