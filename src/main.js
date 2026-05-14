@@ -304,6 +304,16 @@ async function init() {
     })
   }
 
+  // Refresh historical data fresh on every load to catch yesterday's entries
+  const [freshHistoryLog, freshWeightLog, freshHistoryExercise] = await Promise.all([
+    db.fetchFullLog(90),
+    db.fetchWeightLog(),
+    db.fetchFullExerciseLog(30)
+  ])
+  state.historyLog = freshHistoryLog || []
+  state.weightLog = freshWeightLog || []
+  state.historyExerciseLog = freshHistoryExercise || []
+
   // Purge shop items checked more than 1 hour ago
   purgeStaleCheckedItems()
 
@@ -660,8 +670,10 @@ function stopTimer(id) {
 }
 
 function renderTimerBar() {
-  // Remove any existing bar
-  document.getElementById('timer-bar')?.remove()
+  // Preserve position if already dragged
+  const existing = document.getElementById('timer-bar')
+  const savedPos = existing ? { left: existing.style.left, top: existing.style.top, right: existing.style.right, bottom: existing.style.bottom } : null
+  existing?.remove()
   if (timers.length === 0) return
 
   const rows = timers.map(timer => {
@@ -671,7 +683,6 @@ function renderTimerBar() {
     const pct = timer.totalSeconds > 0 ? (timer.remaining / timer.totalSeconds) * 100 : 0
     const isDone = timer.remaining === 0
     const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--forest)'
-
     return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
         '<div style="font-size:11px;font-weight:600;color:var(--ink3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timer.label) + '</div>' +
@@ -686,14 +697,52 @@ function renderTimerBar() {
     '</div>'
   }).join('')
 
-  const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:4px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:200px;max-width:240px;font-family:inherit">' +
-    '<div style="font-size:10px;font-weight:700;color:var(--forest);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px">⏱ Timers</div>' +
+  const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:4px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:200px;max-width:240px;font-family:inherit;touch-action:none;user-select:none">' +
+    '<div id="timer-drag-handle" style="font-size:10px;font-weight:700;color:var(--forest);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;cursor:grab;display:flex;align-items:center;justify-content:space-between">⏱ Timers <span style="color:var(--ink4);letter-spacing:2px">⠿</span></div>' +
     rows +
   '</div>'
 
   document.body.insertAdjacentHTML('beforeend', html)
+  const bar = document.getElementById('timer-bar')
 
-  // Attach stop handlers
+  // Restore saved position if dragged previously
+  if (savedPos && savedPos.left) {
+    bar.style.right = 'auto'; bar.style.bottom = 'auto'
+    bar.style.left = savedPos.left; bar.style.top = savedPos.top
+  }
+
+  // Drag logic
+  let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0
+  const onStart = (e) => {
+    if (e.target.closest('.timer-stop-btn')) return
+    dragging = true
+    const t = e.touches ? e.touches[0] : e
+    startX = t.clientX; startY = t.clientY
+    const rect = bar.getBoundingClientRect()
+    origLeft = rect.left; origTop = rect.top
+    bar.style.right = 'auto'; bar.style.bottom = 'auto'
+    bar.style.left = origLeft + 'px'; bar.style.top = origTop + 'px'
+    bar.style.cursor = 'grabbing'
+    e.preventDefault()
+  }
+  const onMove = (e) => {
+    if (!dragging) return
+    const t = e.touches ? e.touches[0] : e
+    const newLeft = Math.max(0, Math.min(window.innerWidth - bar.offsetWidth, origLeft + t.clientX - startX))
+    const newTop = Math.max(0, Math.min(window.innerHeight - bar.offsetHeight, origTop + t.clientY - startY))
+    bar.style.left = newLeft + 'px'; bar.style.top = newTop + 'px'
+    e.preventDefault()
+  }
+  const onEnd = () => { dragging = false; bar.style.cursor = 'default' }
+
+  const handle = document.getElementById('timer-drag-handle')
+  handle.addEventListener('mousedown', onStart)
+  handle.addEventListener('touchstart', onStart, { passive: false })
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('touchmove', onMove, { passive: false })
+  document.addEventListener('mouseup', onEnd)
+  document.addEventListener('touchend', onEnd)
+
   document.querySelectorAll('.timer-stop-btn').forEach(btn => {
     btn.addEventListener('click', () => stopTimer(parseInt(btn.dataset.timerId)))
   })
