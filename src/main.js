@@ -1582,6 +1582,13 @@ function renderLogInner() {
     byDate[key].push(e)
   })
   byDate[today] = state.log
+  // Also merge in any viewed day data that might be more current than historyLog
+  if (state.viewedDayLog && state._viewedDateStr) {
+    byDate[state._viewedDateStr] = state.viewedDayLog
+  }
+  if (state.viewedDayExercise && state._viewedDateStr) {
+    byDateExercise[state._viewedDateStr] = state.viewedDayExercise
+  }
 
   const byDateExercise = {}
   ;(state.historyExerciseLog || []).forEach(e => {
@@ -3934,6 +3941,7 @@ async function estimateCaloriesAI(description) {
     const d = new Date(now)
     d.setDate(now.getDate() + state.logDayOffset)
     const dateStr = d.toLocaleDateString('sv')
+    state._viewedDateStr = dateStr
     state.viewedDayLog = await db.fetchLogForDate(dateStr)
     state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
     render()
@@ -3944,11 +3952,13 @@ async function estimateCaloriesAI(description) {
     if (state.logDayOffset === 0) {
       state.viewedDayLog = null
       state.viewedDayExercise = null
+      state._viewedDateStr = null
     } else {
       const now = new Date()
       const d = new Date(now)
       d.setDate(now.getDate() + state.logDayOffset)
       const dateStr = d.toLocaleDateString('sv')
+      state._viewedDateStr = dateStr
       state.viewedDayLog = await db.fetchLogForDate(dateStr)
       state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
     }
