@@ -1975,6 +1975,8 @@ function renderWeightProgress() {
         '<text x="' + (startDotX+7).toFixed(1) + '" y="' + (startDotY-5).toFixed(1) + '" font-size="8" font-weight="bold" fill="var(--ink3)">' + startWeight + '</text>' +
 
         // Plan line (solid grey — the ideal straight path from start to goal)
+        // Original projection line (darker grey dashed, more visible)
+        (projPath ? '<path d="' + projPath + '" fill="none" stroke="#999" stroke-width="2" stroke-dasharray="6,4" opacity="0.9"/>' : '') +
         // Adjusted projection from current weight — same rate, new starting point (green dashed)
         (adjProjPath ? '<path d="' + adjProjPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.85"/>' : '') +
 
