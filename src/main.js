@@ -313,6 +313,9 @@ async function init() {
   state.historyLog = freshHistoryLog || []
   state.weightLog = freshWeightLog || []
   state.historyExerciseLog = freshHistoryExercise || []
+  state._weekDataLoaded = false
+  state._weekByDate = {}
+  state._weekExByDate = {}
 
   // Purge shop items checked more than 1 hour ago
   purgeStaleCheckedItems()
@@ -1564,7 +1567,6 @@ function renderLogInner() {
   // Day label
   const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-  // Build week data using the same local-date logic as day navigation
   const toLocalDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
   const today = toLocalDateStr(now)
   const weekDays = []
@@ -1574,10 +1576,11 @@ function renderLogInner() {
     weekDays.push(toLocalDateStr(d))
   }
 
-  // Build byDate from historyLog using LOCAL date (same as fetchLogForDate uses)
+  // Build byDate using local date of each entry (same logic as fetchLogForDate)
   const byDate = {}
   ;(state.historyLog || []).forEach(e => {
     const d = new Date(e.logged_at)
+    // Use local date components — same as fetchLogForDate's T00:00:00 local boundary
     const key = toLocalDateStr(d)
     if (!byDate[key]) byDate[key] = []
     byDate[key].push(e)
@@ -1591,12 +1594,32 @@ function renderLogInner() {
     byDateExercise[key].push(e)
   })
 
-  // Override with freshly-fetched viewed day data which is always accurate
+  // Override with freshly-fetched day data when available (guaranteed accurate)
   if (state.viewedDayLog && state._viewedDateStr) {
     byDate[state._viewedDateStr] = state.viewedDayLog
   }
   if (state.viewedDayExercise && state._viewedDateStr) {
     byDateExercise[state._viewedDateStr] = state.viewedDayExercise
+  }
+
+  // Pre-fetch all 7 days if we don't have them cached yet
+  if (!state._weekDataLoaded) {
+    state._weekDataLoaded = true
+    Promise.all(weekDays.map(async d => {
+      const [log, ex] = await Promise.all([db.fetchLogForDate(d), db.fetchExerciseForDate(d)])
+      state._weekByDate = state._weekByDate || {}
+      state._weekExByDate = state._weekExByDate || {}
+      state._weekByDate[d] = log
+      state._weekExByDate[d] = ex
+      render()
+    }))
+  }
+  // Use pre-fetched week data if available (most accurate)
+  if (state._weekByDate) {
+    weekDays.forEach(d => {
+      if (state._weekByDate[d]) byDate[d] = state._weekByDate[d]
+      if (state._weekExByDate && state._weekExByDate[d]) byDateExercise[d] = state._weekExByDate[d]
+    })
   }
 
   const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
