@@ -2943,18 +2943,27 @@ function renderPasteModal() {
 
 function renderShopReview() {
   const s = state.shopReview
+  const locationTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
   const itemsHtml = s.items.map(function(item, idx) {
     const pantryInfo = item.pantryQty
       ? '<div class="shop-review-have">You have: ' + esc(item.pantryQty) + '</div>'
-      : '<div class="shop-review-none">Not in pantry</div>'
+      : ''
     const inPantry = item.inPantry
+    const itemTags = item.tags || []
     return '<div class="shop-review-row' + (inPantry ? ' shop-review-row-pantry' : '') + '">' +
       '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (!inPantry && item.checked ? 'checked' : '') + (inPantry ? 'disabled' : '') + ' />' +
       '<div class="shop-review-info" style="flex:1;min-width:0">' +
         (inPantry
           ? '<div class="shop-review-name">' + esc(item.name) + '</div><div class="shop-review-have">Added to pantry</div>'
-          : '<input class="shop-review-name-input" data-review-idx="' + idx + '" value="' + esc(item.name) + '" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:2px" />' +
-            pantryInfo
+          : '<input class="shop-review-name-input" data-review-idx="' + idx + '" value="' + esc(item.name) + '" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
+            (pantryInfo ? pantryInfo : '') +
+            (locationTags.length > 0 ?
+              '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
+                locationTags.map(t =>
+                  '<button class="shop-review-tag-btn ' + (itemTags.includes(t.name) ? 'active' : '') + '" data-review-tag-idx="' + idx + '" data-review-tag="' + esc(t.name) + '" style="font-size:10px;padding:2px 7px;border-radius:5px;border:1.5px solid ' + (itemTags.includes(t.name) ? 'var(--forest)' : 'var(--border)') + ';background:' + (itemTags.includes(t.name) ? 'var(--forest)' : 'white') + ';color:' + (itemTags.includes(t.name) ? 'white' : 'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + esc(t.name) + '</button>'
+                ).join('') +
+              '</div>'
+            : '')
         ) +
       '</div>' +
       (!inPantry ?
@@ -2965,7 +2974,7 @@ function renderShopReview() {
   return '<div class="modal-bg" id="shop-review-bg"><div class="modal-sheet">' +
     '<div class="modal-title">What do you need?</div>' +
     '<div class="modal-sub">' + esc(s.recipeName) + '</div>' +
-    '<div class="shop-review-hint">Check items to add. Edit any name before adding. Tap "Got it" if you already have it.</div>' +
+    '<div class="shop-review-hint">Check items to add. Edit name or tag before adding.</div>' +
     '<div class="shop-review-list">' + itemsHtml + '</div>' +
     '<div class="modal-btns"><button class="modal-cancel" id="shop-review-cancel">Cancel</button><button class="modal-save" id="shop-review-add">Add to Shopping List</button></div>' +
     '</div></div>'
@@ -3475,6 +3484,27 @@ function bindEvents() {
       render()
     })
   })
+  document.querySelectorAll('.shop-review-tag-btn').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const idx = parseInt(el.dataset.reviewTagIdx)
+      const tag = el.dataset.reviewTag
+      if (!state.shopReview?.items[idx]) return
+      const item = state.shopReview.items[idx]
+      if (!item.tags) item.tags = []
+      if (item.tags.includes(tag)) {
+        item.tags = item.tags.filter(t => t !== tag)
+      } else {
+        item.tags.push(tag)
+      }
+      // Snapshot name inputs before re-render
+      document.querySelectorAll('.shop-review-name-input').forEach(inp => {
+        const i = parseInt(inp.dataset.reviewIdx)
+        if (state.shopReview?.items[i]) state.shopReview.items[i].name = inp.value.trim() || state.shopReview.items[i].name
+      })
+      render()
+    })
+  })
   document.querySelectorAll('.shop-review-name-input').forEach(el => {
     el.addEventListener('change', () => {
       const idx = parseInt(el.dataset.reviewIdx)
@@ -3487,7 +3517,6 @@ function bindEvents() {
   document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
   document.getElementById('shop-review-add')?.addEventListener('click', async () => {
     if (!state.shopReview) return
-    // Snapshot any edited names from inputs before saving
     document.querySelectorAll('.shop-review-name-input').forEach(el => {
       const idx = parseInt(el.dataset.reviewIdx)
       if (state.shopReview.items[idx]) {
@@ -3498,8 +3527,8 @@ function bindEvents() {
     for (const item of toAdd) {
       const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
       if (!already) {
-        const saved = await db.addShopItem(item.name, state.shopReview.recipeName)
-        if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe })
+        const saved = await db.addShopItem(item.name, state.shopReview.recipeName, item.tags || [])
+        if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe, tags: item.tags || [] })
       }
     }
     state.shopReview = null; state.tab = 'shop'; render()
