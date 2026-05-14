@@ -1845,21 +1845,42 @@ function renderWeightProgress() {
   const totalDays = Math.max(Math.round((endDate - startDate) / 86400000), 30)
   const lbsPerDay = projection ? (startWeight - parseFloat(target_weight)) / projection.days : 0
 
-  // Projected line — starts at startWeight on startDate, goes to target
+  // Original projected line — starts at startWeight on startDate, goes to target
   const projPoints = projection ? Array.from({length: Math.min(totalDays, projection.days) + 1}, (_, i) => ({
     day: i,
     weight: Math.max(parseFloat((startWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
   })) : []
 
-  // Actual weigh-in points plotted by date — filter out any bad values
+  // Adjusted projection — same daily rate, but starting from current weight at today
+  const todayDay = Math.round((new Date() - startDate) / 86400000)
+  const daysToTargetFromNow = lbsPerDay > 0 ? Math.ceil((latestWeight - parseFloat(target_weight)) / lbsPerDay) : 0
+  const adjustedProjPoints = (projection && latestWeight !== startWeight && daysToTargetFromNow > 0) ?
+    Array.from({length: daysToTargetFromNow + 1}, (_, i) => ({
+      day: todayDay + i,
+      weight: Math.max(parseFloat((latestWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
+    })) : []
+
+  // Extend endDate if adjusted projection goes further
+  if (adjustedProjPoints.length > 0) {
+    const adjEnd = new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000)
+    if (adjEnd > endDate) endDate = adjEnd
+  }
+
+  // Helper — get local YYYY-MM-DD string from a date
+  const toLocalDate = (d) => d.toLocaleDateString('sv')
+  const startDateStr = toLocalDate(startDate)
+
+  // Actual weigh-in points plotted by date — use local date to avoid timezone shift
   const allActualPoints = weightLog
     .filter(e => parseFloat(e.weight) > 0)
-    .map(e => ({
-      day: Math.round((new Date(e.logged_at) - startDate) / 86400000),
-      weight: parseFloat(e.weight),
-      id: e.id,
-      date: new Date(e.logged_at)
-    })).filter(p => p.day >= 0)
+    .map(e => {
+      const localDate = toLocalDate(new Date(e.logged_at))
+      // Calculate day offset by comparing local date strings
+      const entryDate = new Date(localDate + 'T12:00:00')
+      const startMidnight = new Date(startDateStr + 'T12:00:00')
+      const day = Math.round((entryDate - startMidnight) / 86400000)
+      return { day, weight: parseFloat(e.weight), id: e.id, date: new Date(e.logged_at) }
+    }).filter(p => p.day >= 0)
 
   // Apply window filter
   const windowDays = state.chartWindow === '1W' ? 7 : state.chartWindow === '2W' ? 14 : state.chartWindow === '1M' ? 30 : state.chartWindow === '3M' ? 90 : null
@@ -1924,6 +1945,7 @@ function renderWeightProgress() {
   const mkPath = pts => pts.map((p,i) => (i===0?'M':'L') + xScale(p.day).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
 
   const projPath = projPoints.length > 1 ? mkPath(projPoints.filter((_,i)=>i%3===0||i===projPoints.length-1)) : ''
+  const adjProjPath = adjustedProjPoints.length > 1 ? mkPath(adjustedProjPoints.filter((_,i)=>i%3===0||i===adjustedProjPoints.length-1)) : ''
   const actualPath = actualPoints.length > 1 ? mkPath(actualPoints) : ''
   const trajPath = trajPoints.length > 1 ? mkPath(trajPoints) : ''
 
@@ -1980,7 +2002,10 @@ function renderWeightProgress() {
         '<text x="' + (startDotX+7).toFixed(1) + '" y="' + (startDotY-5).toFixed(1) + '" font-size="8" font-weight="bold" fill="var(--ink3)">' + startWeight + '</text>' +
 
         // Plan line (solid grey — the ideal straight path from start to goal)
+        // Original projection line (grey dashed)
         (projPath ? '<path d="' + projPath + '" fill="none" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/>' : '') +
+        // Adjusted projection from current weight — same rate, new starting point (green dashed)
+        (adjProjPath ? '<path d="' + adjProjPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.85"/>' : '') +
 
         // Actual trajectory forward (colored dashed — extrapolated from your actual pace)
         (trajPath ? '<path d="' + trajPath + '" fill="none" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.8"/>' : '') +
@@ -2016,7 +2041,8 @@ function renderWeightProgress() {
       '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
         (trajPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="5,3"/></svg>Your pace</div>' : '') +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Plan</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
+        (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
       '</div>' +
 
