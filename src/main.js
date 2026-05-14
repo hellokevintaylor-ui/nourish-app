@@ -1566,6 +1566,7 @@ function renderLogInner() {
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   // Build week data using the same local-date logic as day navigation
   const toLocalDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+  const today = toLocalDateStr(now)
   const weekDays = []
   for (let i = 1; i <= 7; i++) {
     const d = new Date(now)
