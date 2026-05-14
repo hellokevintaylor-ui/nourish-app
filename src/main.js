@@ -1564,30 +1564,33 @@ function renderLogInner() {
   // Day label
   const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-  // Use UTC date keys — matches exactly how Supabase stores logged_at
-  const toDateKey = (d) => d.toISOString().slice(0, 10)
+  // Build week data using the same local-date logic as day navigation
+  const toLocalDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
   const weekDays = []
   for (let i = 1; i <= 7; i++) {
-    const d = new Date(now.getTime() - i * 86400000)
-    weekDays.push(toDateKey(d))
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    weekDays.push(toLocalDateStr(d))
   }
-  const today = toDateKey(now)
 
+  // Build byDate from historyLog using LOCAL date (same as fetchLogForDate uses)
   const byDate = {}
   ;(state.historyLog || []).forEach(e => {
-    const key = toDateKey(new Date(e.logged_at))
+    const d = new Date(e.logged_at)
+    const key = toLocalDateStr(d)
     if (!byDate[key]) byDate[key] = []
     byDate[key].push(e)
   })
 
   const byDateExercise = {}
   ;(state.historyExerciseLog || []).forEach(e => {
-    const key = toDateKey(new Date(e.logged_at))
+    const d = new Date(e.logged_at)
+    const key = toLocalDateStr(d)
     if (!byDateExercise[key]) byDateExercise[key] = []
     byDateExercise[key].push(e)
   })
 
-  // Merge in freshly-fetched viewed day data
+  // Override with freshly-fetched viewed day data which is always accurate
   if (state.viewedDayLog && state._viewedDateStr) {
     byDate[state._viewedDateStr] = state.viewedDayLog
   }
@@ -1598,11 +1601,6 @@ function renderLogInner() {
   const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
   const weeklyOut = weekDays.reduce((sum, d) => sum + (byDateExercise[d] || []).reduce((s,e) => s+(e.calories_burned||0), 0), 0)
 
-  // Debug
-  console.log('weekDays:', weekDays)
-  console.log('byDate keys:', Object.keys(byDate))
-  weekDays.forEach(d => console.log(d, '->', (byDate[d]||[]).length, 'entries', (byDate[d]||[]).reduce((s,e)=>s+(e.calories||0),0), 'cal'))
-  console.log('historyLog total:', (state.historyLog||[]).length)
   const weeklyNet = weeklyIn - weeklyOut
   const weeklyGoal = goal * 7
   const weeklyDiff = weeklyNet - weeklyGoal
