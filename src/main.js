@@ -63,6 +63,8 @@ const state = {
   editingNotes: null,
   editingRecipeId: null,
   shopReview: null,
+  _shopPendingItem: null,
+  _shopPantryWarning: null,
   pasteModal: false,
   addRecipeModal: false,
   logModal: null,
@@ -1503,6 +1505,15 @@ function renderShop() {
       '<input id="shop-manual-input" placeholder="Add item manually..." />' +
       '<button class="add-btn" id="shop-manual-add">+ Add</button>' +
     '</div>' +
+    (state._shopPantryWarning ? (
+      '<div style="background:#fff8e6;border:1.5px solid var(--gold);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px">' +
+        '<div style="font-weight:600;color:var(--ink);margin-bottom:6px">🧺 Already in pantry: <em>' + esc(state._shopPantryWarning) + '</em></div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button class="add-btn" id="shop-add-anyway" style="font-size:12px;padding:5px 12px">Add anyway</button>' +
+          '<button class="modal-cancel" id="shop-skip-item" style="font-size:12px;padding:5px 12px">Skip</button>' +
+        '</div>' +
+      '</div>'
+    ) : '') +
     (getTagsForNamespace('location').length > 0 ?
       '<div style="margin-top:6px;margin-bottom:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
       '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
@@ -3454,7 +3465,17 @@ function bindEvents() {
       const r = state.recipes.find(x => x.id === el.dataset.shop)
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
-        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
+        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^[\d]+\.\s*/, '').trim())
+        .filter(l => {
+          if (l.length < 3 || l.length > 150) return false
+          // Skip section headers (ends with colon, or is all caps, or starts with **)
+          if (l.endsWith(':') || l === l.toUpperCase() || l.startsWith('**')) return false
+          // Skip lines that are just numbers or just units
+          if (/^\d+$/.test(l)) return false
+          // Skip lines that look like instructions not ingredients (start with verbs)
+          if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
+          return true
+        })
       const items = ingLines.map(raw => {
         const name = parseIngredientLine(raw)
         const stripped = stripMeasurements(raw)
@@ -3806,10 +3827,47 @@ function bindEvents() {
     const text = need.map(i => '• ' + i.name).join('\n')
     navigator.clipboard.writeText(text).then(() => alert('Shopping list copied!'))
   })
+  document.getElementById('shop-add-anyway')?.addEventListener('click', async () => {
+    const { val, tags } = state._shopPendingItem || {}
+    if (!val) return
+    const saved = await db.addShopItem(val, 'Manual')
+    if (saved) {
+      if (tags?.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
+      state.shopList.push({ ...saved, fromRecipe: 'Manual', tags: tags || [] })
+    }
+    state._shopPendingItem = null
+    state._shopPantryWarning = null
+    render()
+  })
+
+  document.getElementById('shop-skip-item')?.addEventListener('click', () => {
+    state._shopPendingItem = null
+    state._shopPantryWarning = null
+    render()
+  })
+
   document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
     const val = document.getElementById('shop-manual-input')?.value?.trim()
     if (!val) return
     const tags = Array.from(document.querySelectorAll('.shop-new-tag-check:checked')).map(el => el.dataset.tag)
+
+    // Fuzzy pantry check — does the pantry have something that contains or is contained by this item name?
+    const valWords = val.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+    const pantryMatch = state.pantry.find(p => {
+      const pl = p.name.toLowerCase()
+      const pWords = pl.split(/\s+/).filter(w => w.length > 2)
+      return pl.includes(val.toLowerCase()) || val.toLowerCase().includes(pl) ||
+        valWords.some(w => pWords.includes(w))
+    })
+
+    if (pantryMatch) {
+      // Show inline warning instead of adding immediately
+      state._shopPendingItem = { val, tags }
+      state._shopPantryWarning = pantryMatch.name
+      render()
+      return
+    }
+
     const saved = await db.addShopItem(val, 'Manual')
     if (saved) {
       if (tags.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
@@ -4561,7 +4619,13 @@ async function estimateCaloriesAI(description) {
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
         .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim())
-        .filter(l => l.length > 2 && l.length < 120)
+        .filter(l => {
+          if (l.length < 3 || l.length > 150) return false
+          if (l.endsWith(':') || l === l.toUpperCase() || l.startsWith('**')) return false
+          if (/^\d+$/.test(l)) return false
+          if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
+          return true
+        })
       const items = ingLines.map(raw => {
         const name = parseIngredientLine(raw)
         const stripped = stripMeasurements(raw)
