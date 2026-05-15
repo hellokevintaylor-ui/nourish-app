@@ -2270,6 +2270,15 @@ function renderCalendar() {
     html += '<div class="modal-sheet">'
     html += '<div class="modal-title">Add to ' + slot + '</div>'
     html += '<div class="modal-sub">' + formatDate(date) + '</div>'
+
+    // Manual entry first
+    html += '<div style="display:flex;gap:7px;margin-bottom:14px">'
+    html += '<input id="cal-manual-input" placeholder="e.g. Leftovers, Protein bar..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />'
+    html += '<button class="add-btn" id="cal-manual-add">Add</button>'
+    html += '</div>'
+
+    // Then recipe search
+    html += '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Or search recipes</div>'
     html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" />'
 
     // Tag filter chips
@@ -2295,12 +2304,6 @@ function renderCalendar() {
     }
     html += '</div>'
     html += '<div class="modal-btns"><button class="modal-cancel" id="cal-picker-cancel">Cancel</button></div>'
-    html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--cream3)">'
-    html += '<div style="font-size:11px;color:var(--ink3);margin-bottom:6px">Or type anything (e.g. Chips, Protein bar):</div>'
-    html += '<div style="display:flex;gap:7px">'
-    html += '<input id="cal-manual-input" placeholder="e.g. Chips" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />'
-    html += '<button class="add-btn" id="cal-manual-add">Add</button>'
-    html += '</div></div>'
     html += '</div></div>'
   }
 
@@ -4490,7 +4493,7 @@ async function estimateCaloriesAI(description) {
       state.calendarSearch = ''
       state.calendarTagFilter = null
       render()
-      setTimeout(() => document.getElementById('cal-search-input')?.focus(), 50)
+      setTimeout(() => document.getElementById('cal-manual-input')?.focus(), 50)
     })
   })
 
@@ -4500,7 +4503,7 @@ async function estimateCaloriesAI(description) {
       e.stopPropagation()
       state.calendarTagFilter = el.dataset.calTag || null
       render()
-      setTimeout(() => document.getElementById('cal-search-input')?.focus(), 50)
+      setTimeout(() => document.getElementById('cal-manual-input')?.focus(), 50)
     })
   })
 
