@@ -1106,7 +1106,10 @@ function renderTagFilterChips(namespace) {
   if (!hasTwoTiers) {
     return '<div class="tag-filter-wrap">' +
       '<div style="margin-bottom:5px">' + selectAllBtn + '</div>' +
-      '<div class="tag-filter-row">' + allTags.map(chipBtn).join('') + '</div>' +
+      '<div class="tag-filter-row">' +
+        allTags.map(chipBtn).join('') +
+        '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
+      '</div>' +
     '</div>'
   }
 
@@ -1115,7 +1118,10 @@ function renderTagFilterChips(namespace) {
     '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Category</div>' +
     '<div class="tag-filter-row" style="margin-bottom:8px">' + categories.map(chipBtn).join('') + '</div>' +
     '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Style</div>' +
-    '<div class="tag-filter-row">' + styles.map(chipBtn).join('') + '</div>' +
+    '<div class="tag-filter-row">' +
+      styles.map(chipBtn).join('') +
+      '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
+    '</div>' +
   '</div>'
 }
 
@@ -1392,9 +1398,11 @@ function renderRecipes() {
 function renderPantry() {
   const locationTags = state.activeTagFilters['location']
   const search = (state.pantrySearch || '').toLowerCase()
-  const filtered = state.pantry.filter(item =>
-    (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (item.tags||[]).includes(t))) &&
-    (!search || item.name.toLowerCase().includes(search))
+  const filtered = state.pantry.filter(item => {
+    if (locationTags && locationTags.has('__untagged__')) return !(item.tags||[]).length
+    return (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (item.tags||[]).includes(t))) &&
+      (!search || item.name.toLowerCase().includes(search))
+  }).filter(item => !search || item.name.toLowerCase().includes(search))
   )
   return '<div class="tab-content">' +
     renderSearchBar('pantry-search', state.pantrySearch || '', 'Search pantry...') +
@@ -1485,10 +1493,14 @@ function renderShop() {
   const locationTags = state.activeTagFilters['location']
   const search = (state.shopSearch || '').toLowerCase()
 
-  const need = sortShopList(state.shopList.filter(i =>
-    !i.have &&
-    (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (i.tags||[]).includes(t))) &&
-    (!search || i.name.toLowerCase().includes(search))
+  const need = sortShopList(state.shopList.filter(i => {
+    if (!i.have) {
+      if (locationTags && locationTags.has('__untagged__')) return !(i.tags||[]).length && (!search || i.name.toLowerCase().includes(search))
+      return (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (i.tags||[]).includes(t))) &&
+        (!search || i.name.toLowerCase().includes(search))
+    }
+    return false
+  }))
   ))
   const done = state.shopList.filter(i => i.have)
 
@@ -1684,8 +1696,7 @@ function renderLogInner() {
             (state.logBreakdownId === e.id && e.breakdown ?
               '<div class="log-breakdown-text">' + esc(e.breakdown) + '</div>' : '') +
           '</div>' +
-          (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">recipe</button>' : '') +
-          '<button class="remove-btn" data-log-del="' + e.id + '">x</button>' +
+          '<button class="remove-btn" data-log-del="' + e.id + '" style="flex-shrink:0">x</button>' +
         '</div>'
       }).join('')
 
@@ -3127,14 +3138,25 @@ function bindEvents() {
     el.addEventListener('click', () => {
       const ns = el.dataset.filterNs
       const tag = el.dataset.filterTag
+      if (tag === '__untagged__') {
+        // Untagged is exclusive — toggle it on/off alone
+        const active = state.activeTagFilters[ns]
+        if (active && active.has('__untagged__')) {
+          state.activeTagFilters[ns] = null
+        } else {
+          state.activeTagFilters[ns] = new Set(['__untagged__'])
+        }
+        render()
+        return
+      }
       if (!state.activeTagFilters[ns]) {
-        // First tap from default — create a Set with just this tag
         state.activeTagFilters[ns] = new Set([tag])
       } else {
         const active = state.activeTagFilters[ns]
+        // Clear untagged if switching to a real tag
+        active.delete('__untagged__')
         if (active.has(tag)) {
           active.delete(tag)
-          // If nothing left, go back to default
           if (active.size === 0) state.activeTagFilters[ns] = null
         } else {
           active.add(tag)
@@ -4200,9 +4222,13 @@ async function estimateCaloriesAI(description) {
   })
 
   document.querySelectorAll('[data-log-del]').forEach(el => {
-    el.addEventListener('click', async () => {
-      state.log = state.log.filter(x => x.id !== el.dataset.logDel)
-      await db.deleteLogEntry(el.dataset.logDel); render()
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.logDel
+      state.log = state.log.filter(x => String(x.id) !== String(id))
+      if (state.viewedDayLog) state.viewedDayLog = state.viewedDayLog.filter(x => String(x.id) !== String(id))
+      await db.deleteLogEntry(id)
+      render()
     })
   })
   document.querySelectorAll('.ra-log[data-log-recipe]').forEach(el => {
@@ -4689,15 +4715,18 @@ async function estimateCaloriesAI(description) {
 
   // Add calories to a zero-calorie log entry
   document.querySelectorAll('.log-add-cals-btn[data-add-cals-id]').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
       const cals = prompt('How many calories?')
-      if (cals && !isNaN(parseInt(cals))) {
-        const entry = state.log.find(l => l.id === el.dataset.addCalsId)
-        if (entry) {
-          entry.calories = parseInt(cals)
-          db.updateLogEntry(entry.id, entry.calories)
-          render()
-        }
+      if (!cals || isNaN(parseInt(cals))) return
+      const id = el.dataset.addCalsId
+      const calories = parseInt(cals)
+      // Update in both today's log and viewed day log
+      const entry = [...(state.log || []), ...(state.viewedDayLog || [])].find(l => String(l.id) === String(id))
+      if (entry) {
+        entry.calories = calories
+        db.updateLogEntry(id, { calories })
+        render()
       }
     })
   })
