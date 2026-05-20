@@ -1399,11 +1399,10 @@ function renderPantry() {
   const locationTags = state.activeTagFilters['location']
   const search = (state.pantrySearch || '').toLowerCase()
   const filtered = state.pantry.filter(item => {
-    if (locationTags && locationTags.has('__untagged__')) return !(item.tags||[]).length
+    if (locationTags && locationTags.has('__untagged__')) return !(item.tags||[]).length && (!search || item.name.toLowerCase().includes(search))
     return (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (item.tags||[]).includes(t))) &&
       (!search || item.name.toLowerCase().includes(search))
-  }).filter(item => !search || item.name.toLowerCase().includes(search))
-  )
+  })
   return '<div class="tab-content">' +
     renderSearchBar('pantry-search', state.pantrySearch || '', 'Search pantry...') +
     '<div class="section-title">My Pantry</div>' +
@@ -1501,7 +1500,6 @@ function renderShop() {
     }
     return false
   }))
-  ))
   const done = state.shopList.filter(i => i.have)
 
   return '<div class="tab-content">' +
