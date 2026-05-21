@@ -1260,16 +1260,20 @@ function renderRecipeCard(r) {
       '</div>'
     )) +
     '<div class="recipe-actions">' +
-      '<button class="ra-btn ra-shop" data-shop="' + r.id + '">Add to list</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">Log meal</button>' +
-      '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '">📋 Plan</button>' +
-      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--forest);color:white;border-color:var(--forest)">👨‍🍳 Cook</button>' +
-      '<button class="ra-btn ra-ask" data-ask="' + r.id + '">Ask AI</button>' +
-      (r.archived
-        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest)">↩ Restore</button>'
-        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3)">📦 Archive</button>') +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '">Del</button>' +
+      '<div style="display:flex;gap:5px;margin-bottom:5px">' +
+        '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--forest);color:white;border-color:var(--forest);flex:1">👨‍🍳 Cook</button>' +
+        '<button class="ra-btn ra-ask" data-ask="' + r.id + '" style="flex:1">Ask AI</button>' +
+        '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="flex:1">📋 Plan</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:5px">' +
+        '<button class="ra-btn ra-shop" data-shop="' + r.id + '" style="flex:1">+ List</button>' +
+        '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1">Log</button>' +
+        '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1">+ Week</button>' +
+        (r.archived
+          ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest);flex:1">↩ Restore</button>'
+          : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3);flex:1">📦</button>') +
+        '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:1">Del</button>' +
+      '</div>' +
     '</div>' +
   '</div>'
 
