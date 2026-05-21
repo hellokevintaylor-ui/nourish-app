@@ -2610,14 +2610,6 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const now = new Date()
   const currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
-  // Debug — log what recipes are being sent
-  console.log('Game plan mealText length:', mealText.length)
-  const slotEntries2 = state.mealPlan.filter(e => e.date === date && (isWholeDay || e.meal_slot === slot))
-  slotEntries2.forEach(e => {
-    const found = state.recipes.find(r => String(r.id) === String(e.recipe_id))
-    console.log('Recipe:', e.recipe_name, '| id:', e.recipe_id, '| found:', !!found, '| has potatoes:', found ? (found.ingredients||'').toLowerCase().includes('potato') : 'N/A')
-  })
-
   const mealDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'today'
   const isToday = date === new Date().toISOString().slice(0, 10)
 
@@ -2658,7 +2650,7 @@ Rules:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-5',
-          max_tokens: 3000,
+          max_tokens: 4000,
           messages: [{ role: 'user', content: prompt }]
         })
       })
