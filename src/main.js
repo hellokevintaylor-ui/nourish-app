@@ -1203,7 +1203,8 @@ function renderRecipeCard(r) {
       '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:6px">Scaled ingredients (' + state.scaleModal.label + '):</div>' +
       '<div class="recipe-text" style="background:var(--cream2);border-radius:8px;padding:8px">' + formatRecipeText(state.scaleModal.ingredients) + '</div>' +
       '<div style="display:flex;gap:6px;margin-top:8px">' +
-        '<button class="add-btn" data-save-scaled="' + r.id + '">Save as new recipe</button>' +
+        '<button class="add-btn" style="background:var(--forest);color:white;border-color:var(--forest)" data-cook-scaled="' + r.id + '">👨‍🍳 Cook</button>' +
+        '<button class="add-btn" data-save-scaled="' + r.id + '">Save as new</button>' +
         '<button class="modal-cancel" data-close-scale="' + r.id + '">Close</button>' +
       '</div>'
     ) + '</div>') : ''
@@ -2753,12 +2754,13 @@ function renderTagOrganizerModal() {
 }
 
 function renderCookMode() {
-  const { recipeId, tab } = state.cookMode || {}
+  const { recipeId, tab, scaledIngredients, scaleLabel } = state.cookMode || {}
   const r = state.recipes.find(x => x.id === recipeId)
   if (!r) return ''
   const activeTab = tab || 'ingredients'
 
-  const ingredients = (r.ingredients || '').split('\n').map(l => l.trim()).filter(Boolean)
+  const ingredientSource = scaledIngredients || r.ingredients || ''
+  const ingredients = ingredientSource.split('\n').map(l => l.trim()).filter(Boolean)
   const instructionsHtml = formatRecipeText(r.instructions || r.text || '')
   const notesHtml = r.cookingNotes ? '<div style="margin-top:20px;padding:12px 14px;background:var(--sage4);border-radius:10px;font-size:14px;color:var(--forest);line-height:1.6"><strong>My Notes</strong><br>' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' : ''
 
@@ -2768,7 +2770,7 @@ function renderCookMode() {
     '<div style="background:var(--forest);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
       '<button id="cook-mode-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:white;padding:0;line-height:1">×</button>' +
       '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:16px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</div>' +
+        '<div style="font-size:16px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style="font-size:12px;opacity:0.75">(' + scaleLabel + ')</span>' : '') + '</div>' +
       '</div>' +
       '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.3);font-size:12px">📋 Plan</button>' +
     '</div>' +
@@ -3698,6 +3700,20 @@ function bindEvents() {
   })
 
   // Organize tags button
+  document.querySelectorAll('[data-cook-scaled]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.cookScaled
+      state.cookMode = {
+        recipeId: rid,
+        tab: 'ingredients',
+        scaledIngredients: state.scaleModal?.ingredients || null,
+        scaleLabel: state.scaleModal?.label || null
+      }
+      render()
+    })
+  })
+
   // Cook Mode
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
