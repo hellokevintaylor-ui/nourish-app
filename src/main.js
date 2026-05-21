@@ -12,7 +12,7 @@ const state = {
   showArchived: false,
   recipeView: 'list',    // 'cards' or 'list'
   recipeSort: 'newest',  // 'newest', 'az', 'za'
-  tagOrganizerModal: false,
+  cookMode: null,  // { recipeId, tab: 'ingredients'|'instructions' }
   chartWindow: '1M',  // '1W', '2W', '1M', '3M', 'All'
   expandedRecipe: null,
   activeCategory: 'All',
@@ -963,6 +963,7 @@ function render() {
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
+      ${state.cookMode ? renderCookMode() : ''}
       ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
       ${state.gamePlanModal  ? renderGamePlanModal() : ''}
 
@@ -1263,6 +1264,7 @@ function renderRecipeCard(r) {
       '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '">Log meal</button>' +
       '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
       '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '">📋 Plan</button>' +
+      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--forest);color:white;border-color:var(--forest)">👨‍🍳 Cook</button>' +
       '<button class="ra-btn ra-ask" data-ask="' + r.id + '">Ask AI</button>' +
       (r.archived
         ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest)">↩ Restore</button>'
@@ -1764,12 +1766,30 @@ function renderLogInner() {
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
-    // 5. Log Meals — manual entry first, then recipe search
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">Log Meals</div>' +
-    '<div class="log-add-row">' +
-      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
-      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
-    '</div>' +
+    // 5. Log Meals — structured form
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Log Meals</div>' +
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px;margin-bottom:10px">' +
+      '<div style="display:flex;gap:6px;margin-bottom:6px">' +
+        '<input id="log-qty" placeholder="Qty" type="number" min="0" step="0.1" style="width:60px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
+        '<select id="log-unit" style="width:90px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:white">' +
+          '<option value="">unit</option>' +
+          '<option value="oz">oz</option>' +
+          '<option value="g">g</option>' +
+          '<option value="lbs">lbs</option>' +
+          '<option value="cup">cup</option>' +
+          '<option value="tbsp">tbsp</option>' +
+          '<option value="tsp">tsp</option>' +
+          '<option value="piece">piece(s)</option>' +
+          '<option value="slice">slice(s)</option>' +
+          '<option value="serving">serving(s)</option>' +
+        '</select>' +
+        '<input id="log-food" placeholder="What did you eat?" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
+      '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<input id="log-notes" placeholder="Notes: e.g. huge Chicago deep dish slices, extra cheese..." style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
+        '<button class="add-btn" id="log-add-btn" style="white-space:nowrap">+ Add</button>' +
+      '</div>' +
+    '</div>'
     (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
@@ -2732,6 +2752,54 @@ function renderTagOrganizerModal() {
   '</div>'
 }
 
+function renderCookMode() {
+  const { recipeId, tab } = state.cookMode || {}
+  const r = state.recipes.find(x => x.id === recipeId)
+  if (!r) return ''
+  const activeTab = tab || 'ingredients'
+
+  const ingredients = (r.ingredients || '').split('\n').map(l => l.trim()).filter(Boolean)
+  const instructionsHtml = formatRecipeText(r.instructions || r.text || '')
+  const notesHtml = r.cookingNotes ? '<div style="margin-top:20px;padding:12px 14px;background:var(--sage4);border-radius:10px;font-size:14px;color:var(--forest);line-height:1.6"><strong>My Notes</strong><br>' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' : ''
+
+  return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
+
+    // Header
+    '<div style="background:var(--forest);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+      '<button id="cook-mode-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:white;padding:0;line-height:1">×</button>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:16px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + '</div>' +
+      '</div>' +
+      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.3);font-size:12px">📋 Plan</button>' +
+    '</div>' +
+
+    // Tab bar
+    '<div style="display:flex;border-bottom:2px solid var(--cream3);background:white;flex-shrink:0">' +
+      '<button id="cook-tab-ingredients" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='ingredients'?'700':'500') + ';color:' + (activeTab==='ingredients'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:3px solid ' + (activeTab==='ingredients'?'var(--forest)':'transparent') + ';cursor:pointer;font-family:inherit">🥘 Ingredients</button>' +
+      '<button id="cook-tab-instructions" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='instructions'?'700':'500') + ';color:' + (activeTab==='instructions'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:3px solid ' + (activeTab==='instructions'?'var(--forest)':'transparent') + ';cursor:pointer;font-family:inherit">📋 Instructions</button>' +
+    '</div>' +
+
+    // Content
+    '<div style="flex:1;overflow-y:auto;padding:20px 16px">' +
+      (activeTab === 'ingredients' ? (
+        ingredients.length > 0
+          ? ingredients.map(line =>
+              '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--cream3)">' +
+                '<div style="width:8px;height:8px;border-radius:50%;background:var(--forest2);margin-top:6px;flex-shrink:0"></div>' +
+                '<div style="font-size:16px;line-height:1.4;color:var(--ink)">' + linkifyTimers(esc(line)) + '</div>' +
+              '</div>'
+            ).join('')
+          : '<div style="color:var(--ink3);font-style:italic;padding:20px 0">No ingredients listed</div>'
+      ) : (
+        instructionsHtml
+          ? '<div style="font-size:16px;line-height:1.8">' + instructionsHtml + '</div>' + notesHtml
+          : '<div style="color:var(--ink3);font-style:italic;padding:20px 0">No instructions listed</div>'
+      )) +
+    '</div>' +
+
+  '</div>'
+}
+
 function gpChatKey() {
   const { date, slot } = state.gamePlanModal || {}
   return (date || 'today') + '-' + (slot || 'Dinner')
@@ -2801,7 +2869,28 @@ function renderGamePlanModal() {
     '</div>'
   }
 
-  // ── TIMELINE VIEW ──
+  // ── FULLSCREEN COOK VIEW ──
+  if (view === 'fullscreen' && result) {
+    return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
+      '<div style="background:var(--forest);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+        '<button id="gp-exit-fullscreen" style="background:none;border:none;cursor:pointer;font-size:22px;color:white;padding:0;line-height:1">×</button>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:15px;font-weight:700;color:white">' + slotLabel + ' Game Plan</div>' +
+          '<div style="font-size:11px;color:rgba(255,255,255,0.7)">' + dateLabel + ' · ' + esc(timeVal) + '</div>' +
+        '</div>' +
+        '<button id="gp-tweak-from-fullscreen" style="background:rgba(255,255,255,0.15);color:white;border:1.5px solid rgba(255,255,255,0.3);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">✦ Tweak</button>' +
+      '</div>' +
+      '<div style="flex:1;overflow-y:auto;padding:16px">' +
+        result.map((item, i) => {
+          const isLast = i === result.length - 1
+          return '<div style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--cream3)">' +
+            '<div style="min-width:65px;font-size:13px;font-weight:700;color:var(--forest);padding-top:3px">' + esc(item.time) + '</div>' +
+            '<div style="font-size:17px;line-height:1.5;color:var(--ink);' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+          '</div>'
+        }).join('') +
+      '</div>' +
+    '</div>'
+  }
   let content = ''
   if (loading) {
     content = '<div style="text-align:center;padding:30px 0">' +
@@ -2851,8 +2940,9 @@ function renderGamePlanModal() {
       '</div>' +
       '<div class="modal-sub" style="margin-bottom:14px">' + dateLabel + '</div>' +
       content +
-      (result ? '<div style="margin-top:16px">' +
-        '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
+      (result ? '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
+        '<button id="gp-start-cooking" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
+        '<button class="modal-save" id="gp-tweak" style="background:white;color:var(--forest);border:2px solid var(--forest);width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
       '</div>' : '') +
     '</div>' +
   '</div>'
@@ -3608,6 +3698,28 @@ function bindEvents() {
   })
 
   // Organize tags button
+  // Cook Mode
+  document.querySelectorAll('[data-cook-mode]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.cookMode = { recipeId: el.dataset.cookMode, tab: 'ingredients' }
+      render()
+    })
+  })
+  document.getElementById('cook-mode-close')?.addEventListener('click', () => {
+    state.cookMode = null; render()
+  })
+  document.getElementById('cook-tab-ingredients')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, tab: 'ingredients' }; render()
+  })
+  document.getElementById('cook-tab-instructions')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, tab: 'instructions' }; render()
+    setTimeout(() => {
+      const content = document.querySelector('#cook-mode-close')?.closest('div[style*="position:fixed"]')?.querySelector('div[style*="overflow-y:auto"]')
+      if (content) content.scrollTop = 0
+    }, 50)
+  })
+
   document.getElementById('organize-tags-btn')?.addEventListener('click', async () => {
     const recipeTags = state.allTags.filter(t => t.namespace === 'recipe')
     if (!recipeTags.length) return
@@ -4045,13 +4157,25 @@ async function estimateCaloriesAI(description) {
 
   document.getElementById('log-add-btn')?.addEventListener('click', async () => {
     const food = document.getElementById('log-food')?.value?.trim()
+    const qty = document.getElementById('log-qty')?.value?.trim()
+    const unit = document.getElementById('log-unit')?.value
+    const notes = document.getElementById('log-notes')?.value?.trim()
     if (!food) return
+
+    // Build structured food string for display and AI
+    let foodStr = food
+    if (qty && unit) foodStr = qty + ' ' + unit + ' ' + food
+    else if (qty) foodStr = qty + ' ' + food
+
+    // Build AI prompt with notes for better accuracy
+    const aiQuery = notes ? foodStr + ' — ' + notes : foodStr
+
     const btn = document.getElementById('log-add-btn')
     if (btn) { btn.textContent = '...'; btn.disabled = true }
-    const { calories, breakdown } = await estimateCaloriesAI(food)
+    const { calories, breakdown } = await estimateCaloriesAI(aiQuery)
     const isToday = (state.logDayOffset || 0) === 0
     const dateStr = isToday ? null : state._viewedDateStr
-    const saved = await db.addLogEntry(food, calories, null, dateStr)
+    const saved = await db.addLogEntry(foodStr + (notes ? ' (' + notes + ')' : ''), calories, null, dateStr)
     if (saved) {
       saved.breakdown = breakdown
       if (isToday) {
@@ -4061,12 +4185,15 @@ async function estimateCaloriesAI(description) {
         state.viewedDayLog.push(saved)
       }
     }
-    const input = document.getElementById('log-food')
-    if (input) input.value = ''
+    document.getElementById('log-food').value = ''
+    document.getElementById('log-qty').value = ''
+    document.getElementById('log-unit').value = ''
+    document.getElementById('log-notes').value = ''
     if (btn) { btn.textContent = '+ Add'; btn.disabled = false }
     render()
   })
   document.getElementById('log-food')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-add-btn')?.click() } })
+  document.getElementById('log-notes')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-add-btn')?.click() } })
 
   // Log day navigation
   document.getElementById('log-prev-day')?.addEventListener('click', async () => {
@@ -4875,6 +5002,35 @@ async function estimateCaloriesAI(description) {
     state.gamePlanView = 'timeline'
     state._lastGamePlan = null
     render()
+  })
+
+  document.getElementById('gp-start-cooking')?.addEventListener('click', () => {
+    state.gamePlanView = 'fullscreen'; render()
+  })
+
+  document.getElementById('gp-exit-fullscreen')?.addEventListener('click', () => {
+    state.gamePlanView = 'timeline'; render()
+  })
+
+  document.getElementById('gp-tweak-from-fullscreen')?.addEventListener('click', () => {
+    const { slot, targetTime } = state.gamePlanModal || {}
+    const result = state.gamePlanResult
+    if (!result) return
+    const chatKey = gpChatKey()
+    if (!state.gamePlanChats[chatKey] || state.gamePlanChats[chatKey].length === 0) {
+      const slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
+      const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
+      state.gamePlanChats[chatKey] = [{
+        role: 'assistant',
+        content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+      }]
+    }
+    state.gamePlanView = 'chat'; render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
   })
 
   document.getElementById('gp-back-to-timeline')?.addEventListener('click', () => {
