@@ -2565,16 +2565,12 @@ function renderChat() {
 async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const isWholeDay = slot === 'Day'
 
-  // Helper — trim instructions if too long, keep ingredients full
+  // Helper — build full recipe detail, trimming will happen at the end if needed
   const recipeDetail = (entry, recipe) => {
-    const pt = recipe?.prepTime
     const instructions = recipe?.instructions || ''
-    // Trim instructions to 600 chars if multiple recipes to avoid token overflow
-    const instTrimmed = instructions.length > 600 ? instructions.slice(0, 600) + '...' : instructions
     return '=== ' + (entry.meal_slot ? entry.meal_slot + ': ' : '') + entry.recipe_name + ' ===\n' +
-      (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
       (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
-      (instTrimmed ? 'Instructions:\n' + instTrimmed : '')
+      (instructions ? 'Instructions:\n' + instructions : '')
   }
 
   let mealText = ''
@@ -2595,9 +2591,20 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
     mealText = details.join('\n\n')
   }
 
-  // Safety check — if still very large, trim further
-  if (mealText.length > 4000) {
-    mealText = mealText.slice(0, 4000) + '\n...(recipe details trimmed for length)'
+  // Safety cap — if total is very large, trim each recipe's instructions proportionally
+  if (mealText.length > 6000) {
+    const entries = isWholeDay
+      ? state.mealPlan.filter(e => e.date === date && e.recipe_id)
+      : state.mealPlan.filter(e => e.date === date && e.meal_slot === slot && e.recipe_id)
+    const budget = Math.floor(5000 / Math.max(entries.length, 1))
+    mealText = entries.map(entry => {
+      const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
+      const instructions = recipe?.instructions || ''
+      const trimmed = instructions.length > budget ? instructions.slice(0, budget) + '\n...(trimmed)' : instructions
+      return '=== ' + (entry.meal_slot ? entry.meal_slot + ': ' : '') + entry.recipe_name + ' ===\n' +
+        (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
+        (trimmed ? 'Instructions:\n' + trimmed : '')
+    }).join('\n\n')
   }
 
   const now = new Date()
