@@ -2613,34 +2613,44 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const mealDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'today'
   const isToday = date === new Date().toISOString().slice(0, 10)
 
+  const recipeNames = (mealText.match(/=== (.+?) ===/g) || []).map(m => m.replace(/===/g, '').trim())
   const slotLabel = isWholeDay ? 'the whole day' : slot
-  const prompt = `You are a cooking assistant. List the cooking steps needed for this meal and how long each step takes.
+  const prompt = `You are a professional chef planning a dinner cooking session. Your job is to output ONE unified list of steps that intelligently interleaves ALL recipes so everything is ready at ${targetTime}.
 
-MEAL: ${mealDate} at ${targetTime}
-${notes ? 'USER NOTES: ' + notes : ''}
+DINNER: ${mealDate} at ${targetTime}
+RECIPES BEING MADE: ${recipeNames.join(', ')}
+${notes ? "COOK'S NOTES: " + notes : ''}
 
-RECIPES:
+FULL RECIPE DETAILS:
 ${mealText}
 
-List every step needed to cook this meal. For each step include:
-- What to do (with exact quantities)
-- How many minutes it takes (active time)
-- How many minutes of passive/wait time after (oven, simmer, rest) — 0 if none
+INSTRUCTIONS:
+Think like a chef coordinating a kitchen. Plan the entire cooking session as one sequence — not recipe by recipe. Use passive time (oven, simmering, resting) from one dish to do active prep on another.
 
-Return ONLY a JSON array:
+For example with steak + potatoes + salad:
+1. Start oven (passive time → use it to prep everything)
+2. Make salad dressing while oven heats
+3. Sear steak (passive sear time → prep potatoes)
+4. Put potatoes in steak pan, oven
+5. Rest steak while potatoes finish
+6. Plate together
+
+Return ONLY a JSON array of steps with timing:
 [
-  {"step": "Preheat oven to 425°F", "active_min": 1, "passive_min": 20},
-  {"step": "Prep chicken thighs — pat dry, coat with 2 tbsp olive oil, season with salt and pepper", "active_min": 5, "passive_min": 0},
-  {"step": "Roast chicken in oven", "active_min": 2, "passive_min": 40},
-  {"step": "Make pan sauce — deglaze with 1/2 cup white wine, add 2 tbsp butter", "active_min": 8, "passive_min": 0},
-  {"step": "Rest chicken, plate and serve", "active_min": 3, "passive_min": 0}
+  {"step": "Preheat oven to 375°F", "active_min": 1, "passive_min": 18},
+  {"step": "Make Café de Paris dressing — combine anchovies, capers, shallots...", "active_min": 8, "passive_min": 0},
+  {"step": "Sear Denver steak — season, sear in 2 tbsp butter + 2 tbsp olive oil, 2 min per side", "active_min": 6, "passive_min": 0},
+  {"step": "While steak rests, add potatoes cut-side down to same pan, oven 375°F", "active_min": 3, "passive_min": 20},
+  {"step": "Flash steak in oven 2-3 min, then slice", "active_min": 4, "passive_min": 0},
+  {"step": "Assemble salad, plate everything together", "active_min": 4, "passive_min": 0}
 ]
 
 Rules:
-- Include exact amounts inline ("2 tbsp olive oil" not "olive oil")
-- Overlap passive steps with active steps where realistic (prep veggies while chicken roasts)
-- 6-8 steps for one recipe, up to 12 for multiple
-- No markdown, no backticks, just the JSON array`
+- Include exact quantities inline with every step
+- Label which recipe each step is for if not obvious ("For the pasta:" or "For the steak:")
+- Use passive time aggressively — nothing sits idle if another recipe needs attention
+- ALL recipes must be ready by ${targetTime}
+- No markdown, no backticks, ONLY the JSON array\``
 
   try {
     let resp, attempts = 0
@@ -2709,8 +2719,12 @@ Rules:
     for (const s of reversed) {
       const total = (s.active_min || 0) + (s.passive_min || 0)
       cursor -= total
-      const stepTime = isTodayMeal && cursor < nowMins ? nowMins : cursor
-      result.unshift({ time: formatTime(stepTime), step: s.step })
+      // Show actual time — label as "Start now" if it's already past for today's meal
+      const isPast = isTodayMeal && cursor < nowMins
+      result.unshift({
+        time: isPast ? 'Now' : formatTime(cursor),
+        step: s.step
+      })
     }
 
     // Add serving step at dinner time
