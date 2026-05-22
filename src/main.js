@@ -2619,7 +2619,7 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
 
 DINNER: ${mealDate} at ${targetTime}
 RECIPES BEING MADE: ${recipeNames.join(', ')}
-${notes ? "COOK'S NOTES: " + notes : ''}
+${notes ? 'NOTES: ' + notes : ''}
 
 FULL RECIPE DETAILS:
 ${mealText}
