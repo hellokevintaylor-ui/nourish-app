@@ -1790,7 +1790,7 @@ function renderLogInner() {
         '<input id="log-notes" placeholder="Notes: e.g. huge Chicago deep dish slices, extra cheese..." style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
         '<button class="add-btn" id="log-add-btn" style="white-space:nowrap">+ Add</button>' +
       '</div>' +
-    '</div>'
+    '</div>' +
     (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
