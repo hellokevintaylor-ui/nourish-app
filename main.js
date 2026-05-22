@@ -4,16 +4,20 @@ import { getUserId } from './supabase.js'
 // ── STATE ─────────────────────────────────────────────────────────────────────
 const state = {
   tab: localStorage.getItem('mep_tab') || 'recipes',
-  recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [], weightLog: [],
+  recipes: [], pantry: [], shopList: [], log: [], exerciseLog: [], weightLog: [], historyExerciseLog: [],
   goals: { calories: 2000, goal: 'maintain' },
   loading: true,
   showGoals: false,
   showSync: false,
-  showHeaderMenu: false,
+  showArchived: false,
+  recipeView: 'list',    // 'cards' or 'list'
+  recipeSort: 'newest',  // 'newest', 'az', 'za'
+  tagOrganizerModal: false,
+  chartWindow: '1M',  // '1W', '2W', '1M', '3M', 'All'
   expandedRecipe: null,
   activeCategory: 'All',
   allTags: [],
-  activeTagFilter: null,
+  activeTagFilters: {},   // keyed by namespace, null=default/show all, Set=explicit selection
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
@@ -59,6 +63,8 @@ const state = {
   editingNotes: null,
   editingRecipeId: null,
   shopReview: null,
+  _shopPendingItem: null,
+  _shopPantryWarning: null,
   pasteModal: false,
   addRecipeModal: false,
   logModal: null,
@@ -253,16 +259,16 @@ async function removeTagFromItem(name, namespace, itemId) {
 async function init() {
   render()
   const weekDates = getWeekDates(0)
-  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog, weightLog, gamePlans] = await Promise.all([
+  const [recipes, pantry, shopList, log, goals, allTags, mealPlan, historyLog, exerciseLog, weightLog, gamePlans, historyExerciseLog] = await Promise.all([
     db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals(), db.fetchTags(),
     db.fetchMealPlan(weekDates[0], weekDates[6]), db.fetchFullLog(90), db.fetchExerciseLog(), db.fetchWeightLog(),
-    db.fetchGamePlans()
+    db.fetchGamePlans(), db.fetchFullExerciseLog(30)
   ])
   state.allTags = allTags || []
   state.mealPlan = mealPlan || []
   state.historyLog = historyLog || []
   state.exerciseLog = exerciseLog || []
-  state.weightLog = weightLog || []
+  state.historyExerciseLog = historyExerciseLog || []
   state.agentProfile = buildAgentProfile(state.historyLog, [])
   state.recipes  = recipes.map(normalizeRecipe)
   state.pantry   = pantry
@@ -299,6 +305,19 @@ async function init() {
       }
     })
   }
+
+  // Refresh historical data fresh on every load to catch yesterday's entries
+  const [freshHistoryLog, freshWeightLog, freshHistoryExercise] = await Promise.all([
+    db.fetchFullLog(90),
+    db.fetchWeightLog(),
+    db.fetchFullExerciseLog(30)
+  ])
+  state.historyLog = freshHistoryLog || []
+  state.weightLog = freshWeightLog || []
+  state.historyExerciseLog = freshHistoryExercise || []
+  state._weekDataLoaded = false
+  state._weekByDate = {}
+  state._weekExByDate = {}
 
   // Purge shop items checked more than 1 hour ago
   purgeStaleCheckedItems()
@@ -421,7 +440,7 @@ function parseIngredientLine(line) {
 
 function buildClaudeContext() {
   const recipeList = state.recipes.length === 0 ? "No recipes saved yet."
-    : state.recipes.map((r,i) => (i+1) + ". " + r.name + "\nIngredients:\n" + (r.ingredients||"") + (r.cookingNotes ? "\nNotes: " + r.cookingNotes : "")).join("\n\n")
+    : state.recipes.filter(r => !r.archived).map((r,i) => (i+1) + ". " + r.name + "\nIngredients:\n" + (r.ingredients||"") + (r.cookingNotes ? "\nNotes: " + r.cookingNotes : "")).join("\n\n")
   const pantryList = state.pantry.length === 0 ? "Empty."
     : state.pantry.map(p => p.name + (p.qty ? " (" + p.qty + ")" : "")).join(", ")
   const shopList = state.shopList.filter(i => !i.have).length === 0 ? "Empty."
@@ -656,8 +675,10 @@ function stopTimer(id) {
 }
 
 function renderTimerBar() {
-  // Remove any existing bar
-  document.getElementById('timer-bar')?.remove()
+  // Preserve position if already dragged
+  const existing = document.getElementById('timer-bar')
+  const savedPos = existing ? { left: existing.style.left, top: existing.style.top, right: existing.style.right, bottom: existing.style.bottom } : null
+  existing?.remove()
   if (timers.length === 0) return
 
   const rows = timers.map(timer => {
@@ -667,7 +688,6 @@ function renderTimerBar() {
     const pct = timer.totalSeconds > 0 ? (timer.remaining / timer.totalSeconds) * 100 : 0
     const isDone = timer.remaining === 0
     const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--forest)'
-
     return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
         '<div style="font-size:11px;font-weight:600;color:var(--ink3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timer.label) + '</div>' +
@@ -682,14 +702,52 @@ function renderTimerBar() {
     '</div>'
   }).join('')
 
-  const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:4px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:200px;max-width:240px;font-family:inherit">' +
-    '<div style="font-size:10px;font-weight:700;color:var(--forest);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px">⏱ Timers</div>' +
+  const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:4px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:200px;max-width:240px;font-family:inherit;touch-action:none;user-select:none">' +
+    '<div id="timer-drag-handle" style="font-size:10px;font-weight:700;color:var(--forest);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;cursor:grab;display:flex;align-items:center;justify-content:space-between">⏱ Timers <span style="color:var(--ink4);letter-spacing:2px">⠿</span></div>' +
     rows +
   '</div>'
 
   document.body.insertAdjacentHTML('beforeend', html)
+  const bar = document.getElementById('timer-bar')
 
-  // Attach stop handlers
+  // Restore saved position if dragged previously
+  if (savedPos && savedPos.left) {
+    bar.style.right = 'auto'; bar.style.bottom = 'auto'
+    bar.style.left = savedPos.left; bar.style.top = savedPos.top
+  }
+
+  // Drag logic
+  let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0
+  const onStart = (e) => {
+    if (e.target.closest('.timer-stop-btn')) return
+    dragging = true
+    const t = e.touches ? e.touches[0] : e
+    startX = t.clientX; startY = t.clientY
+    const rect = bar.getBoundingClientRect()
+    origLeft = rect.left; origTop = rect.top
+    bar.style.right = 'auto'; bar.style.bottom = 'auto'
+    bar.style.left = origLeft + 'px'; bar.style.top = origTop + 'px'
+    bar.style.cursor = 'grabbing'
+    e.preventDefault()
+  }
+  const onMove = (e) => {
+    if (!dragging) return
+    const t = e.touches ? e.touches[0] : e
+    const newLeft = Math.max(0, Math.min(window.innerWidth - bar.offsetWidth, origLeft + t.clientX - startX))
+    const newTop = Math.max(0, Math.min(window.innerHeight - bar.offsetHeight, origTop + t.clientY - startY))
+    bar.style.left = newLeft + 'px'; bar.style.top = newTop + 'px'
+    e.preventDefault()
+  }
+  const onEnd = () => { dragging = false; bar.style.cursor = 'default' }
+
+  const handle = document.getElementById('timer-drag-handle')
+  handle.addEventListener('mousedown', onStart)
+  handle.addEventListener('touchstart', onStart, { passive: false })
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('touchmove', onMove, { passive: false })
+  document.addEventListener('mouseup', onEnd)
+  document.addEventListener('touchend', onEnd)
+
   document.querySelectorAll('.timer-stop-btn').forEach(btn => {
     btn.addEventListener('click', () => stopTimer(parseInt(btn.dataset.timerId)))
   })
@@ -753,19 +811,17 @@ function render() {
         <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
-          <button class="icon-btn ${state.showHeaderMenu?'active':''}" id="header-menu-btn" style="font-size:18px;padding:4px 10px;letter-spacing:1px">⋯</button>
         </div>
       </div>
 
-      <!-- HEADER MENU DROPDOWN -->
-      ${state.showHeaderMenu ? `
+      <!-- PERMANENT ACTION ROW -->
       <div style="background:var(--forest);padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid rgba(255,255,255,0.1)">
         <button class="icon-btn" id="clip-url-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">📎 Clip</button>
         <button class="icon-btn" id="paste-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">📋 Paste</button>
         <button class="icon-btn" id="force-update-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">↻ Update</button>
         <button class="icon-btn" id="sync-toggle" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">🔗 Sync</button>
         <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">⚙️ Goals</button>
-      </div>` : ''}
+      </div>
 
       <!-- GOALS PANEL -->
       ${state.showGoals ? `
@@ -847,6 +903,8 @@ function render() {
           <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
         })()}
 
+        <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--forest);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
+
       </div>` : ''}
       <!-- SYNC PANEL -->
       ${state.showSync ? `
@@ -905,6 +963,7 @@ function render() {
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
+      ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
       ${state.gamePlanModal  ? renderGamePlanModal() : ''}
 
       <!-- SCROLL TO TOP -->
@@ -1028,17 +1087,44 @@ function renderTagInput(itemId, namespace, currentTags) {
 }
 
 function renderTagFilterChips(namespace) {
-  const tags = getTagsForNamespace(namespace)
-  if (!tags.length) return ''
-  const activeTag = state.activeTagFilterNs === namespace ? state.activeTagFilter : null
+  const allTags = getTagsForNamespace(namespace).slice().sort((a, b) => a.name.localeCompare(b.name))
+  if (!allTags.length) return ''
+  const active = state.activeTagFilters[namespace]
+  const isDefault = active === null || active === undefined
+  const categories = allTags.filter(t => !t.tag_type || t.tag_type === 'category')
+  const styles = allTags.filter(t => t.tag_type === 'style')
+  const hasTwoTiers = styles.length > 0 && categories.length > 0
+  const allSelected = !isDefault && allTags.every(t => active.has(t.name))
+
+  const chipBtn = (t) => {
+    const isActive = !isDefault && active.has(t.name)
+    return '<button class="tag-filter-chip ' + (isActive ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>'
+  }
+
+  const selectAllBtn = '<button class="tag-filter-chip ' + (allSelected ? 'active' : '') + '" data-filter-all="' + namespace + '" style="font-size:11px;font-weight:700">Select All</button>'
+
+  if (!hasTwoTiers) {
+    return '<div class="tag-filter-wrap">' +
+      '<div style="margin-bottom:5px">' + selectAllBtn + '</div>' +
+      '<div class="tag-filter-row">' +
+        allTags.map(chipBtn).join('') +
+        '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
+      '</div>' +
+    '</div>'
+  }
+
   return '<div class="tag-filter-wrap">' +
+    '<div style="margin-bottom:6px">' + selectAllBtn + '</div>' +
+    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Category</div>' +
+    '<div class="tag-filter-row" style="margin-bottom:8px">' + categories.map(chipBtn).join('') + '</div>' +
+    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Style</div>' +
     '<div class="tag-filter-row">' +
-      '<button class="tag-filter-chip ' + (!activeTag ? 'active' : '') + '" data-filter-tag="" data-filter-ns="' + namespace + '">All</button>' +
-      tags.map(t => '<button class="tag-filter-chip ' + (activeTag===t.name ? 'active' : '') + '" data-filter-tag="' + esc(t.name) + '" data-filter-ns="' + namespace + '">' + esc(t.name) + '</button>').join('') +
-      '<button class="tag-filter-chip ' + (activeTag==='__untagged__' ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
+      styles.map(chipBtn).join('') +
+      '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
     '</div>' +
   '</div>'
 }
+
 
 function renderRecipeCard(r) {
   const isExpanded = state.expandedRecipe === r.id
@@ -1077,15 +1163,27 @@ function renderRecipeCard(r) {
   ).join('')
   const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe">+ Tag</button>'
   const isPickerOpen = state.tagPickerOpen === r.id + '-recipe'
-  const mealTags = getTagsForNamespace('recipe')
+  const mealTags = getTagsForNamespace('recipe').slice().sort((a, b) => a.name.localeCompare(b.name))
+  const pickerCategories = mealTags.filter(t => !t.tag_type || t.tag_type === 'category')
+  const pickerStyles = mealTags.filter(t => t.tag_type === 'style')
+  const hasTwoTiers = pickerStyles.length > 0
   const tagPicker = isPickerOpen ? (
     '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
-    mealTags.map(t => {
+    (hasTwoTiers ? (
+      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
+      pickerCategories.map(t => {
+        const checked = (r.tags||[]).includes(t.name)
+        return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
+      }).join('') +
+      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:1px solid var(--cream3);margin-top:4px">Style</div>' : '') +
+      pickerStyles.map(t => {
+        const checked = (r.tags||[]).includes(t.name)
+        return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
+      }).join('')
+    ) : mealTags.map(t => {
       const checked = (r.tags||[]).includes(t.name)
-      return '<label class="tag-picker-option">' +
-        '<input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' +
-        esc(t.name) + '</label>'
-    }).join('') +
+      return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
+    }).join('')) +
     '<div class="tag-picker-new">' +
       '<input class="tag-picker-input" id="new-tag-' + r.id + '-recipe" placeholder="New tag..." />' +
       '<button class="tag-picker-add" data-new-tag-item="' + r.id + '" data-new-tag-ns="recipe">Add</button>' +
@@ -1166,6 +1264,9 @@ function renderRecipeCard(r) {
       '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
       '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '">📋 Plan</button>' +
       '<button class="ra-btn ra-ask" data-ask="' + r.id + '">Ask AI</button>' +
+      (r.archived
+        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest)">↩ Restore</button>'
+        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3)">📦 Archive</button>') +
       '<button class="ra-btn ra-del" data-del="' + r.id + '">Del</button>' +
     '</div>' +
   '</div>'
@@ -1182,8 +1283,55 @@ function renderSearchBar(id, value, placeholder) {
 
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
-  let filtered = (state.activeTagFilter && state.activeTagFilterNs === 'recipe') ? state.recipes.filter(r => state.activeTagFilter === '__untagged__' ? !(r.tags||[]).length : (r.tags||[]).includes(state.activeTagFilter)) : state.recipes
+  const activeTags = state.activeTagFilters['recipe']
+  let allFiltered
+  if (!activeTags) {
+    allFiltered = state.recipes
+  } else {
+    const activeCategories = [...activeTags].filter(tag => {
+      const t = state.allTags.find(x => x.name === tag && x.namespace === 'recipe')
+      return !t?.tag_type || t.tag_type === 'category'
+    })
+    const activeStyles = [...activeTags].filter(tag => {
+      const t = state.allTags.find(x => x.name === tag && x.namespace === 'recipe')
+      return t?.tag_type === 'style'
+    })
+    allFiltered = state.recipes.filter(r => {
+      const rTags = r.tags || []
+      const categoryMatch = activeCategories.length === 0 || activeCategories.some(tag => rTags.includes(tag))
+      const styleMatch = activeStyles.length === 0 || activeStyles.some(tag => rTags.includes(tag))
+      return categoryMatch && styleMatch
+    })
+  }
+  let filtered = allFiltered.filter(r => state.showArchived ? r.archived : !r.archived)
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
+
+  // Sort
+  const sort = state.recipeSort || 'newest'
+  if (sort === 'az') filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+  else if (sort === 'za') filtered = [...filtered].sort((a, b) => b.name.localeCompare(a.name))
+  // 'newest' is default order from Supabase (created_at desc)
+
+  const archivedCount = state.recipes.filter(r => r.archived).length
+  const isListView = state.recipeView === 'list'
+
+  // Compact list row renderer
+  const renderListRow = (r) => {
+    const isExpanded = state.expandedRecipe === r.id
+    const tags = (r.tags || []).slice(0, 3).map(t => `<span style="background:var(--sage4);color:var(--forest);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600">${esc(t)}</span>`).join('')
+    if (!isExpanded) {
+      return `<div class="recipe-list-row" data-expand-recipe="${r.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--cream3);cursor:pointer;background:white">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
+          ${tags ? `<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">${tags}</div>` : ''}
+        </div>
+        <div style="font-size:18px;color:var(--ink3);flex-shrink:0">›</div>
+      </div>`
+    }
+    // Expanded — show full card inline
+    return `<div style="border-bottom:2px solid var(--forest2)">${renderRecipeCard(r)}</div>`
+  }
+
   return `
     <div class="tab-content">
       <div class="section-header">
@@ -1192,11 +1340,33 @@ function renderRecipes() {
           <button class="add-btn" id="scan-recipe-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Scan</button>
           <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Clip URL</button>
           <button class="add-btn" id="add-recipe-btn">+ Add</button>
+          <button class="add-btn" id="organize-tags-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">🏷 Tags</button>
         </div>
       </div>
       <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
       ${renderSearchBar('recipe-search', state.recipeSearch || '', 'Search recipes...')}
       ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
+
+      <!-- Sort + View controls -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+        <div style="display:flex;gap:4px">
+          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--forest)':'var(--border)'};background:${sort==='newest'?'var(--forest)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
+          <button class="recipe-sort-btn ${sort==='az'?'active':''}" data-sort="az" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='az'?'var(--forest)':'var(--border)'};background:${sort==='az'?'var(--forest)':'white'};color:${sort==='az'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">A→Z</button>
+          <button class="recipe-sort-btn ${sort==='za'?'active':''}" data-sort="za" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='za'?'var(--forest)':'var(--border)'};background:${sort==='za'?'var(--forest)':'white'};color:${sort==='za'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Z→A</button>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button id="view-cards-btn" title="Card view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${!isListView?'var(--forest)':'var(--border)'};background:${!isListView?'var(--sage4)':'white'};cursor:pointer">⊟</button>
+          <button id="view-list-btn" title="List view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${isListView?'var(--forest)':'var(--border)'};background:${isListView?'var(--sage4)':'white'};cursor:pointer">☰</button>
+        </div>
+      </div>
+
+      ${archivedCount > 0 ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <button id="toggle-archived-btn" style="font-size:12px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit">
+            ${state.showArchived ? '← Back to recipes' : '📦 Archived (' + archivedCount + ')'}
+          </button>
+        </div>
+      ` : ''}
       ${state.addRecipeModal ? `
         <div class="recipe-add-box">
           <input id="r-name" placeholder="Recipe name" />
@@ -1218,17 +1388,21 @@ function renderRecipes() {
       ` : ''}
       ${filtered.length === 0 && !state.addRecipeModal ? `
         <div class="empty-state">${state.activeCategory !== 'All' ? `No ${state.activeCategory} recipes yet.` : 'No recipes yet.<br>Add one above or use the Chrome extension<br>to clip from any recipe website!'} 🥗</div>
-      ` : filtered.map(r => renderRecipeCard(r)).join('')}
+      ` : isListView
+          ? `<div style="border-radius:12px;overflow:hidden;border:1px solid var(--cream3)">${filtered.map(r => renderListRow(r)).join('')}</div>`
+          : filtered.map(r => renderRecipeCard(r)).join('')
+      }
     </div>`
 }
 
 function renderPantry() {
-  const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
+  const locationTags = state.activeTagFilters['location']
   const search = (state.pantrySearch || '').toLowerCase()
-  const filtered = state.pantry.filter(item =>
-    (!activeTag || (activeTag === '__untagged__' ? !(item.tags||[]).length : (item.tags||[]).includes(activeTag))) &&
-    (!search || item.name.toLowerCase().includes(search))
-  )
+  const filtered = state.pantry.filter(item => {
+    if (locationTags && locationTags.has('__untagged__')) return !(item.tags||[]).length && (!search || item.name.toLowerCase().includes(search))
+    return (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (item.tags||[]).includes(t))) &&
+      (!search || item.name.toLowerCase().includes(search))
+  })
   return '<div class="tab-content">' +
     renderSearchBar('pantry-search', state.pantrySearch || '', 'Search pantry...') +
     '<div class="section-title">My Pantry</div>' +
@@ -1256,7 +1430,7 @@ function renderPantry() {
         const chips = (item.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + item.id + '" data-tag-ns="location">x</button></span>').join('')
         const pickerId = item.id + '-location'
         const isOpen = state.tagPickerOpen === pickerId
-        const pantryTags = getTagsForNamespace('location')
+        const pantryTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
         const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
         const isEditing = state.editingPantryId === String(item.id)
         return '<div class="pantry-row pantry-row-wrap">' +
@@ -1288,7 +1462,7 @@ function renderShopItems(items) {
     const chips = (i.tags||[]).map(t => '<span class="tag-chip">' + esc(t) + '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + i.id + '" data-tag-ns="location">x</button></span>').join('')
     const pickerId = i.id + '-location'
     const isOpen = state.tagPickerOpen === pickerId
-    const storeTags = getTagsForNamespace('location')
+    const storeTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
     const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
     const isEditingS = state.editingShopId === String(i.id)
 
@@ -1315,15 +1489,17 @@ function renderShopItems(items) {
 }
 
 function renderShop() {
-  const activeTag = state.activeTagFilterNs === 'location' ? state.activeTagFilter : null
+  const locationTags = state.activeTagFilters['location']
   const search = (state.shopSearch || '').toLowerCase()
 
-  // Split into unchecked (need) and checked (done) — filter by tag/search on need only
-  const need = sortShopList(state.shopList.filter(i =>
-    !i.have &&
-    (!activeTag || (activeTag === '__untagged__' ? !(i.tags||[]).length : (i.tags||[]).includes(activeTag))) &&
-    (!search || i.name.toLowerCase().includes(search))
-  ))
+  const need = sortShopList(state.shopList.filter(i => {
+    if (!i.have) {
+      if (locationTags && locationTags.has('__untagged__')) return !(i.tags||[]).length && (!search || i.name.toLowerCase().includes(search))
+      return (!locationTags || locationTags.size === 0 || [...locationTags].some(t => (i.tags||[]).includes(t))) &&
+        (!search || i.name.toLowerCase().includes(search))
+    }
+    return false
+  }))
   const done = state.shopList.filter(i => i.have)
 
   return '<div class="tab-content">' +
@@ -1339,6 +1515,15 @@ function renderShop() {
       '<input id="shop-manual-input" placeholder="Add item manually..." />' +
       '<button class="add-btn" id="shop-manual-add">+ Add</button>' +
     '</div>' +
+    (state._shopPantryWarning ? (
+      '<div style="background:#fff8e6;border:1.5px solid var(--gold);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px">' +
+        '<div style="font-weight:600;color:var(--ink);margin-bottom:6px">🧺 Already in pantry: <em>' + esc(state._shopPantryWarning) + '</em></div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<button class="add-btn" id="shop-add-anyway" style="font-size:12px;padding:5px 12px">Add anyway</button>' +
+          '<button class="modal-cancel" id="shop-skip-item" style="font-size:12px;padding:5px 12px">Skip</button>' +
+        '</div>' +
+      '</div>'
+    ) : '') +
     (getTagsForNamespace('location').length > 0 ?
       '<div style="margin-top:6px;margin-bottom:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
       '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
@@ -1403,25 +1588,64 @@ function renderLogInner() {
   // Day label
   const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-  // Build week data from historyLog + today's log
+  const toLocalDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+  const today = toLocalDateStr(now)
   const weekDays = []
-  for (let i = 0; i <= 6; i++) {
+  for (let i = 1; i <= 7; i++) {
     const d = new Date(now)
     d.setDate(now.getDate() - i)
-    weekDays.push(d.toLocaleDateString('sv'))
+    weekDays.push(toLocalDateStr(d))
   }
-  const today = now.toLocaleDateString('sv')
 
+  // Build byDate using local date of each entry (same logic as fetchLogForDate)
   const byDate = {}
   ;(state.historyLog || []).forEach(e => {
-    const d = new Date(e.logged_at).toLocaleDateString('sv')
-    if (!byDate[d]) byDate[d] = []
-    byDate[d].push(e)
+    const d = new Date(e.logged_at)
+    // Use local date components — same as fetchLogForDate's T00:00:00 local boundary
+    const key = toLocalDateStr(d)
+    if (!byDate[key]) byDate[key] = []
+    byDate[key].push(e)
   })
-  byDate[today] = state.log
+
+  const byDateExercise = {}
+  ;(state.historyExerciseLog || []).forEach(e => {
+    const d = new Date(e.logged_at)
+    const key = toLocalDateStr(d)
+    if (!byDateExercise[key]) byDateExercise[key] = []
+    byDateExercise[key].push(e)
+  })
+
+  // Override with freshly-fetched day data when available (guaranteed accurate)
+  if (state.viewedDayLog && state._viewedDateStr) {
+    byDate[state._viewedDateStr] = state.viewedDayLog
+  }
+  if (state.viewedDayExercise && state._viewedDateStr) {
+    byDateExercise[state._viewedDateStr] = state.viewedDayExercise
+  }
+
+  // Pre-fetch all 7 days if we don't have them cached yet
+  if (!state._weekDataLoaded) {
+    state._weekDataLoaded = true
+    Promise.all(weekDays.map(async d => {
+      const [log, ex] = await Promise.all([db.fetchLogForDate(d), db.fetchExerciseForDate(d)])
+      state._weekByDate = state._weekByDate || {}
+      state._weekExByDate = state._weekExByDate || {}
+      state._weekByDate[d] = log
+      state._weekExByDate[d] = ex
+      render()
+    }))
+  }
+  // Use pre-fetched week data if available (most accurate)
+  if (state._weekByDate) {
+    weekDays.forEach(d => {
+      if (state._weekByDate[d]) byDate[d] = state._weekByDate[d]
+      if (state._weekExByDate && state._weekExByDate[d]) byDateExercise[d] = state._weekExByDate[d]
+    })
+  }
 
   const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
-  const weeklyOut = 0 // exercise history not yet stored — today only
+  const weeklyOut = weekDays.reduce((sum, d) => sum + (byDateExercise[d] || []).reduce((s,e) => s+(e.calories_burned||0), 0), 0)
+
   const weeklyNet = weeklyIn - weeklyOut
   const weeklyGoal = goal * 7
   const weeklyDiff = weeklyNet - weeklyGoal
@@ -1470,15 +1694,17 @@ function renderLogInner() {
             (state.logBreakdownId === e.id && e.breakdown ?
               '<div class="log-breakdown-text">' + esc(e.breakdown) + '</div>' : '') +
           '</div>' +
-          (e.recipe_id ? '<button class="log-recipe-link" data-go-recipe="' + e.recipe_id + '">recipe</button>' : '') +
-          '<button class="remove-btn" data-log-del="' + e.id + '">x</button>' +
+          '<button class="remove-btn" data-log-del="' + e.id + '" style="flex-shrink:0">x</button>' +
         '</div>'
       }).join('')
 
   // Weekly breakdown rows
   const weekRows = weekDays.map(d => {
     const entries = byDate[d] || []
-    const dayCals = entries.reduce((s, e) => s + (e.calories || 0), 0)
+    const exercise = byDateExercise[d] || []
+    const dayCalsIn = entries.reduce((s, e) => s + (e.calories || 0), 0)
+    const dayBurned = exercise.reduce((s, e) => s + (e.calories_burned || 0), 0)
+    const dayCals = dayCalsIn - dayBurned
     const isDayToday = d === today
     const diff = dayCals - goal
     const wDayLabel = isDayToday ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -1488,16 +1714,16 @@ function renderLogInner() {
     return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
         '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--forest)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
-        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCals > 0 ? dayCals + ' cal' : '--') + '</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCalsIn > 0 ? dayCals + ' net cal' + (dayBurned > 0 ? ' <span style="font-size:10px;color:var(--forest)">(-' + dayBurned + ' burned)</span>' : '') : '--') + '</span>' +
       '</div>' +
-      (dayCals > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
+      (dayCalsIn > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
       (foods ? '<div style="font-size:10px;color:var(--ink3)">' + foods + '</div>' : '') +
     '</div>'
   }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
 
-    // 1. Day navigation
+    // 1. Day navigation + today summary banner
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
       '<button class="cal-nav" id="log-prev-day">&#8249;</button>' +
       '<div style="text-align:center">' +
@@ -1507,7 +1733,7 @@ function renderLogInner() {
       '<button class="cal-nav" id="log-next-day" ' + (isToday ? 'disabled style="opacity:0.3"' : '') + '>&#8250;</button>' +
     '</div>' +
 
-    // 2. Daily summary
+    // 2. Daily summary banner
     '<div class="log-total">' +
       '<div>' +
         '<div class="log-total-label">' + (isToday ? 'Today' : dayLabel) + '</div>' +
@@ -1523,9 +1749,9 @@ function renderLogInner() {
       '</div>' +
     '</div>' +
 
-    // 3. Log weight
+    // 3. Log weight input
     (state.goals.target_weight ? (
-      '<div class="log-add-row" style="margin-bottom:10px">' +
+      '<div class="log-add-row" style="margin-top:10px;margin-bottom:10px">' +
         '<input id="log-weight-input" type="number" step="0.1" placeholder="Log weight (lbs)" style="flex:1" value="' + ((() => {
           const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr)
           return existing ? existing.weight : ''
@@ -1534,11 +1760,17 @@ function renderLogInner() {
       '</div>'
     ) : '') +
 
-    // 4. Today's meals
+    // 4. Today's Meals — what's already logged
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
-    // 5. Search recipes + tags + add food
+    // 5. Log Meals — manual entry first, then recipe search
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">Log Meals</div>' +
+    '<div class="log-add-row">' +
+      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
+      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
+    '</div>' +
+    (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
@@ -1554,11 +1786,6 @@ function renderLogInner() {
         recipeTags.map(t => '<button class="tag-filter-chip ' + (logTagFilter === t.name ? 'active' : '') + '" data-log-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>').join('') +
       '</div>'
     : '') +
-    '<div class="log-add-row">' +
-      '<input id="log-food" placeholder="e.g. cheerios half cup, whole milk half cup" style="flex:1" />' +
-      '<button class="add-btn" id="log-add-btn">+ Add</button>' +
-    '</div>' +
-    (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
 
     // 6. Exercise
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
@@ -1583,18 +1810,30 @@ function renderLogInner() {
       ).join('')
     : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
 
-    // 7. Weight progress graph
+    // 7. Weight progress chart
     renderWeightProgress() +
 
+    // Today's calorie summary (compact, between chart and log weight)
+    '<div style="background:var(--cream2);border-radius:10px;padding:8px 14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Today</div>' +
+      '<div style="font-size:13px;font-weight:700;color:var(--ink)">' +
+        (burned > 0
+          ? cals + ' in · ' + burned + ' burned · <span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + net + ' net</span>'
+          : '<span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + cals + '</span> cal'
+        ) +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--ink3)">' + (rem >= 0 ? rem + ' left' : Math.abs(rem) + ' over') + ' · goal ' + goal + '</div>' +
+    '</div>' +
+
     // 8. Last 7 days summary bar
-    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-top:16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
+    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
       '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
       '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
       '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
     '</div>' +
 
-    // 9. This week day-by-day breakdown (newest first)
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">This week</div>' +
+    // 9. Day-by-day breakdown of last 7 days
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">Day by day</div>' +
     weekRows +
 
   '</div>'
@@ -1632,82 +1871,86 @@ function renderWeightProgress() {
     endDate.setMonth(startDate.getMonth() + 6)
   }
 
-  // Actual trajectory from latest weigh-in
-  let actualTrajectoryDate = null
+  // Compare updated plan end date vs original to show ahead/behind message
   let nudgeMsg = '', nudgeColor = 'var(--ink3)'
-  if (weightLog.length >= 2) {
-    const first = weightLog[0], last = weightLog[weightLog.length-1]
-    const daysBetween = Math.round((new Date(last.logged_at) - new Date(first.logged_at)) / (1000*60*60*24))
-    if (daysBetween > 0) {
-      const actualLbsPerDay = (parseFloat(first.weight) - parseFloat(last.weight)) / daysBetween
-      if (actualLbsPerDay > 0) {
-        const daysToGoal = (parseFloat(last.weight) - parseFloat(target_weight)) / actualLbsPerDay
-        actualTrajectoryDate = new Date(new Date(last.logged_at))
-        actualTrajectoryDate.setDate(actualTrajectoryDate.getDate() + Math.round(daysToGoal))
-        if (actualTrajectoryDate > endDate) endDate = new Date(actualTrajectoryDate)
-        const projEndDate = projection ? new Date(startDate.getTime() + projection.days * 86400000) : null
-        const diffDays = projEndDate ? Math.round((projEndDate - actualTrajectoryDate) / 86400000) : 0
-        const diffWeeks = Math.round(Math.abs(diffDays) / 7)
-        if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of schedule!'; nudgeColor = 'var(--forest)' }
-        else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead!'; nudgeColor = 'var(--forest2)' }
-        else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind — tighten up a bit.'; nudgeColor = 'var(--terra)' }
-        else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind — keep going!'; nudgeColor = 'var(--gold)' }
-        else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
-      }
-    }
-  }
 
   const totalDays = Math.max(Math.round((endDate - startDate) / 86400000), 30)
   const lbsPerDay = projection ? (startWeight - parseFloat(target_weight)) / projection.days : 0
 
-  // Projected line — starts at startWeight on startDate, goes to target
+  // Original projected line — starts at startWeight on startDate, goes to target
   const projPoints = projection ? Array.from({length: Math.min(totalDays, projection.days) + 1}, (_, i) => ({
     day: i,
     weight: Math.max(parseFloat((startWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
   })) : []
 
-  // Actual weigh-in points plotted by date — filter out any bad values
-  const actualPoints = weightLog
-    .filter(e => parseFloat(e.weight) > 0)
-    .map(e => ({
-      day: Math.round((new Date(e.logged_at) - startDate) / 86400000),
-      weight: parseFloat(e.weight),
-      id: e.id,
-      date: new Date(e.logged_at)
-    })).filter(p => p.day >= 0)
+  // Adjusted projection — same daily rate, but starting from current weight at today
+  const todayDay = Math.round((new Date() - startDate) / 86400000)
+  const daysToTargetFromNow = lbsPerDay > 0 ? Math.ceil((latestWeight - parseFloat(target_weight)) / lbsPerDay) : 0
+  const adjustedProjPoints = (projection && latestWeight !== startWeight && daysToTargetFromNow > 0) ?
+    Array.from({length: daysToTargetFromNow + 1}, (_, i) => ({
+      day: todayDay + i,
+      weight: Math.max(parseFloat((latestWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
+    })) : []
 
-  // Current trajectory line from latest actual point
-  const trajPoints = (actualPoints.length >= 1 && weightLog.length >= 2) ? (() => {
-    const last = actualPoints[actualPoints.length-1]
-    const first = actualPoints[0]
-    const daysBetween = last.day - first.day
-    if (daysBetween <= 0) return []
-    const actualLbsPerDay = (first.weight - last.weight) / daysBetween
-    if (actualLbsPerDay <= 0) return [last]
-    const daysToGoal = (last.weight - parseFloat(target_weight)) / actualLbsPerDay
-    const pts = []
-    const steps = Math.min(Math.ceil(daysToGoal), totalDays - last.day)
-    for (let i = 0; i <= steps; i += Math.max(1, Math.floor(steps/20))) {
-      pts.push({ day: last.day + i, weight: Math.max(last.weight - actualLbsPerDay * i, parseFloat(target_weight)) })
-    }
-    return pts
-  })() : []
-
-  // Month labels
-  const monthLabels = []
-  const cursor = new Date(startDate)
-  cursor.setDate(1); cursor.setMonth(cursor.getMonth() + 1)
-  while (cursor <= endDate) {
-    monthLabels.push({ day: Math.round((cursor - startDate) / 86400000), label: cursor.toLocaleDateString('en-US', {month:'short'}) })
-    cursor.setMonth(cursor.getMonth() + 1)
+  // Extend endDate if adjusted projection goes further
+  if (adjustedProjPoints.length > 0) {
+    const adjEnd = new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000)
+    if (adjEnd > endDate) endDate = adjEnd
   }
 
-  // SVG
-  const allW = [startWeight + 2, parseFloat(target_weight) - 1, ...actualPoints.map(p => p.weight)]
-  const minW = Math.floor(Math.min(...allW))
-  const maxW = Math.ceil(Math.max(...allW))
+  // Helper — get local YYYY-MM-DD string from a date
+  const toLocalDate = (d) => d.toLocaleDateString('sv')
+  const startDateStr = toLocalDate(startDate)
+
+  // Actual weigh-in points plotted by date — use local date to avoid timezone shift
+  const allActualPoints = weightLog
+    .filter(e => parseFloat(e.weight) > 0)
+    .map(e => {
+      const localDate = toLocalDate(new Date(e.logged_at))
+      // Calculate day offset by comparing local date strings
+      const entryDate = new Date(localDate + 'T12:00:00')
+      const startMidnight = new Date(startDateStr + 'T12:00:00')
+      const day = Math.round((entryDate - startMidnight) / 86400000)
+      return { day, weight: parseFloat(e.weight), id: e.id, date: new Date(e.logged_at) }
+    }).filter(p => p.day >= 0)
+
+  // Apply window filter
+  const windowDays = state.chartWindow === '1W' ? 7 : state.chartWindow === '2W' ? 14 : state.chartWindow === '1M' ? 30 : state.chartWindow === '3M' ? 90 : null
+  const windowStartDay = windowDays ? Math.max(0, (allActualPoints.length > 0 ? allActualPoints[allActualPoints.length-1].day : 0) - windowDays) : 0
+  const actualPoints = windowDays ? allActualPoints.filter(p => p.day >= windowStartDay) : allActualPoints
+
+  // Recalculate totalDays based on window
+  const windowTotalDays = windowDays ? windowDays : totalDays
+  const windowStartDate = new Date(startDate.getTime() + windowStartDay * 86400000)
+
+  // Month/week labels for window
+  const windowLabels = []
+  if (windowDays && windowDays <= 14) {
+    // 1W/2W — show day labels
+    const step = windowDays <= 7 ? 1 : 2
+    for (let d = 0; d <= windowTotalDays; d += step) {
+      const labelDate = new Date(startDate.getTime() + (windowStartDay + d) * 86400000)
+      windowLabels.push({ day: windowStartDay + d, label: labelDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) })
+    }
+  } else {
+    // 1M, 3M, All — show month labels
+    const cursor = new Date(windowStartDate)
+    cursor.setDate(1); cursor.setMonth(cursor.getMonth() + 1)
+    const windowEndDate = new Date(startDate.getTime() + (windowStartDay + windowTotalDays) * 86400000)
+    while (cursor <= windowEndDate) {
+      windowLabels.push({ day: Math.round((cursor - startDate) / 86400000), label: cursor.toLocaleDateString('en-US', {month:'short'}) })
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+  }
+
+  // SVG — Y range must always include start weight and target
+  const visibleWeights = [startWeight, latestWeight, parseFloat(target_weight), ...actualPoints.map(p => p.weight)]
+  const minW = Math.floor(Math.min(...visibleWeights)) - 1
+  const maxW = Math.ceil(Math.max(...visibleWeights)) + 1
   const W = 320, H = 155, padL = 32, padR = 12, padT = 12, padB = 28
-  const xScale = d => padL + (Math.min(Math.max(d,0), totalDays) / totalDays) * (W - padL - padR)
+
+  // X scale based on window — map day offsets within the window
+  const xScale = d => padL + (Math.min(Math.max(d - windowStartDay, 0), windowTotalDays) / windowTotalDays) * (W - padL - padR)
   const yScale = w => padT + ((maxW - w) / (maxW - minW)) * (H - padT - padB)
 
   const yStep = (maxW - minW) <= 10 ? 2 : 5
@@ -1717,15 +1960,35 @@ function renderWeightProgress() {
   const mkPath = pts => pts.map((p,i) => (i===0?'M':'L') + xScale(p.day).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
 
   const projPath = projPoints.length > 1 ? mkPath(projPoints.filter((_,i)=>i%3===0||i===projPoints.length-1)) : ''
+  const adjProjPath = adjustedProjPoints.length > 1 ? mkPath(adjustedProjPoints.filter((_,i)=>i%3===0||i===adjustedProjPoints.length-1)) : ''
   const actualPath = actualPoints.length > 1 ? mkPath(actualPoints) : ''
-  const trajPath = trajPoints.length > 1 ? mkPath(trajPoints) : ''
+
+  // Nudge message — compare adjusted end date vs original
+  if (projection && adjustedProjPoints.length > 0 && latestWeight !== startWeight) {
+    const origEndDay = projection.days
+    const adjEndDay = todayDay + daysToTargetFromNow
+    const diffDays = origEndDay - adjEndDay
+    const diffWeeks = Math.round(Math.abs(diffDays) / 7)
+    if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of plan!'; nudgeColor = 'var(--forest)' }
+    else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead of plan!'; nudgeColor = 'var(--forest2)' }
+    else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind plan — keep at it.'; nudgeColor = 'var(--terra)' }
+    else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind plan — keep going!'; nudgeColor = 'var(--gold)' }
+    else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
+  }
 
   // Start dot (at startWeight on startDate)
   const startDotY = yScale(startWeight)
   const startDotX = xScale(0)
 
   return '<div style="margin-top:16px">' +
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#9878; Weight Progress</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
+      '<div style="display:flex;gap:3px">' +
+        ['1W','2W','1M','3M','All'].map(w =>
+          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--forest)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--forest)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
+        ).join('') +
+      '</div>' +
+    '</div>' +
     '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
 
       // Stats: Start · Current · Lost · To go · Target
@@ -1749,12 +2012,14 @@ function renderWeightProgress() {
         // Target line
         '<line x1="' + padL + '" y1="' + yScale(parseFloat(target_weight)).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(parseFloat(target_weight)).toFixed(1) + '" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>' +
 
-        // Start date marker
-        '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (H-padB) + '" stroke="var(--forest2)" stroke-width="1" opacity="0.4"/>' +
-        '<text x="' + padL + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" font-weight="bold" fill="var(--forest2)">' + startDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + '</text>' +
+        // Start date marker — only show on All view
+        (!windowDays ? (
+          '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (H-padB) + '" stroke="var(--forest2)" stroke-width="1" opacity="0.4"/>' +
+          '<text x="' + padL + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" font-weight="bold" fill="var(--forest2)">' + startDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + '</text>'
+        ) : '') +
 
-        // Month labels
-        monthLabels.map(m =>
+        // Window labels
+        windowLabels.map(m =>
           '<line x1="' + xScale(m.day).toFixed(1) + '" y1="' + padT + '" x2="' + xScale(m.day).toFixed(1) + '" y2="' + (H-padB) + '" stroke="var(--cream3)" stroke-width="1" stroke-dasharray="2,3"/>' +
           '<text x="' + xScale(m.day).toFixed(1) + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" fill="var(--ink3)">' + m.label + '</text>'
         ).join('') +
@@ -1764,10 +2029,12 @@ function renderWeightProgress() {
         '<text x="' + (startDotX+7).toFixed(1) + '" y="' + (startDotY-5).toFixed(1) + '" font-size="8" font-weight="bold" fill="var(--ink3)">' + startWeight + '</text>' +
 
         // Plan line (solid grey — the ideal straight path from start to goal)
-        (projPath ? '<path d="' + projPath + '" fill="none" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/>' : '') +
+        // Original projection line (darker grey dashed, more visible)
+        (projPath ? '<path d="' + projPath + '" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.9"/>' : '') +
+        // Adjusted projection from current weight — same rate, new starting point (green dashed)
+        (adjProjPath ? '<path d="' + adjProjPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.85"/>' : '') +
 
         // Actual trajectory forward (colored dashed — extrapolated from your actual pace)
-        (trajPath ? '<path d="' + trajPath + '" fill="none" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.8"/>' : '') +
 
         // Actual logged weights (dotted green — your real journey connecting weigh-ins)
         (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
@@ -1790,7 +2057,7 @@ function renderWeightProgress() {
 
       // Dates line
       (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
-        (actualTrajectoryDate ? ' &nbsp;·&nbsp; At your pace: <strong style="color:' + nudgeColor + '">' + actualTrajectoryDate.toLocaleDateString('en-US', {month:'long', day:'numeric'}) + '</strong>' : '') +
+        (adjProjPath && daysToTargetFromNow > 0 ? ' &nbsp;·&nbsp; Updated: <strong style="color:var(--forest2)">' + new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</strong>' : '') +
       '</div>' : '') +
 
       // Nudge
@@ -1799,8 +2066,8 @@ function renderWeightProgress() {
       // Legend
       '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
-        (trajPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="' + nudgeColor + '" stroke-width="1.5" stroke-dasharray="5,3"/></svg>Your pace</div>' : '') +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Plan</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
+        (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
         '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
       '</div>' +
 
@@ -2023,6 +2290,15 @@ function renderCalendar() {
     html += '<div class="modal-sheet">'
     html += '<div class="modal-title">Add to ' + slot + '</div>'
     html += '<div class="modal-sub">' + formatDate(date) + '</div>'
+
+    // Manual entry first
+    html += '<div style="display:flex;gap:7px;margin-bottom:14px">'
+    html += '<input id="cal-manual-input" placeholder="e.g. Leftovers, Protein bar..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />'
+    html += '<button class="add-btn" id="cal-manual-add">Add</button>'
+    html += '</div>'
+
+    // Then recipe search
+    html += '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Or search recipes</div>'
     html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" />'
 
     // Tag filter chips
@@ -2048,12 +2324,6 @@ function renderCalendar() {
     }
     html += '</div>'
     html += '<div class="modal-btns"><button class="modal-cancel" id="cal-picker-cancel">Cancel</button></div>'
-    html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--cream3)">'
-    html += '<div style="font-size:11px;color:var(--ink3);margin-bottom:6px">Or type anything (e.g. Chips, Protein bar):</div>'
-    html += '<div style="display:flex;gap:7px">'
-    html += '<input id="cal-manual-input" placeholder="e.g. Chips" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />'
-    html += '<button class="add-btn" id="cal-manual-add">Add</button>'
-    html += '</div></div>'
     html += '</div></div>'
   }
 
@@ -2150,31 +2420,60 @@ function renderHistory() {
 
 function renderTags() {
   const search = (state.tagSearch || '').toLowerCase()
-  const namespaces = [
-    { key: 'recipe', label: 'Recipe Tags', hint: 'For recipes - meal type, occasion, cooking method, main ingredient' },
-    { key: 'location', label: 'Pantry/Store Tags', hint: 'For pantry items and shopping list - store aisle or home storage location' },
-  ]
+  const recipeTags = getTagsForNamespace('recipe').filter(t => !search || t.name.toLowerCase().includes(search))
+    .slice().sort((a, b) => a.name.localeCompare(b.name))
+  const locationTags = getTagsForNamespace('location').filter(t => !search || t.name.toLowerCase().includes(search))
+    .slice().sort((a, b) => a.name.localeCompare(b.name))
+
+  const categoryTags = recipeTags.filter(t => !t.tag_type || t.tag_type === 'category')
+  const styleTags = recipeTags.filter(t => t.tag_type === 'style')
+  const hasTyped = recipeTags.some(t => t.tag_type === 'style')
+
+  const renderChip = (t, ns) =>
+    '<span class="tag-library-chip" style="display:inline-flex;align-items:center;gap:4px;margin:3px">' +
+      esc(t.name) +
+      '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns + '" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+    '</span>'
+
+  const renderSection = (title, hint, tags, ns, addId, tagType) =>
+    '<div class="tags-section">' +
+      '<div class="tags-section-title">' + title + '</div>' +
+      '<div class="tags-section-hint" style="font-size:11px;color:var(--ink3);margin-bottom:8px">' + hint + '</div>' +
+      '<div class="tags-section-chips" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">' +
+        (tags.length ? tags.map(t => renderChip(t, ns)).join('') : '<span style="font-size:12px;color:var(--ink4);font-style:italic">None yet</span>') +
+      '</div>' +
+      '<div class="tag-add-row" style="display:flex;gap:6px">' +
+        '<input class="tag-lib-input" id="' + addId + '" placeholder="Add tag..." style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
+        '<button class="add-btn" data-add-lib-tag="' + ns + '" data-tag-type="' + tagType + '" data-input-id="' + addId + '">+ Add</button>' +
+      '</div>' +
+    '</div>'
+
   return '<div class="tab-content">' +
-    '<div class="section-title">Tag Library</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+      '<div class="section-title">Tag Library</div>' +
+      '<button class="add-btn" id="organize-tags-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2);font-size:12px">' +
+        (hasTyped ? '✦ Re-organize' : '✦ Auto-organize') +
+      '</button>' +
+    '</div>' +
     renderSearchBar('tag-search', state.tagSearch || '', 'Search tags...') +
-    namespaces.map(ns => {
-      const tags = getTagsForNamespace(ns.key).filter(t => !search || t.name.toLowerCase().includes(search))
-      return '<div class="tags-section">' +
-        '<div class="tags-section-title">' + ns.label + '</div>' +
-        '<div class="tags-section-hint">' + ns.hint + '</div>' +
-        '<div class="tags-section-chips">' +
-          tags.map(t =>
-            '<span class="tag-library-chip">' + esc(t.name) +
-            '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns.key + '">×</button>' +
-            '</span>'
-          ).join('') +
-        '</div>' +
-        '<div class="tag-add-row">' +
-          '<input class="tag-lib-input" id="new-lib-tag-' + ns.key + '" placeholder="New ' + ns.label.toLowerCase() + '..." />' +
-          '<button class="add-btn" data-add-lib-tag="' + ns.key + '">+ Add</button>' +
-        '</div>' +
-      '</div>'
-    }).join('') +
+
+    // Recipe tags — split into Category and Style if typed, flat if not
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🥘 Recipe Tags</div>' +
+      (hasTyped ? (
+        renderSection('Category', 'What the dish IS — protein, cuisine, main ingredient (Pork, Pasta, Salad)', categoryTags, 'recipe', 'new-lib-tag-recipe-category', 'category') +
+        renderSection('Style', 'How it\'s made or when — method, occasion (Sous Vide, Weeknight, Party)', styleTags, 'recipe', 'new-lib-tag-recipe-style', 'style')
+      ) : (
+        '<div style="font-size:12px;color:var(--ink3);margin-bottom:10px">Tap <strong>✦ Auto-organize</strong> to split into Category and Style for better filtering.</div>' +
+        renderSection('All Recipe Tags', 'Meal type, occasion, cooking method, main ingredient', recipeTags, 'recipe', 'new-lib-tag-recipe', 'category')
+      )) +
+    '</div>' +
+
+    // Location tags
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🛒 Pantry & Store Tags</div>' +
+      renderSection('Location Tags', 'Store aisle, fridge section, pantry shelf', locationTags, 'location', 'new-lib-tag-location', 'category') +
+    '</div>' +
   '</div>'
 }
 
@@ -2242,102 +2541,195 @@ function renderChat() {
 }
 
 
-async function generateGamePlan(slot, targetTime, date, recipeId) {
+async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const isWholeDay = slot === 'Day'
+
+  // Helper — trim instructions if too long, keep ingredients full
+  const recipeDetail = (entry, recipe) => {
+    const pt = recipe?.prepTime
+    const instructions = recipe?.instructions || ''
+    // Trim instructions to 600 chars if multiple recipes to avoid token overflow
+    const instTrimmed = instructions.length > 600 ? instructions.slice(0, 600) + '...' : instructions
+    return '=== ' + (entry.meal_slot ? entry.meal_slot + ': ' : '') + entry.recipe_name + ' ===\n' +
+      (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
+      (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
+      (instTrimmed ? 'Instructions:\n' + instTrimmed : '')
+  }
 
   let mealText = ''
 
   if (isWholeDay) {
-    // Gather all recipes planned for this date
     const allEntries = state.mealPlan.filter(e => e.date === date && e.recipe_id)
     const details = allEntries.map(entry => {
       const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
-      const pt = recipe?.prepTime
-      return '=== ' + entry.meal_slot + ': ' + entry.recipe_name + ' ===\n' +
-        (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
-        (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
-        (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
+      return recipeDetail(entry, recipe)
     })
     mealText = details.join('\n\n')
   } else {
-    // Single slot — gather all entries in that slot
     const slotEntries = state.mealPlan.filter(e => e.date === date && e.meal_slot === slot && e.recipe_id)
     const details = slotEntries.map(entry => {
       const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
-      const pt = recipe?.prepTime
-      return '=== ' + entry.recipe_name + ' ===\n' +
-        (pt ? 'Prep data: ' + JSON.stringify(pt) + '\n' : '') +
-        (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
-        (recipe?.instructions ? 'Instructions:\n' + recipe.instructions : '')
+      return recipeDetail(entry, recipe)
     })
     mealText = details.join('\n\n')
+  }
+
+  // Safety check — if still very large, trim further
+  if (mealText.length > 4000) {
+    mealText = mealText.slice(0, 4000) + '\n...(recipe details trimmed for length)'
   }
 
   const now = new Date()
   const currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
+  const mealDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'today'
+  const isToday = date === new Date().toISOString().slice(0, 10)
+
   const slotLabel = isWholeDay ? 'the whole day' : slot
-  const prompt = `You are a practical cooking timeline planner. The current time is ${currentTime}. The user wants to eat ${isWholeDay ? 'dinner' : slot} at ${targetTime}.
+  const prompt = `You are a cooking assistant. List the cooking steps needed for this meal and how long each step takes.
 
-Here is what they are making:
+MEAL: ${mealDate} at ${targetTime}
+${notes ? 'USER NOTES: ' + notes : ''}
 
+RECIPES:
 ${mealText}
 
-Create a cooking timeline working STRICTLY BACKWARDS from ${targetTime}. Anchor on ${targetTime} as the finish line and subtract prep times to find each start time.
+List every step needed to cook this meal. For each step include:
+- What to do (with exact quantities)
+- How many minutes it takes (active time)
+- How many minutes of passive/wait time after (oven, simmer, rest) — 0 if none
 
-CRITICAL RULES:
-- Work BACKWARDS from ${targetTime}. The last step is serving at ${targetTime}. Everything else flows backward from there.
-- Current time is ${currentTime}. If any calculated step falls before ${currentTime}, mark it as "Start now:" instead of showing a past time. Never show a time that has already passed.
-- ALWAYS include exact quantities from the recipe inline with each step. If a step involves garlic, say "mince 3 cloves garlic" not just "mince garlic". If it involves soy sauce, say "measure 2 tbsp soy sauce". The cook should never need to look at the recipe for amounts.
-- Group related prep into ONE entry with all its quantities. "Mince 3 cloves garlic, dice 1 medium onion, measure 2 tbsp soy sauce" is ONE step.
-- New timestamp only when the cook starts something new or needs to check something.
-- Realistic appliance timing: oven preheat = 15-20 min, water to boil = 10-12 min, pan to heat = 3-5 min.
-- Use passive time (oven, simmering) for active prep of other components.
-- Aim for 6-10 steps for a single meal, up to 15 for a whole day.
-- Be conversational but specific. "Prep the aromatics — mince 3 cloves garlic, dice 1 onion" not vague references.
-${isWholeDay ? '- Include all meals at sensible times (breakfast ~8am, lunch ~12:30pm, snack ~3:30pm, dinner at ' + targetTime + ').' : ''}
-
-Return ONLY a JSON array, no other text, no markdown, no backticks:
+Return ONLY a JSON array:
 [
-  {"time": "6:00 PM", "step": "Preheat oven to 425°F — takes about 20 min"},
-  {"time": "6:05 PM", "step": "Prep the chickpeas — drain and rinse one 15oz can, pat dry with a towel"},
-  {"time": "6:10 PM", "step": "Toss chickpeas with 2 tbsp olive oil, 1 tsp cumin, ½ tsp paprika, salt and pepper — spread on baking sheet"},
-  ...
+  {"step": "Preheat oven to 425°F", "active_min": 1, "passive_min": 20},
+  {"step": "Prep chicken thighs — pat dry, coat with 2 tbsp olive oil, season with salt and pepper", "active_min": 5, "passive_min": 0},
+  {"step": "Roast chicken in oven", "active_min": 2, "passive_min": 40},
+  {"step": "Make pan sauce — deglaze with 1/2 cup white wine, add 2 tbsp butter", "active_min": 8, "passive_min": 0},
+  {"step": "Rest chicken, plate and serve", "active_min": 3, "passive_min": 0}
 ]
 
-End with "${isWholeDay ? 'Dinner' : slot} is served 🍽️" at ${targetTime}.`
+Rules:
+- Include exact amounts inline ("2 tbsp olive oil" not "olive oil")
+- Overlap passive steps with active steps where realistic (prep veggies while chicken roasts)
+- 6-8 steps for one recipe, up to 12 for multiple
+- No markdown, no backticks, just the JSON array`
 
   try {
-    const resp = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1500,
-        messages: [{ role: 'user', content: prompt }]
+    let resp, attempts = 0
+    while (attempts < 3) {
+      resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 3000,
+          messages: [{ role: 'user', content: prompt }]
+        })
       })
-    })
-    const data = await resp.json()
-    const text = data.content?.[0]?.text?.trim() || ''
-    const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
-    const parsed = JSON.parse(clean)
-    // Sort chronologically (earliest first) — AI calculates backwards but we display forwards
-    parsed.sort((a, b) => {
-      const toMins = t => {
-        const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
-        if (!m) return 0
-        let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
-        if (ampm === 'PM' && h !== 12) h += 12
-        if (ampm === 'AM' && h === 12) h = 0
-        return h * 60 + min
+      if (resp.ok) break
+      if (resp.status === 429 || resp.status === 529) {
+        await new Promise(r => setTimeout(r, 2000 * (attempts + 1)))
+        attempts++
+        continue
       }
-      return toMins(a.time) - toMins(b.time)
-    })
-    return parsed
+      break
+    }
+    const data = await resp.json()
+    if (!resp.ok) {
+      console.error('Game plan API error:', resp.status, data)
+      return null
+    }
+    const text = data.content?.[0]?.text?.trim() || ''
+    console.log('Game plan raw response:', text.slice(0, 300))
+    const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+    const arrayMatch = clean.match(/\[[\s\S]*\]/)
+    if (!arrayMatch) {
+      console.error('No JSON array found in response:', clean.slice(0, 200))
+      return null
+    }
+    const steps = JSON.parse(arrayMatch[0])
+
+    // Calculate times ourselves working BACKWARD from targetTime
+    const parseTime = (t) => {
+      const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
+      if (!m) return 0
+      let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
+      if (ampm === 'PM' && h !== 12) h += 12
+      if (ampm === 'AM' && h === 12) h = 0
+      return h * 60 + min
+    }
+    const formatTime = (totalMins) => {
+      const h = Math.floor(((totalMins % (24*60)) + 24*60) % (24*60) / 60)
+      const m = ((totalMins % 60) + 60) % 60
+      const ampm = h >= 12 ? 'PM' : 'AM'
+      const hour = h % 12 || 12
+      return hour + ':' + String(m).padStart(2, '0') + ' ' + ampm
+    }
+
+    // Work backward: dinner time minus total duration of each step from the end
+    const dinnerMins = parseTime(targetTime)
+    const now = new Date()
+    const nowMins = now.getHours() * 60 + now.getMinutes()
+    const isTodayMeal = date === now.toISOString().slice(0, 10)
+
+    // Calculate cumulative time from end, assign start times
+    const result = []
+    let cursor = dinnerMins
+
+    // Process steps in reverse to assign times backward from dinner
+    const reversed = [...steps].reverse()
+    for (const s of reversed) {
+      const total = (s.active_min || 0) + (s.passive_min || 0)
+      cursor -= total
+      const stepTime = isTodayMeal && cursor < nowMins ? nowMins : cursor
+      result.unshift({ time: formatTime(stepTime), step: s.step })
+    }
+
+    // Add serving step at dinner time
+    result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
+
+    return result
   } catch(e) {
     console.error('Game plan error:', e)
     return null
   }
+}
+
+function renderTagOrganizerModal() {
+  const m = state.tagOrganizerModal
+  if (!m) return ''
+  if (m.loading) {
+    return '<div class="modal-bg" id="tag-organizer-bg">' +
+      '<div class="modal-sheet">' +
+        '<div class="modal-title">🏷 Organize Tags</div>' +
+        '<div style="text-align:center;padding:30px 0;color:var(--ink3)">Asking AI to sort your tags...</div>' +
+      '</div>' +
+    '</div>'
+  }
+  const tags = m.tags || []
+  const renderTagRow = (t) => {
+    const type = t.tag_type || 'category'
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--cream3)">' +
+      '<div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">' + esc(t.name) + '</div>' +
+      '<div style="display:flex;gap:4px">' +
+        '<button class="tag-type-btn ' + (type === 'category' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="category" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='category'?'var(--forest)':'var(--border)') + ';background:' + (type==='category'?'var(--forest)':'white') + ';color:' + (type==='category'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Category</button>' +
+        '<button class="tag-type-btn ' + (type === 'style' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="style" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='style'?'var(--forest)':'var(--border)') + ';background:' + (type==='style'?'var(--forest)':'white') + ';color:' + (type==='style'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Style</button>' +
+      '</div>' +
+    '</div>'
+  }
+  return '<div class="modal-bg" id="tag-organizer-bg">' +
+    '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+        '<div class="modal-title" style="margin:0">🏷 Organize Tags</div>' +
+        '<button id="tag-organizer-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-bottom:14px">Category = what the dish is (Pork, Pasta). Style = how it\'s made (Sous Vide, Weeknight). Filtering uses Category as OR, then Style to narrow.</div>' +
+      tags.sort((a, b) => a.name.localeCompare(b.name)).map(renderTagRow).join('') +
+      '<div style="margin-top:16px">' +
+        '<button class="modal-save" id="tag-organizer-save" style="width:100%">Save</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
 }
 
 function gpChatKey() {
@@ -2386,9 +2778,12 @@ function renderGamePlanModal() {
       '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--cream3);flex-shrink:0">' +
           '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--forest);padding:0;line-height:1;font-family:inherit">←</button>' +
-          '<div style="flex:1">' +
-            '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Tweaking with AI</div>' +
-            '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
+          '<div style="flex:1;display:flex;align-items:center;gap:8px">' +
+            '<div>' +
+              '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Game Plan</div>' +
+              '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
+            '</div>' +
+            '<button id="gp-start-over" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">↺ Redo</button>' +
           '</div>' +
           '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
         '</div>' +
@@ -2433,12 +2828,16 @@ function renderGamePlanModal() {
         }).join('') +
       '</div>'
   } else {
+    const savedNotes = state.gamePlanModal?.notes || ''
     content =
-      '<div style="font-size:13px;color:var(--ink3);margin-bottom:16px">Set your ' + (isWholeDay ? 'dinner' : slotLabel.toLowerCase()) + ' time and I\'ll build a step-by-step cooking timeline.</div>' +
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
         '<span style="font-size:13px;font-weight:600">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at:</span>' +
         '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
       '</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;display:flex;align-items:center;gap:5px">' +
+        '📅 ' + dateLabel +
+      '</div>' +
+      '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, skipping the potatoes tonight, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px">' + esc(savedNotes) + '</textarea>' +
       '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
   }
 
@@ -2446,13 +2845,15 @@ function renderGamePlanModal() {
 
   return '<div class="modal-bg" id="game-plan-bg">' +
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
-      '<div class="modal-title">📋 ' + slotLabel + ' Game Plan</div>' +
-      '<div class="modal-sub">' + dateLabel + '</div>' +
-      content +
-      '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
-        (result ? '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' : '') +
-        '<button class="modal-cancel" id="gp-close" style="width:100%">Close</button>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+        '<div class="modal-title" style="margin:0">📋 ' + slotLabel + ' Game Plan</div>' +
+        '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1;flex-shrink:0">×</button>' +
       '</div>' +
+      '<div class="modal-sub" style="margin-bottom:14px">' + dateLabel + '</div>' +
+      content +
+      (result ? '<div style="margin-top:16px">' +
+        '<button class="modal-save" id="gp-tweak" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
+      '</div>' : '') +
     '</div>' +
   '</div>'
 }
@@ -2565,18 +2966,27 @@ function renderPasteModal() {
 
 function renderShopReview() {
   const s = state.shopReview
+  const locationTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
   const itemsHtml = s.items.map(function(item, idx) {
     const pantryInfo = item.pantryQty
       ? '<div class="shop-review-have">You have: ' + esc(item.pantryQty) + '</div>'
-      : '<div class="shop-review-none">Not in pantry</div>'
+      : ''
     const inPantry = item.inPantry
+    const itemTags = item.tags || []
     return '<div class="shop-review-row' + (inPantry ? ' shop-review-row-pantry' : '') + '">' +
       '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (!inPantry && item.checked ? 'checked' : '') + (inPantry ? 'disabled' : '') + ' />' +
       '<div class="shop-review-info" style="flex:1;min-width:0">' +
         (inPantry
           ? '<div class="shop-review-name">' + esc(item.name) + '</div><div class="shop-review-have">Added to pantry</div>'
-          : '<input class="shop-review-name-input" data-review-idx="' + idx + '" value="' + esc(item.name) + '" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:2px" />' +
-            pantryInfo
+          : '<input class="shop-review-name-input" data-review-idx="' + idx + '" value="' + esc(item.name) + '" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
+            (pantryInfo ? pantryInfo : '') +
+            (locationTags.length > 0 ?
+              '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
+                locationTags.map(t =>
+                  '<button class="shop-review-tag-btn ' + (itemTags.includes(t.name) ? 'active' : '') + '" data-review-tag-idx="' + idx + '" data-review-tag="' + esc(t.name) + '" style="font-size:10px;padding:2px 7px;border-radius:5px;border:1.5px solid ' + (itemTags.includes(t.name) ? 'var(--forest)' : 'var(--border)') + ';background:' + (itemTags.includes(t.name) ? 'var(--forest)' : 'white') + ';color:' + (itemTags.includes(t.name) ? 'white' : 'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + esc(t.name) + '</button>'
+                ).join('') +
+              '</div>'
+            : '')
         ) +
       '</div>' +
       (!inPantry ?
@@ -2587,7 +2997,7 @@ function renderShopReview() {
   return '<div class="modal-bg" id="shop-review-bg"><div class="modal-sheet">' +
     '<div class="modal-title">What do you need?</div>' +
     '<div class="modal-sub">' + esc(s.recipeName) + '</div>' +
-    '<div class="shop-review-hint">Check items to add. Edit any name before adding. Tap "Got it" if you already have it.</div>' +
+    '<div class="shop-review-hint">Check items to add. Edit name or tag before adding.</div>' +
     '<div class="shop-review-list">' + itemsHtml + '</div>' +
     '<div class="modal-btns"><button class="modal-cancel" id="shop-review-cancel">Cancel</button><button class="modal-save" id="shop-review-add">Add to Shopping List</button></div>' +
     '</div></div>'
@@ -2671,17 +3081,22 @@ function bindEvents() {
   })
 
   // Header menu
-  document.getElementById('header-menu-btn')?.addEventListener('click', () => {
-    state.showHeaderMenu = !state.showHeaderMenu
-    render()
-  })
-
-  // Goals
   document.getElementById('goals-toggle')?.addEventListener('click', () => {
     state.showGoals = !state.showGoals
     state.showSync = false
-    state.showHeaderMenu = false
     render()
+  })
+
+  document.getElementById('save-goals-btn')?.addEventListener('click', async () => {
+    document.querySelectorAll('input[data-goal]').forEach(el => {
+      const f = el.dataset.goal
+      state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+        ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
+    })
+    const btn = document.getElementById('save-goals-btn')
+    if (btn) { btn.textContent = '✓ Saved!'; btn.style.background = 'var(--sage4)' }
+    await db.saveGoals(state.goals)
+    setTimeout(() => render(), 1200)
   })
 
   // ── TAG EVENTS ──
@@ -2700,12 +3115,51 @@ function bindEvents() {
     })
   })
 
-  // Filter chips
+  // Filter chips — All lights up everything, individual tags toggle off
+  document.querySelectorAll('.tag-filter-chip[data-filter-all]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ns = el.dataset.filterAll
+      const tags = getTagsForNamespace(ns)
+      const active = state.activeTagFilters[ns]
+      const allSelected = active && tags.every(t => active.has(t.name))
+      if (allSelected) {
+        // All were selected — clicking again clears back to default (show all, nothing lit)
+        state.activeTagFilters[ns] = null
+      } else {
+        // Select all tags
+        state.activeTagFilters[ns] = new Set(tags.map(t => t.name))
+      }
+      render()
+    })
+  })
   document.querySelectorAll('.tag-filter-chip[data-filter-tag]').forEach(el => {
     el.addEventListener('click', () => {
-      state.activeTagFilter = el.dataset.filterTag || null
-      state.activeTagFilterNs = el.dataset.filterNs || null
-      state.showTagFilter = false
+      const ns = el.dataset.filterNs
+      const tag = el.dataset.filterTag
+      if (tag === '__untagged__') {
+        // Untagged is exclusive — toggle it on/off alone
+        const active = state.activeTagFilters[ns]
+        if (active && active.has('__untagged__')) {
+          state.activeTagFilters[ns] = null
+        } else {
+          state.activeTagFilters[ns] = new Set(['__untagged__'])
+        }
+        render()
+        return
+      }
+      if (!state.activeTagFilters[ns]) {
+        state.activeTagFilters[ns] = new Set([tag])
+      } else {
+        const active = state.activeTagFilters[ns]
+        // Clear untagged if switching to a real tag
+        active.delete('__untagged__')
+        if (active.has(tag)) {
+          active.delete(tag)
+          if (active.size === 0) state.activeTagFilters[ns] = null
+        } else {
+          active.add(tag)
+        }
+      }
       render()
     })
   })
@@ -2753,7 +3207,6 @@ function bindEvents() {
     })
   })
   document.getElementById('force-update-btn')?.addEventListener('click', async () => {
-    state.showHeaderMenu = false
     const btn = document.getElementById('force-update-btn')
     if (btn) { btn.textContent = '↻ Updating...'; btn.disabled = true }
     try {
@@ -2775,7 +3228,6 @@ function bindEvents() {
   document.getElementById('sync-toggle')?.addEventListener('click', () => {
     state.showSync = !state.showSync
     state.showGoals = false
-    state.showHeaderMenu = false
     render()
   })
   document.getElementById('sync-copy-btn')?.addEventListener('click', () => {
@@ -2818,17 +3270,21 @@ function bindEvents() {
     })
   })
   document.querySelectorAll('input[data-goal]').forEach(el => {
-    el.addEventListener('change', async () => {
+    const saveGoalField = async () => {
       const f = el.dataset.goal
-      state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+      const newVal = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
         ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
-      // Lock in start date when target weight is first set
+      // Only save if value actually changed
+      if (state.goals[f] === newVal) return
+      state.goals[f] = newVal
       if (f === 'target_weight' && el.value && !state.goals.goal_start_date) {
         state.goals.goal_start_date = new Date().toISOString().slice(0, 10)
       }
       await db.saveGoals(state.goals)
       render()
-    })
+    }
+    el.addEventListener('change', saveGoalField)
+    el.addEventListener('blur', saveGoalField)
   })
   document.querySelector('select[data-goal="activity_level"]')?.addEventListener('change', async e => {
     state.goals.activity_level = e.target.value
@@ -3029,7 +3485,17 @@ function bindEvents() {
       const r = state.recipes.find(x => x.id === el.dataset.shop)
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
-        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim()).filter(l => l.length > 2 && l.length < 120)
+        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^[\d]+\.\s*/, '').trim())
+        .filter(l => {
+          if (l.length < 3 || l.length > 150) return false
+          // Skip section headers (ends with colon, or is all caps, or starts with **)
+          if (l.endsWith(':') || l === l.toUpperCase() || l.startsWith('**')) return false
+          // Skip lines that are just numbers or just units
+          if (/^\d+$/.test(l)) return false
+          // Skip lines that look like instructions not ingredients (start with verbs)
+          if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
+          return true
+        })
       const items = ingLines.map(raw => {
         const name = parseIngredientLine(raw)
         const stripped = stripMeasurements(raw)
@@ -3062,6 +3528,27 @@ function bindEvents() {
       render()
     })
   })
+  document.querySelectorAll('.shop-review-tag-btn').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const idx = parseInt(el.dataset.reviewTagIdx)
+      const tag = el.dataset.reviewTag
+      if (!state.shopReview?.items[idx]) return
+      const item = state.shopReview.items[idx]
+      if (!item.tags) item.tags = []
+      if (item.tags.includes(tag)) {
+        item.tags = item.tags.filter(t => t !== tag)
+      } else {
+        item.tags.push(tag)
+      }
+      // Snapshot name inputs before re-render
+      document.querySelectorAll('.shop-review-name-input').forEach(inp => {
+        const i = parseInt(inp.dataset.reviewIdx)
+        if (state.shopReview?.items[i]) state.shopReview.items[i].name = inp.value.trim() || state.shopReview.items[i].name
+      })
+      render()
+    })
+  })
   document.querySelectorAll('.shop-review-name-input').forEach(el => {
     el.addEventListener('change', () => {
       const idx = parseInt(el.dataset.reviewIdx)
@@ -3074,7 +3561,6 @@ function bindEvents() {
   document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
   document.getElementById('shop-review-add')?.addEventListener('click', async () => {
     if (!state.shopReview) return
-    // Snapshot any edited names from inputs before saving
     document.querySelectorAll('.shop-review-name-input').forEach(el => {
       const idx = parseInt(el.dataset.reviewIdx)
       if (state.shopReview.items[idx]) {
@@ -3085,8 +3571,8 @@ function bindEvents() {
     for (const item of toAdd) {
       const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
       if (!already) {
-        const saved = await db.addShopItem(item.name, state.shopReview.recipeName)
-        if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe })
+        const saved = await db.addShopItem(item.name, state.shopReview.recipeName, item.tags || [])
+        if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe, tags: item.tags || [] })
       }
     }
     state.shopReview = null; state.tab = 'shop'; render()
@@ -3097,24 +3583,134 @@ function bindEvents() {
       e.stopPropagation()
       const rid = el.dataset.planRecipe
       const today = new Date().toISOString().slice(0, 10)
-      // Find which slot this recipe is planned in today (if any)
       const plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))
       const slot = plannedEntry?.meal_slot || 'Dinner'
       const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
-      const lastPlan = state._lastGamePlan
-      const isSame = lastPlan && lastPlan.slot === slot && lastPlan.date === today
-      if (!isSame) {
+      const chatKey = today + '-' + slot
+      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
+      if (hasPriorChat) {
+        state.gamePlanView = 'chat'
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid }
+        render()
+        setTimeout(() => {
+          const el = document.getElementById('gp-chat-messages')
+          if (el) el.scrollTop = el.scrollHeight
+        }, 50)
+      } else {
         state.gamePlanResult = null
         state.gamePlanLoading = false
         state.gamePlanView = 'timeline'
         state._lastGamePlan = { slot, date: today }
-      } else {
-        const chatKey = today + '-' + slot
-        const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
-        state.gamePlanView = hasPriorChat ? 'chat' : 'timeline'
+        state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
+        render()
       }
-      state.gamePlanModal = { slot, targetTime: (isSame && lastPlan?.targetTime) || defaultTime, date: today, recipeId: rid }
+    })
+  })
+
+  // Organize tags button
+  document.getElementById('organize-tags-btn')?.addEventListener('click', async () => {
+    const recipeTags = state.allTags.filter(t => t.namespace === 'recipe')
+    if (!recipeTags.length) return
+    // Open modal in loading state, ask AI to classify
+    state.tagOrganizerModal = { loading: true, tags: recipeTags }
+    render()
+    try {
+      const tagNames = recipeTags.map(t => t.name).join(', ')
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: `Classify these recipe tags as either "category" (what the dish IS — ingredient, protein, cuisine type like Chicken, Pork, Pasta, Salad, Soup, Italian) or "style" (how it's made or when it's served — like Sous Vide, Weeknight, Party Ideas, Meal Prep, Quick, Slow Cooker, Grilled). Return ONLY a JSON object like: {"Pork":"category","Sous Vide":"style"}. Tags: ${tagNames}` }]
+        })
+      })
+      const data = await resp.json()
+      const text = data.content?.[0]?.text || '{}'
+      const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+      const classified = JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0] || '{}')
+      // Apply AI suggestions to tags
+      const updatedTags = recipeTags.map(t => ({
+        ...t,
+        tag_type: classified[t.name] || t.tag_type || 'category'
+      }))
+      state.tagOrganizerModal = { loading: false, tags: updatedTags }
+    } catch(e) {
+      // If AI fails just show tags with current types for manual editing
+      state.tagOrganizerModal = { loading: false, tags: recipeTags }
+    }
+    render()
+  })
+
+  // Tag type toggle buttons in organizer
+  document.querySelectorAll('.tag-type-btn[data-tag-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      if (!state.tagOrganizerModal?.tags) return
+      const id = el.dataset.tagId
+      const type = el.dataset.tagType
+      const tag = state.tagOrganizerModal.tags.find(t => String(t.id) === String(id))
+      if (tag) { tag.tag_type = type; render() }
+    })
+  })
+
+  // Save tag organizer
+  document.getElementById('tag-organizer-save')?.addEventListener('click', async () => {
+    if (!state.tagOrganizerModal?.tags) return
+    for (const t of state.tagOrganizerModal.tags) {
+      await db.updateTagType(t.id, t.tag_type || 'category')
+      const existing = state.allTags.find(x => x.id === t.id)
+      if (existing) existing.tag_type = t.tag_type
+    }
+    state.tagOrganizerModal = false
+    render()
+  })
+
+  document.getElementById('tag-organizer-close')?.addEventListener('click', () => {
+    state.tagOrganizerModal = false; render()
+  })
+  document.getElementById('tag-organizer-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'tag-organizer-bg') { state.tagOrganizerModal = false; render() }
+  })
+  document.querySelectorAll('.chart-window-btn[data-window]').forEach(el => {
+    el.addEventListener('click', () => { state.chartWindow = el.dataset.window; render() })
+  })
+
+  document.querySelectorAll('.recipe-sort-btn[data-sort]').forEach(el => {
+    el.addEventListener('click', () => { state.recipeSort = el.dataset.sort; render() })
+  })
+
+  // View toggle
+  document.getElementById('view-cards-btn')?.addEventListener('click', () => { state.recipeView = 'cards'; render() })
+  document.getElementById('view-list-btn')?.addEventListener('click', () => { state.recipeView = 'list'; render() })
+
+  // List row expand/collapse
+  document.querySelectorAll('[data-expand-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.expandRecipe
+      state.expandedRecipe = state.expandedRecipe === id ? null : id
       render()
+    })
+  })
+
+  document.getElementById('toggle-archived-btn')?.addEventListener('click', () => {
+    state.showArchived = !state.showArchived; render()
+  })
+
+  document.querySelectorAll('[data-archive-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.archiveRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (r) { r.archived = true; await db.archiveRecipe(id, true); render() }
+    })
+  })
+
+  document.querySelectorAll('[data-restore-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.restoreRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (r) { r.archived = false; await db.archiveRecipe(id, false); render() }
     })
   })
 
@@ -3251,10 +3847,47 @@ function bindEvents() {
     const text = need.map(i => '• ' + i.name).join('\n')
     navigator.clipboard.writeText(text).then(() => alert('Shopping list copied!'))
   })
+  document.getElementById('shop-add-anyway')?.addEventListener('click', async () => {
+    const { val, tags } = state._shopPendingItem || {}
+    if (!val) return
+    const saved = await db.addShopItem(val, 'Manual')
+    if (saved) {
+      if (tags?.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
+      state.shopList.push({ ...saved, fromRecipe: 'Manual', tags: tags || [] })
+    }
+    state._shopPendingItem = null
+    state._shopPantryWarning = null
+    render()
+  })
+
+  document.getElementById('shop-skip-item')?.addEventListener('click', () => {
+    state._shopPendingItem = null
+    state._shopPantryWarning = null
+    render()
+  })
+
   document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
     const val = document.getElementById('shop-manual-input')?.value?.trim()
     if (!val) return
     const tags = Array.from(document.querySelectorAll('.shop-new-tag-check:checked')).map(el => el.dataset.tag)
+
+    // Fuzzy pantry check — does the pantry have something that contains or is contained by this item name?
+    const valWords = val.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+    const pantryMatch = state.pantry.find(p => {
+      const pl = p.name.toLowerCase()
+      const pWords = pl.split(/\s+/).filter(w => w.length > 2)
+      return pl.includes(val.toLowerCase()) || val.toLowerCase().includes(pl) ||
+        valWords.some(w => pWords.includes(w))
+    })
+
+    if (pantryMatch) {
+      // Show inline warning instead of adding immediately
+      state._shopPendingItem = { val, tags }
+      state._shopPantryWarning = pantryMatch.name
+      render()
+      return
+    }
+
     const saved = await db.addShopItem(val, 'Manual')
     if (saved) {
       if (tags.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
@@ -3441,9 +4074,10 @@ async function estimateCaloriesAI(description) {
     const now = new Date()
     const d = new Date(now)
     d.setDate(now.getDate() + state.logDayOffset)
-    const dateStr = d.toLocaleDateString('sv')
-    state.viewedDayLog = await db.fetchLogForDate(dateStr)
-    state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
+    const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+    state._viewedDateStr = dateStr
+    state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
+    state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
     render()
   })
   document.getElementById('log-next-day')?.addEventListener('click', async () => {
@@ -3452,13 +4086,15 @@ async function estimateCaloriesAI(description) {
     if (state.logDayOffset === 0) {
       state.viewedDayLog = null
       state.viewedDayExercise = null
+      state._viewedDateStr = null
     } else {
       const now = new Date()
       const d = new Date(now)
       d.setDate(now.getDate() + state.logDayOffset)
-      const dateStr = d.toLocaleDateString('sv')
-      state.viewedDayLog = await db.fetchLogForDate(dateStr)
-      state.viewedDayExercise = await db.fetchExerciseForDate(dateStr)
+      const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+      state._viewedDateStr = dateStr
+      state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
+      state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
     }
     render()
   })
@@ -3584,9 +4220,13 @@ async function estimateCaloriesAI(description) {
   })
 
   document.querySelectorAll('[data-log-del]').forEach(el => {
-    el.addEventListener('click', async () => {
-      state.log = state.log.filter(x => x.id !== el.dataset.logDel)
-      await db.deleteLogEntry(el.dataset.logDel); render()
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.logDel
+      state.log = state.log.filter(x => String(x.id) !== String(id))
+      if (state.viewedDayLog) state.viewedDayLog = state.viewedDayLog.filter(x => String(x.id) !== String(id))
+      await db.deleteLogEntry(id)
+      render()
     })
   })
   document.querySelectorAll('.ra-log[data-log-recipe]').forEach(el => {
@@ -3654,11 +4294,11 @@ async function estimateCaloriesAI(description) {
   })
 
   // Paste modal
-  document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; state.showHeaderMenu = false; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
 
   // Clip URL modal
   document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
-    state.clipUrlModal = true; state.showHeaderMenu = false; render()
+    state.clipUrlModal = true;  render()
     setTimeout(async () => {
       try {
         const text = await navigator.clipboard.readText()
@@ -3824,11 +4464,16 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-add-lib-tag]').forEach(el => {
     el.addEventListener('click', async () => {
       const ns = el.dataset.addLibTag
-      const input = document.getElementById('new-lib-tag-' + ns)
+      const tagType = el.dataset.tagType || 'category'
+      const inputId = el.dataset.inputId || ('new-lib-tag-' + ns)
+      const input = document.getElementById(inputId)
       const name = input?.value?.trim()
       if (!name) return
-      const saved = await db.saveTag(name, ns)
-      if (saved && !state.allTags.find(t => t.name === name && t.namespace === ns)) state.allTags.push(saved)
+      const saved = await db.saveTag(name, ns, tagType)
+      if (saved) {
+        saved.tag_type = tagType
+        if (!state.allTags.find(t => t.name === name && t.namespace === ns)) state.allTags.push(saved)
+      }
       if (input) input.value = ''
       render()
     })
@@ -3930,7 +4575,7 @@ async function estimateCaloriesAI(description) {
       state.calendarSearch = ''
       state.calendarTagFilter = null
       render()
-      setTimeout(() => document.getElementById('cal-search-input')?.focus(), 50)
+      setTimeout(() => document.getElementById('cal-manual-input')?.focus(), 50)
     })
   })
 
@@ -3940,7 +4585,7 @@ async function estimateCaloriesAI(description) {
       e.stopPropagation()
       state.calendarTagFilter = el.dataset.calTag || null
       render()
-      setTimeout(() => document.getElementById('cal-search-input')?.focus(), 50)
+      setTimeout(() => document.getElementById('cal-manual-input')?.focus(), 50)
     })
   })
 
@@ -3998,7 +4643,13 @@ async function estimateCaloriesAI(description) {
       if (!r) return
       const ingLines = (r.ingredients || r.text || '').split('\n')
         .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim())
-        .filter(l => l.length > 2 && l.length < 120)
+        .filter(l => {
+          if (l.length < 3 || l.length > 150) return false
+          if (l.endsWith(':') || l === l.toUpperCase() || l.startsWith('**')) return false
+          if (/^\d+$/.test(l)) return false
+          if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
+          return true
+        })
       const items = ingLines.map(raw => {
         const name = parseIngredientLine(raw)
         const stripped = stripMeasurements(raw)
@@ -4062,15 +4713,18 @@ async function estimateCaloriesAI(description) {
 
   // Add calories to a zero-calorie log entry
   document.querySelectorAll('.log-add-cals-btn[data-add-cals-id]').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
       const cals = prompt('How many calories?')
-      if (cals && !isNaN(parseInt(cals))) {
-        const entry = state.log.find(l => l.id === el.dataset.addCalsId)
-        if (entry) {
-          entry.calories = parseInt(cals)
-          db.updateLogEntry(entry.id, entry.calories)
-          render()
-        }
+      if (!cals || isNaN(parseInt(cals))) return
+      const id = el.dataset.addCalsId
+      const calories = parseInt(cals)
+      // Update in both today's log and viewed day log
+      const entry = [...(state.log || []), ...(state.viewedDayLog || [])].find(l => String(l.id) === String(id))
+      if (entry) {
+        entry.calories = calories
+        db.updateLogEntry(id, { calories })
+        render()
       }
     })
   })
@@ -4166,26 +4820,27 @@ async function estimateCaloriesAI(description) {
       const targetTime = el.dataset.gamePlanTime
       const date = el.dataset.gamePlanDate
       const recipeId = el.dataset.gamePlanRid
-      const lastPlan = state._lastGamePlan
-      const isSame = lastPlan && lastPlan.slot === slot && lastPlan.date === date
-      if (!isSame) {
-        state.gamePlanResult = null
-        state.gamePlanLoading = false
-        state.gamePlanView = 'timeline'
-        state._lastGamePlan = { slot, date }
-      } else {
-        // Reopen — if there's a prior chat, go straight to it
-        const chatKey = date + '-' + slot
-        const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
-        state.gamePlanView = hasPriorChat ? 'chat' : 'timeline'
-      }
-      state.gamePlanModal = { slot, targetTime: (isSame && lastPlan.targetTime) || targetTime, date, recipeId }
-      render()
-      if (state.gamePlanView === 'chat') {
+      const chatKey = date + '-' + slot
+      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
+      const hasPriorResult = state._lastGamePlan?.slot === slot && state._lastGamePlan?.date === date && state.gamePlanResult
+
+      if (hasPriorChat) {
+        // Has a saved chat — go straight to it
+        state.gamePlanView = 'chat'
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || targetTime, date, recipeId }
+        render()
         setTimeout(() => {
           const el = document.getElementById('gp-chat-messages')
           if (el) el.scrollTop = el.scrollHeight
         }, 50)
+      } else {
+        // No prior chat — show the generate screen
+        state.gamePlanResult = null
+        state.gamePlanLoading = false
+        state.gamePlanView = 'timeline'
+        state._lastGamePlan = { slot, date }
+        state.gamePlanModal = { slot, targetTime, date, recipeId }
+        render()
       }
     })
   })
@@ -4210,6 +4865,16 @@ async function estimateCaloriesAI(description) {
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
+  })
+
+  document.getElementById('gp-start-over')?.addEventListener('click', () => {
+    const { date, slot } = state.gamePlanModal || {}
+    const chatKey = (date || 'today') + '-' + (slot || 'Dinner')
+    state.gamePlanChats[chatKey] = []
+    state.gamePlanResult = null
+    state.gamePlanView = 'timeline'
+    state._lastGamePlan = null
+    render()
   })
 
   document.getElementById('gp-back-to-timeline')?.addEventListener('click', () => {
@@ -4276,33 +4941,61 @@ async function estimateCaloriesAI(description) {
   })
   document.getElementById('gp-generate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
+    const notes = document.getElementById('gp-notes')?.value?.trim() || ''
     const { slot, date, recipeId } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal, date, recipeId)
+    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    // Seed the chat thread and go straight to it
+    const chatKey = date + '-' + slot
+    const slotLabel = slot === 'Day' ? 'whole day' : slot
+    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    const seedMessages = []
+    if (notes) seedMessages.push({ role: 'user', content: notes })
+    seedMessages.push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
+    state.gamePlanChats[chatKey] = seedMessages
+    state.gamePlanView = 'chat'
     saveGamePlanToDb()
     render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
   })
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
-    const { slot, date, recipeId } = state.gamePlanModal
+    const { slot, date, recipeId, notes } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal, date, recipeId)
+    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    // Re-seed chat thread with new timeline
+    const chatKey = date + '-' + slot
+    const slotLabel = slot === 'Day' ? 'whole day' : slot
+    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    const seedMessages = []
+    if (notes) seedMessages.push({ role: 'user', content: notes })
+    seedMessages.push({ role: 'assistant', content: 'Here\'s your updated ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
+    state.gamePlanChats[chatKey] = seedMessages
+    state.gamePlanView = 'chat'
     saveGamePlanToDb()
     render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
   })
 
   // ── CHAT HANDLERS ──
