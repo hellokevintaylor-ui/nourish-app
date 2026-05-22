@@ -2788,8 +2788,8 @@ function renderCookMode() {
   return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
 
     // Header
-    '<div style="background:var(--forest);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
-      '<button id="cook-mode-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:white;padding:0;line-height:1">×</button>' +
+    '<div style="background:var(--forest);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+      '<button id="cook-mode-close" style="background:rgba(255,255,255,0.2);border:none;cursor:pointer;font-size:20px;color:white;padding:6px 10px;line-height:1;border-radius:8px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">×</button>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-size:16px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style="font-size:12px;opacity:0.75">(' + scaleLabel + ')</span>' : '') + '</div>' +
       '</div>' +
@@ -2895,8 +2895,8 @@ function renderGamePlanModal() {
   // ── FULLSCREEN COOK VIEW ──
   if (view === 'fullscreen' && result) {
     return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
-      '<div style="background:var(--forest);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
-        '<button id="gp-exit-fullscreen" style="background:none;border:none;cursor:pointer;font-size:22px;color:white;padding:0;line-height:1">×</button>' +
+      '<div style="background:var(--forest);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+        '<button id="gp-exit-fullscreen" style="background:rgba(255,255,255,0.2);border:none;cursor:pointer;font-size:20px;color:white;padding:6px 10px;line-height:1;border-radius:8px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">×</button>' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:15px;font-weight:700;color:white">' + slotLabel + ' Game Plan</div>' +
           '<div style="font-size:11px;color:rgba(255,255,255,0.7)">' + dateLabel + ' · ' + esc(timeVal) + '</div>' +
@@ -4193,39 +4193,45 @@ async function estimateCaloriesAI(description) {
   }
 
   document.getElementById('log-add-btn')?.addEventListener('click', async () => {
-    const food = document.getElementById('log-food')?.value?.trim()
-    const qty = document.getElementById('log-qty')?.value?.trim()
-    const unit = document.getElementById('log-unit')?.value
-    const notes = document.getElementById('log-notes')?.value?.trim()
+    const foodEl = document.getElementById('log-food')
+    const qtyEl = document.getElementById('log-qty')
+    const unitEl = document.getElementById('log-unit')
+    const notesEl = document.getElementById('log-notes')
+    const food = foodEl?.value?.trim()
+    const qty = qtyEl?.value?.trim()
+    const unit = unitEl?.value || ''
+    const notes = notesEl?.value?.trim() || ''
     if (!food) return
 
-    // Build structured food string for display and AI
     let foodStr = food
     if (qty && unit) foodStr = qty + ' ' + unit + ' ' + food
     else if (qty) foodStr = qty + ' ' + food
 
-    // Build AI prompt with notes for better accuracy
     const aiQuery = notes ? foodStr + ' — ' + notes : foodStr
 
     const btn = document.getElementById('log-add-btn')
     if (btn) { btn.textContent = '...'; btn.disabled = true }
-    const { calories, breakdown } = await estimateCaloriesAI(aiQuery)
-    const isToday = (state.logDayOffset || 0) === 0
-    const dateStr = isToday ? null : state._viewedDateStr
-    const saved = await db.addLogEntry(foodStr + (notes ? ' (' + notes + ')' : ''), calories, null, dateStr)
-    if (saved) {
-      saved.breakdown = breakdown
-      if (isToday) {
-        state.log.push(saved)
-      } else {
-        state.viewedDayLog = state.viewedDayLog || []
-        state.viewedDayLog.push(saved)
+    try {
+      const { calories, breakdown } = await estimateCaloriesAI(aiQuery)
+      const isToday = (state.logDayOffset || 0) === 0
+      const dateStr = isToday ? null : state._viewedDateStr
+      const saved = await db.addLogEntry(foodStr + (notes ? ' (' + notes + ')' : ''), calories, null, dateStr)
+      if (saved) {
+        saved.breakdown = breakdown
+        if (isToday) {
+          state.log.push(saved)
+        } else {
+          state.viewedDayLog = state.viewedDayLog || []
+          state.viewedDayLog.push(saved)
+        }
       }
+      if (foodEl) foodEl.value = ''
+      if (qtyEl) qtyEl.value = ''
+      if (unitEl) unitEl.value = ''
+      if (notesEl) notesEl.value = ''
+    } catch(e) {
+      console.error('Log add error:', e)
     }
-    document.getElementById('log-food').value = ''
-    document.getElementById('log-qty').value = ''
-    document.getElementById('log-unit').value = ''
-    document.getElementById('log-notes').value = ''
     if (btn) { btn.textContent = '+ Add'; btn.disabled = false }
     render()
   })
