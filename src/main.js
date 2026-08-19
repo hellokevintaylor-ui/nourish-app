@@ -15,6 +15,7 @@ const state = {
   cookMode: null,  // { recipeId, tab: 'ingredients'|'instructions' }
   chartWindow: '1M',  // '1W', '2W', '1M', '3M', 'All'
   expandedRecipe: null,
+  calendarRecipePreview: null, // recipe id to show in modal from week tab
   activeCategory: 'All',
   allTags: [],
   activeTagFilters: {},   // keyed by namespace, null=default/show all, Set=explicit selection
@@ -66,6 +67,7 @@ const state = {
   _shopPendingItem: null,
   _shopPantryWarning: null,
   pasteModal: false,
+  pasteModalDraft: { name: '', text: '', ingredients: '', instructions: '' }, // persists across re-renders
   addRecipeModal: false,
   logModal: null,
   gamePlanModal: false,
@@ -966,6 +968,7 @@ function render() {
       ${state.cookMode ? renderCookMode() : ''}
       ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
       ${state.gamePlanModal  ? renderGamePlanModal() : ''}
+      ${state.calendarRecipePreview ? renderCalendarRecipePreviewModal() : ''}
 
       <!-- SCROLL TO TOP -->
       <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--forest);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
@@ -1271,6 +1274,7 @@ function renderRecipeCard(r) {
         ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest);flex:1;font-size:11px;padding:5px 4px">Restore</button>'
         : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3);flex:1;font-size:11px;padding:5px 4px">Archive</button>') +
       '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.6;font-size:11px;padding:5px 4px">Del</button>' +
+      '<button class="ra-btn" data-share-recipe="' + r.id + '" style="flex:0.8;font-size:11px;padding:5px 4px">📤 Share</button>' +
     '</div>' +
   '</div>'
 
@@ -1509,7 +1513,7 @@ function renderShop() {
     '<div class="shop-header">' +
       '<div class="section-title">Shopping List</div>' +
       '<div style="display:flex;gap:6px">' +
-        (state.shopList.length > 0 ? '<button class="icon-btn" id="shop-copy-btn">Copy</button>' : '') +
+        (state.shopList.length > 0 ? '<button class="icon-btn" id="shop-copy-btn">📤 Share</button>' : '') +
         (done.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear-checked" style="background:var(--cream2);color:var(--ink2);border:1px solid var(--border)">Clear checked (' + done.length + ')</button>' : '') +
         (state.shopList.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear">Clear all</button>' : '') +
       '</div>' +
@@ -2228,6 +2232,25 @@ function buildAgentContext(profile) {
     (profile.topRecipes.length ? '- Most cooked: ' + profile.topRecipes.join(', ') + '\n' : '') +
     (profile.staleRecipes.length ? '- Not cooked recently: ' + profile.staleRecipes.join(', ') + '\n' : '') +
     (profile.topFoods.length ? '- Most logged foods: ' + profile.topFoods.join(', ') + '\n' : '')
+}
+
+function renderCalendarRecipePreviewModal() {
+  const r = state.recipes.find(r => r.id === state.calendarRecipePreview)
+  if (!r) return ''
+  // Temporarily expand the recipe so renderRecipeCard shows full detail
+  const prev = state.expandedRecipe
+  state.expandedRecipe = r.id
+  const cardHtml = renderRecipeCard(r)
+  state.expandedRecipe = prev
+  return '<div class="modal-bg" id="cal-recipe-preview-bg" style="z-index:200;align-items:flex-end">' +
+    '<div class="modal-sheet" style="max-height:88vh;overflow-y:auto;border-radius:20px 20px 0 0;padding:0">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:1">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--ink2)">Recipe</div>' +
+        '<button id="cal-recipe-preview-close" style="background:none;border:none;font-size:20px;color:var(--ink3);cursor:pointer;line-height:1;padding:0">&times;</button>' +
+      '</div>' +
+      '<div style="padding:0 4px 20px">' + cardHtml + '</div>' +
+    '</div>' +
+  '</div>'
 }
 
 function renderCalendar() {
@@ -3051,10 +3074,10 @@ function renderPasteModal() {
   const warning = r && r.warning ? '<div class="modal-note" style="color:var(--terra);background:#fff5f2;border-radius:8px;padding:8px 10px;margin-bottom:8px">[!] ' + esc(r.warning) + '</div>' : ''
   const nameVal = r ? esc(r.name || '') : ''
   const bodyFields = r ?
-    '<div class="clip-field-label">Ingredients</div><textarea id="paste-ingredients" style="min-height:100px" placeholder="One ingredient per line...">' + esc(r.ingredients || '') + '</textarea>' +
-    '<div class="clip-field-label">Instructions</div><textarea id="paste-instructions" style="min-height:80px" placeholder="Step by step...">' + esc(r.instructions || '') + '</textarea>'
+    '<div class="clip-field-label">Ingredients</div><textarea id="paste-ingredients" style="min-height:100px" placeholder="One ingredient per line...">' + esc(state.pasteModalDraft.ingredients || r.ingredients || '') + '</textarea>' +
+    '<div class="clip-field-label">Instructions</div><textarea id="paste-instructions" style="min-height:80px" placeholder="Step by step...">' + esc(state.pasteModalDraft.instructions || r.instructions || '') + '</textarea>'
   :
-    '<textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving."></textarea>'
+    '<textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving.">' + esc(state.pasteModalDraft.text || '') + '</textarea>'
   const recipeTags = getTagsForNamespace('recipe')
   const tagSection = recipeTags.length > 0 ?
     '<div class="clip-field-label">Tags</div>' +
@@ -3070,7 +3093,7 @@ function renderPasteModal() {
     '<div class="modal-title">' + title + '</div>' +
     '<div class="modal-sub">' + sub + '</div>' +
     warning +
-    '<input id="paste-name" placeholder="Recipe name" value="' + nameVal + '" />' +
+    '<input id="paste-name" placeholder="Recipe name" value="' + (state.pasteModalDraft.name || nameVal) + '" />' +
     bodyFields +
     tagSection +
     '<div class="modal-btns"><button class="modal-cancel" id="paste-cancel">Cancel</button><button class="modal-save" id="paste-save">Save to Recipe Box</button></div>' +
@@ -3863,6 +3886,27 @@ function bindEvents() {
     })
   })
 
+  // Share recipe
+  document.querySelectorAll('[data-share-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.shareRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (!r) return
+      const lines = [r.name]
+      if (r.clippedFrom) lines.push('Source: ' + r.clippedFrom)
+      lines.push('')
+      if (r.ingredients) lines.push('Ingredients\n' + r.ingredients)
+      if (r.instructions) lines.push('\nInstructions\n' + r.instructions)
+      const text = lines.join('\n')
+      if (navigator.share) {
+        navigator.share({ title: r.name, text }).catch(() => {})
+      } else {
+        navigator.clipboard.writeText(text).then(() => alert('Recipe copied to clipboard!'))
+      }
+    })
+  })
+
   document.querySelectorAll('[data-del]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
@@ -3993,8 +4037,26 @@ function bindEvents() {
   })
   document.getElementById('shop-copy-btn')?.addEventListener('click', () => {
     const need = state.shopList.filter(i => !i.have)
-    const text = need.map(i => '• ' + i.name).join('\n')
-    navigator.clipboard.writeText(text).then(() => alert('Shopping list copied!'))
+    // Group by tag if tags exist
+    const tagged = {}
+    const untagged = []
+    need.forEach(i => {
+      if (i.tags && i.tags.length) {
+        i.tags.forEach(t => { if (!tagged[t]) tagged[t] = []; tagged[t].push(i.name) })
+      } else {
+        untagged.push(i.name)
+      }
+    })
+    let text = 'Shopping List\n'
+    Object.entries(tagged).forEach(([tag, items]) => {
+      text += '\n' + tag + '\n' + items.map(n => '• ' + n).join('\n')
+    })
+    if (untagged.length) text += '\n' + untagged.map(n => '• ' + n).join('\n')
+    if (navigator.share) {
+      navigator.share({ title: 'Shopping List', text: text.trim() }).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(text.trim()).then(() => alert('Shopping list copied!'))
+    }
   })
   document.getElementById('shop-add-anyway')?.addEventListener('click', async () => {
     const { val, tags } = state._shopPendingItem || {}
@@ -4590,7 +4652,13 @@ async function estimateCaloriesAI(description) {
       render()
     })
   })
-  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() })
+  // Save paste modal draft on every keystroke so switching tabs doesn't wipe input
+  document.getElementById('paste-name')?.addEventListener('input', e => { state.pasteModalDraft.name = e.target.value })
+  document.getElementById('paste-text')?.addEventListener('input', e => { state.pasteModalDraft.text = e.target.value })
+  document.getElementById('paste-ingredients')?.addEventListener('input', e => { state.pasteModalDraft.ingredients = e.target.value })
+  document.getElementById('paste-instructions')?.addEventListener('input', e => { state.pasteModalDraft.instructions = e.target.value })
+
+  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; render() })
   document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
   document.getElementById('paste-save')?.addEventListener('click', async () => {
     const name = document.getElementById('paste-name')?.value?.trim()
@@ -4621,7 +4689,7 @@ async function estimateCaloriesAI(description) {
         }
       })
     }
-    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.tab = 'recipes'; render()
+    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; state.tab = 'recipes'; render()
   })
 
   // Chat handled by chat handlers below
@@ -4912,15 +4980,34 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-go-recipe]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      state.tab = 'recipes'
-      state.expandedRecipe = String(el.dataset.goRecipe)
-      render()
-      // Scroll to the expanded recipe card
-      setTimeout(() => {
-        const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
+      if (state.tab === 'calendar') {
+        state.calendarRecipePreview = String(el.dataset.goRecipe)
+        state.expandedRecipe = String(el.dataset.goRecipe)
+        render()
+      } else {
+        state.tab = 'recipes'
+        state.expandedRecipe = String(el.dataset.goRecipe)
+        render()
+        setTimeout(() => {
+          const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 100)
+      }
     })
+  })
+
+  // Close calendar recipe preview modal
+  document.getElementById('cal-recipe-preview-close')?.addEventListener('click', () => {
+    state.calendarRecipePreview = null
+    state.expandedRecipe = null
+    render()
+  })
+  document.getElementById('cal-recipe-preview-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'cal-recipe-preview-bg') {
+      state.calendarRecipePreview = null
+      state.expandedRecipe = null
+      render()
+    }
   })
 
   // Add to Week from recipe card
@@ -5271,7 +5358,9 @@ document.addEventListener('visibilitychange', async () => {
     // Purge checked items older than 1 hour on tab focus too
     purgeStaleCheckedItems()
 
-    render()
+    // Don't re-render if paste modal is open — would wipe typed text
+    // (draft is saved per-keystroke in state.pasteModalDraft instead)
+    if (!state.pasteModal) render()
 
     // Check clipboard for a recipe URL
     try {
