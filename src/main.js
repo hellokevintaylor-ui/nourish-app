@@ -2790,11 +2790,22 @@ function renderCookMode() {
     const stepLower = stepText.toLowerCase()
     const matches = []
     parsedIngredients.forEach(ing => {
-      if (!ing.name) return
-      // Check if the step mentions this ingredient
-      const words = ing.name.replace(/[^a-z\s]/g, '').split(/\s+/).filter(w => w.length > 3)
-      const anyMatch = words.some(w => stepLower.includes(w))
-      if (anyMatch && ing.amount) {
+      if (!ing.name || !ing.amount) return
+      // Try matching significant words from the ingredient name against the step
+      // Strip common filler words, then check if any meaningful word appears
+      const stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each'])
+      const words = ing.name
+        .replace(/[^a-z\s]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 2 && !stopWords.has(w))
+      // For multi-word ingredients, try the full name first, then individual words
+      const fullNameMatch = ing.name.length > 3 && stepLower.includes(ing.name.split(' ').slice(0, 2).join(' '))
+      const anyWordMatch = words.some(w => {
+        // Require a word boundary-ish match — word must appear as a standalone token
+        const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b')
+        return re.test(stepLower)
+      })
+      if ((fullNameMatch || anyWordMatch) && !matches.find(m => m === (ing.full || ing.name))) {
         matches.push(ing.full || (ing.amount + ' ' + ing.name))
       }
     })
@@ -2851,34 +2862,36 @@ function renderCookMode() {
     }).join('') +
   '</div>'
 
-  return '<div style="position:fixed;inset:0;z-index:2000;background:var(--white);display:flex;flex-direction:column;font-family:inherit">' +
+  // Bottom sheet — same pattern as all other modals, NOT full screen
+  return '<div class="modal-bg" id="cook-mode-bg" style="z-index:300;align-items:flex-end">' +
+    '<div class="modal-sheet" style="max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:20px 20px 0 0">' +
 
-    // Black header
-    '<div style="background:#1a1a1a;padding:env(safe-area-inset-top,14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
-      '<button id="cook-mode-close" style="width:32px;height:32px;background:rgba(255,255,255,0.1);border:none;cursor:pointer;font-size:18px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:15px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style=\"font-size:12px;opacity:0.6\">(' + scaleLabel + ')</span>' : '') + '</div>' +
-        '<div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">' + (r.clippedFrom ? esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) : 'Recipe') + '</div>' +
+      // Black header
+      '<div style="background:#1a1a1a;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-radius:20px 20px 0 0">' +
+        '<button id="cook-mode-close" style="width:32px;height:32px;background:rgba(255,255,255,0.1);border:none;cursor:pointer;font-size:18px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:15px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style="font-size:12px;opacity:0.6">(' + scaleLabel + ')</span>' : '') + '</div>' +
+          '<div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">' + (r.clippedFrom ? esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) : 'Recipe') + '</div>' +
+        '</div>' +
+        '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:11px;flex-shrink:0">📋 Plan</button>' +
+        '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">Ask AI</button>' +
       '</div>' +
-      // Plan + Ask AI live here now
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:11px;flex-shrink:0">📋 Plan</button>' +
-      '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">Ask AI</button>' +
-    '</div>' +
 
-    // Tab bar
-    '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white);flex-shrink:0">' +
-      tabBtn('ingredients', 'Ingredients') +
-      tabBtn('instructions', 'Instructions') +
-    '</div>' +
+      // Tab bar
+      '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white);flex-shrink:0">' +
+        tabBtn('ingredients', 'Ingredients') +
+        tabBtn('instructions', 'Instructions') +
+      '</div>' +
 
-    // Content
-    '<div style="flex:1;overflow-y:auto;padding:4px 16px 20px">' +
-      (activeTab === 'ingredients'
-        ? scaleRow + ingredientsHtml
-        : instructionsHtml
-      ) +
-    '</div>' +
+      // Content
+      '<div style="flex:1;overflow-y:auto;padding:4px 16px 20px">' +
+        (activeTab === 'ingredients'
+          ? scaleRow + ingredientsHtml
+          : instructionsHtml
+        ) +
+      '</div>' +
 
+    '</div>' +
   '</div>'
 }
 function gpChatKey() {
@@ -3822,6 +3835,9 @@ function bindEvents() {
   })
   document.getElementById('cook-mode-close')?.addEventListener('click', () => {
     state.cookMode = null; render()
+  })
+  document.getElementById('cook-mode-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'cook-mode-bg') { state.cookMode = null; render() }
   })
   document.getElementById('cook-tab-ingredients')?.addEventListener('click', () => {
     state.cookMode = { ...state.cookMode, tab: 'ingredients' }; render()
