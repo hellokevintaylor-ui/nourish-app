@@ -69,6 +69,7 @@ const state = {
   pasteModal: false,
   pasteModalDraft: { name: '', text: '', ingredients: '', instructions: '' }, // persists across re-renders
   addRecipeModal: false,
+  addRecipeModalDraft: { name: '', ingredients: '', instructions: '', notes: '', tags: [] },
   logModal: null,
   gamePlanModal: false,
   gamePlanResult: null,
@@ -1376,18 +1377,23 @@ function renderRecipes() {
       ` : ''}
       ${state.addRecipeModal ? `
         <div class="recipe-add-box">
-          <input id="r-name" placeholder="Recipe name" />
+          <input id="r-name" placeholder="Recipe name" value="${esc(state.addRecipeModalDraft.name)}" />
           <div class="clip-field-label">Ingredients</div>
-          <textarea id="r-ingredients" placeholder="One ingredient per line..."></textarea>
+          <textarea id="r-ingredients" placeholder="One ingredient per line...">${esc(state.addRecipeModalDraft.ingredients)}</textarea>
           <div class="clip-field-label">Instructions</div>
-          <textarea id="r-instructions" placeholder="Step by step..."></textarea>
-          <div class="clip-field-label">Category</div>
-          <select id="r-category" class="category-select">
-            <option value="">No category</option>
-            ${categoryOptions('')}
-          </select>
+          <textarea id="r-instructions" placeholder="Step by step...">${esc(state.addRecipeModalDraft.instructions)}</textarea>
+          ${getTagsForNamespace('recipe').length > 0 ? `
+          <div class="clip-field-label">Tags</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
+            ${getTagsForNamespace('recipe').map(t =>
+              `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:8px 10px;min-width:0">
+                <input type="checkbox" class="r-tag-check" data-tag="${esc(t.name)}" ${state.addRecipeModalDraft.tags.includes(t.name) ? 'checked' : ''} style="accent-color:var(--forest);flex-shrink:0;width:16px;height:16px" />
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.name)}</span>
+              </label>`
+            ).join('')}
+          </div>` : ''}
           <div class="add-row" style="margin-top:8px">
-            <input id="r-notes" placeholder="Note (optional)" style="flex:1" />
+            <input id="r-notes" placeholder="Note (optional)" style="flex:1" value="${esc(state.addRecipeModalDraft.notes)}" />
             <button class="add-btn" id="r-save-btn">Save</button>
             <button class="clip-cancel-btn" id="r-cancel-btn">Cancel</button>
           </div>
@@ -3545,17 +3551,39 @@ function bindEvents() {
       document.getElementById('clip-url-input')?.focus()
     }, 100)
   })
-  document.getElementById('r-cancel-btn')?.addEventListener('click', () => { state.addRecipeModal = false; render() })
+  document.getElementById('r-cancel-btn')?.addEventListener('click', () => {
+    state.addRecipeModal = false
+    state.addRecipeModalDraft = { name: '', ingredients: '', instructions: '', notes: '', tags: [] }
+    render()
+  })
+  // Persist add recipe modal draft on every keystroke
+  document.getElementById('r-name')?.addEventListener('input', e => { state.addRecipeModalDraft.name = e.target.value })
+  document.getElementById('r-ingredients')?.addEventListener('input', e => { state.addRecipeModalDraft.ingredients = e.target.value })
+  document.getElementById('r-instructions')?.addEventListener('input', e => { state.addRecipeModalDraft.instructions = e.target.value })
+  document.getElementById('r-notes')?.addEventListener('input', e => { state.addRecipeModalDraft.notes = e.target.value })
+  document.querySelectorAll('.r-tag-check').forEach(el => {
+    el.addEventListener('change', () => {
+      const checked = [...document.querySelectorAll('.r-tag-check:checked')].map(c => c.dataset.tag)
+      state.addRecipeModalDraft.tags = checked
+    })
+  })
+
   document.getElementById('r-save-btn')?.addEventListener('click', async () => {
     const name = document.getElementById('r-name')?.value?.trim()
     const ingredients = document.getElementById('r-ingredients')?.value?.trim()
     const instructions = document.getElementById('r-instructions')?.value?.trim()
     const notes = document.getElementById('r-notes')?.value?.trim()
-    const category = document.getElementById('r-category')?.value || ''
+    const tags = state.addRecipeModalDraft.tags || []
     if (!name) return
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, category })
-    if (saved) state.recipes.unshift(normalizeRecipe(saved))
-    state.addRecipeModal = false; render()
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, clippedFrom: '', tags })
+    if (saved) {
+      const normalized = normalizeRecipe(saved)
+      if (tags.length) { normalized.tags = tags; await db.updateRecipeTags(saved.id, tags) }
+      state.recipes.unshift(normalized)
+    }
+    state.addRecipeModal = false
+    state.addRecipeModalDraft = { name: '', ingredients: '', instructions: '', notes: '', tags: [] }
+    render()
   })
 
   document.querySelectorAll('.recipe-card-header').forEach(el => {
@@ -5358,9 +5386,9 @@ document.addEventListener('visibilitychange', async () => {
     // Purge checked items older than 1 hour on tab focus too
     purgeStaleCheckedItems()
 
-    // Don't re-render if paste modal is open — would wipe typed text
-    // (draft is saved per-keystroke in state.pasteModalDraft instead)
-    if (!state.pasteModal) render()
+    // Don't re-render if a text-entry modal is open — would wipe typed text
+    // (drafts are saved per-keystroke in state.*ModalDraft instead)
+    if (!state.pasteModal && !state.addRecipeModal) render()
 
     // Check clipboard for a recipe URL
     try {
