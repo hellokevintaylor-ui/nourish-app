@@ -966,7 +966,7 @@ function render() {
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
-      ${state.cookMode ? renderCookMode() : ''}
+      
       ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
       ${state.gamePlanModal  ? renderGamePlanModal() : ''}
       ${state.calendarRecipePreview ? renderCalendarRecipePreviewModal() : ''}
@@ -1151,6 +1151,11 @@ function renderRecipeCard(r) {
     '</div>'
 
   if (!isExpanded) return header + '</div>'
+
+  // ── COOK MODE: swaps in place of the card body ──
+  if (state.cookMode && state.cookMode.recipeId === r.id) {
+    return header + renderCookModeInline(r) + '</div>'
+  }
 
   // ── EXPANDED: action buttons + tag editor + prep time box ──
   // No ingredients, no instructions — those live in Cook mode
@@ -2758,17 +2763,13 @@ function renderTagOrganizerModal() {
   '</div>'
 }
 
-function renderCookMode() {
-  const { recipeId, tab, scaledIngredients, scaleLabel } = state.cookMode || {}
-  const r = state.recipes.find(x => x.id === recipeId)
-  if (!r) return ''
+function renderCookModeInline(r) {
+  const { tab, scaledIngredients, scaleLabel, checkedIngredients, stepAmounts, stepAmountsLoading } = state.cookMode || {}
   const activeTab = tab || 'ingredients'
 
   const ingredientSource = scaledIngredients || r.ingredients || ''
   const ingredients = ingredientSource.split('\n').map(l => l.trim()).filter(Boolean)
 
-  // ── AI-assisted step+amounts parsing ──
-  // We parse steps from instructions and attach ingredient amounts as chips
   const rawInstructions = r.instructions || r.text || ''
   const steps = rawInstructions
     .split(/\n+/)
@@ -2777,121 +2778,93 @@ function renderCookMode() {
     .map(l => l.replace(/^(step\s*\d+[.:]?\s*|\d+\.\s*)/i, ''))
     .filter(l => l.length > 4)
 
-  // Simple heuristic: find ingredient mentions in each step
-  // Match things like "1 cup", "2 tbsp", "3 cloves", "1 lb" etc from ingredient list
-  const ingAmountRegex = /^([\d¼½¾⅓⅔⅛⅜⅝⅞\/\-\s]+(?:cup|tbsp|tsp|oz|lb|g|kg|ml|l|clove|cloves|can|can|bunch|sprig|sprigs|slice|slices|piece|pieces|stalk|stalks|head|heads|inch|cm|medium|large|small|whole)?[\s]*)(.+)/i
-  const parsedIngredients = ingredients.map(line => {
-    const m = line.match(ingAmountRegex)
-    if (!m) return { amount: '', name: line.toLowerCase() }
-    return { amount: m[1].trim(), name: m[2].toLowerCase().trim(), full: line }
-  })
-
-  const getChipsForStep = (stepText) => {
-    const stepLower = stepText.toLowerCase()
-    const matches = []
-    parsedIngredients.forEach(ing => {
-      if (!ing.name || !ing.amount) return
-      // Try matching significant words from the ingredient name against the step
-      // Strip common filler words, then check if any meaningful word appears
-      const stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each'])
-      const words = ing.name
-        .replace(/[^a-z\s]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 2 && !stopWords.has(w))
-      // For multi-word ingredients, try the full name first, then individual words
-      const fullNameMatch = ing.name.length > 3 && stepLower.includes(ing.name.split(' ').slice(0, 2).join(' '))
-      const anyWordMatch = words.some(w => {
-        // Require a word boundary-ish match — word must appear as a standalone token
-        const re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b')
-        return re.test(stepLower)
-      })
-      if ((fullNameMatch || anyWordMatch) && !matches.find(m => m === (ing.full || ing.name))) {
-        matches.push(ing.full || (ing.amount + ' ' + ing.name))
-      }
-    })
-    return matches
+  // Parse ingredient amounts for chips on instruction steps
+  // stepAmounts comes from AI — keyed by step number (1-based)
+  const getChipsForStep = (stepIdx) => {
+    if (!stepAmounts) return []
+    return stepAmounts[stepIdx + 1] || []
   }
 
   const notesHtml = r.cookingNotes
-    ? '<div style="margin-top:20px;padding:12px 14px;background:var(--gray-50);border:0.5px solid var(--border);border-radius:10px">' +
+    ? '<div style="margin-top:16px;padding:12px 14px;background:var(--gray-50);border:0.5px solid var(--border);border-radius:10px">' +
         '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">My notes</div>' +
         '<div style="font-size:14px;line-height:1.6;color:var(--text-2)">' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' +
       '</div>'
     : ''
 
   const tabBtn = (tabId, label) =>
-    '<button id="cook-tab-' + tabId + '" style="flex:1;padding:11px;font-size:13px;font-weight:' +
+    '<button id="cook-tab-' + tabId + '" style="flex:1;padding:10px;font-size:13px;font-weight:' +
     (activeTab===tabId?'700':'500') + ';color:' + (activeTab===tabId?'var(--accent)':'var(--text-3)') +
     ';background:none;border:none;border-bottom:2px solid ' + (activeTab===tabId?'var(--accent)':'transparent') +
     ';cursor:pointer;font-family:inherit">' + label + '</button>'
 
+  const checkedSet = checkedIngredients || new Set()
+
   const ingredientsHtml = ingredients.length > 0
     ? ingredients.map((line, i) => {
-        const isChecked = (state.cookMode.checkedIngredients || new Set()).has(i)
-        return '<div style="display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:0.5px solid var(--border);cursor:pointer" class="cook-ing-row" data-ing-idx="' + i + '">' +
+        const isChecked = checkedSet.has(i)
+        return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);cursor:pointer" class="cook-ing-row" data-ing-idx="' + i + '">' +
           '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'var(--border-strong)':'var(--accent)') + ';margin-top:8px;flex-shrink:0"></div>' +
-          '<div style="font-size:16px;line-height:1.4;color:' + (isChecked?'var(--text-4)':'var(--text)') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + linkifyTimers(esc(line)) + '</div>' +
+          '<div style="font-size:15px;line-height:1.4;color:' + (isChecked?'var(--text-4)':'var(--text)') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + linkifyTimers(esc(line)) + '</div>' +
         '</div>'
       }).join('')
-    : '<div style="color:var(--text-4);font-style:italic;padding:20px 0">No ingredients listed</div>'
+    : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No ingredients listed</div>'
+
+  // Show loading state while AI maps amounts to steps
+  const amountsLoadingBanner = stepAmountsLoading
+    ? '<div style="font-size:12px;color:var(--text-3);padding:8px 0 4px;font-style:italic">Mapping ingredient amounts to steps...</div>'
+    : (!stepAmounts && activeTab === 'instructions'
+        ? '<div style="font-size:12px;color:var(--text-3);padding:8px 0 4px;font-style:italic">Tap Instructions to load ingredient amounts per step</div>'
+        : '')
 
   const instructionsHtml = steps.length > 0
-    ? steps.map((step, i) => {
-        const chips = getChipsForStep(step)
+    ? amountsLoadingBanner + steps.map((step, i) => {
+        const chips = getChipsForStep(i)
         const chipsHtml = chips.length > 0
-          ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' +
+          ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">' +
               chips.map(c => '<span style="font-size:11px;font-weight:500;color:var(--text-2);background:var(--gray-100);border:0.5px solid var(--border-strong);border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
             '</div>'
           : ''
-        return '<div style="padding:14px 0;border-bottom:0.5px solid var(--border)">' +
-          '<div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">Step ' + (i+1) + '</div>' +
+        return '<div style="padding:12px 0;border-bottom:0.5px solid var(--border)">' +
+          '<div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Step ' + (i+1) + '</div>' +
           '<div style="font-size:15px;line-height:1.7;color:var(--text)">' + linkifyTimers(esc(step)) + '</div>' +
           chipsHtml +
         '</div>'
       }).join('') + notesHtml
     : (rawInstructions
-        ? '<div style="font-size:15px;line-height:1.8;color:var(--text)">' + linkifyTimers(esc(rawInstructions)) + '</div>' + notesHtml
-        : '<div style="color:var(--text-4);font-style:italic;padding:20px 0">No instructions listed</div>')
+        ? '<div style="font-size:15px;line-height:1.8;color:var(--text);padding:12px 0">' + linkifyTimers(esc(rawInstructions)) + '</div>' + notesHtml
+        : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No instructions listed</div>')
 
-  // Scale buttons row (shown on ingredients tab)
-  const scaleRow = '<div style="display:flex;gap:6px;padding:10px 0 4px;align-items:center">' +
+  const scaleRow = '<div style="display:flex;gap:6px;padding:8px 0 4px;align-items:center">' +
     '<span style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0">Scale</span>' +
     ['½x','1x','2x','3x'].map(s => {
-      const isActive = s === '1x' && !scaledIngredients || scaleLabel === s
-      return '<button class="scale-btn' + (isActive?' scale-btn-active':'') + '" data-scale="' + s + '" data-recipe-id="' + r.id + '" style="' + (isActive?'background:var(--black);color:white;border-color:var(--black)':'') + '">' + s + '</button>'
+      const isActive = (s === '1x' && !scaledIngredients) || scaleLabel === s
+      return '<button class="scale-btn" data-scale="' + s + '" data-recipe-id="' + r.id + '" style="' + (isActive?'background:var(--black);color:white;border-color:var(--black);':'') + '">' + s + '</button>'
     }).join('') +
   '</div>'
 
-  // Bottom sheet — same pattern as all other modals, NOT full screen
-  return '<div class="modal-bg" id="cook-mode-bg" style="z-index:300;align-items:flex-end">' +
-    '<div class="modal-sheet" style="max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:20px 20px 0 0">' +
+  // Inline card — same shape as recipe card, swapped in place
+  return '<div style="border-top:0.5px solid var(--border)">' +
 
-      // Black header
-      '<div style="background:#1a1a1a;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-radius:20px 20px 0 0">' +
-        '<button id="cook-mode-close" style="width:32px;height:32px;background:rgba(255,255,255,0.1);border:none;cursor:pointer;font-size:18px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:15px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style="font-size:12px;opacity:0.6">(' + scaleLabel + ')</span>' : '') + '</div>' +
-          '<div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">' + (r.clippedFrom ? esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) : 'Recipe') + '</div>' +
-        '</div>' +
-        '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:11px;flex-shrink:0">📋 Plan</button>' +
-        '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">Ask AI</button>' +
-      '</div>' +
-
-      // Tab bar
-      '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white);flex-shrink:0">' +
-        tabBtn('ingredients', 'Ingredients') +
-        tabBtn('instructions', 'Instructions') +
-      '</div>' +
-
-      // Content
-      '<div style="flex:1;overflow-y:auto;padding:4px 16px 20px">' +
-        (activeTab === 'ingredients'
-          ? scaleRow + ingredientsHtml
-          : instructionsHtml
-        ) +
-      '</div>' +
-
+    // Black header bar — same width as card
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:10px">' +
+      '<button id="cook-mode-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)">Cooking</div>' +
+      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px">📋 Plan</button>' +
+      '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">Ask AI</button>' +
     '</div>' +
+
+    // Tabs
+    '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white)">' +
+      tabBtn('ingredients', 'Ingredients') +
+      tabBtn('instructions', 'Instructions') +
+    '</div>' +
+
+    // Content
+    '<div style="padding:0 14px 16px">' +
+      (activeTab === 'ingredients' ? scaleRow + ingredientsHtml : instructionsHtml) +
+    '</div>' +
+
   '</div>'
 }
 function gpChatKey() {
@@ -3829,21 +3802,42 @@ function bindEvents() {
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      state.cookMode = { recipeId: el.dataset.cookMode, tab: 'ingredients', checkedIngredients: new Set() }
+      state.cookMode = { recipeId: el.dataset.cookMode, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
       render()
     })
   })
   document.getElementById('cook-mode-close')?.addEventListener('click', () => {
     state.cookMode = null; render()
   })
-  document.getElementById('cook-mode-bg')?.addEventListener('click', e => {
-    if (e.target.id === 'cook-mode-bg') { state.cookMode = null; render() }
-  })
   document.getElementById('cook-tab-ingredients')?.addEventListener('click', () => {
     state.cookMode = { ...state.cookMode, tab: 'ingredients' }; render()
   })
-  document.getElementById('cook-tab-instructions')?.addEventListener('click', () => {
+  document.getElementById('cook-tab-instructions')?.addEventListener('click', async () => {
     state.cookMode = { ...state.cookMode, tab: 'instructions' }; render()
+    // If we don't have step amounts yet, fetch them now
+    if (!state.cookMode.stepAmounts && !state.cookMode.stepAmountsLoading) {
+      const r = state.recipes.find(x => x.id === state.cookMode.recipeId)
+      if (!r || !r.ingredients || !r.instructions) return
+      state.cookMode = { ...state.cookMode, stepAmountsLoading: true }; render()
+      try {
+        const prompt = 'Given this ingredient list and these recipe instructions, for each numbered step tell me which ingredients (with their exact amounts) are used in that step. Return ONLY valid JSON like: {"steps":[{"step":1,"amounts":["2 tbsp butter","1 cup cream"]},{"step":2,"amounts":["1 tsp salt"]}]}. Do not include steps that use no specific ingredients. Ingredient list:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
+        })
+        const data = await res.json()
+        const text = data.content?.[0]?.text || ''
+        const clean = text.replace(/```json|```/g, '').trim()
+        const parsed = JSON.parse(clean)
+        const map = {}
+        ;(parsed.steps || []).forEach(s => { map[s.step] = s.amounts || [] })
+        state.cookMode = { ...state.cookMode, stepAmounts: map, stepAmountsLoading: false }
+      } catch(e) {
+        state.cookMode = { ...state.cookMode, stepAmountsLoading: false }
+      }
+      render()
+    }
   })
 
   // Ingredient checkoff in cook mode
