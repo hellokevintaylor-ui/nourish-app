@@ -2812,10 +2812,8 @@ function renderCookModeInline(r) {
 
   // Show loading state while AI maps amounts to steps
   const amountsLoadingBanner = stepAmountsLoading
-    ? '<div style="font-size:12px;color:var(--text-3);padding:8px 0 4px;font-style:italic">Mapping ingredient amounts to steps...</div>'
-    : (!stepAmounts && activeTab === 'instructions'
-        ? '<div style="font-size:12px;color:var(--text-3);padding:8px 0 4px;font-style:italic">Tap Instructions to load ingredient amounts per step</div>'
-        : '')
+    ? '<div style="font-size:12px;color:var(--text-3);padding:8px 0 4px;font-style:italic">Loading ingredient amounts...</div>'
+    : ''
 
   const instructionsHtml = steps.length > 0
     ? amountsLoadingBanner + steps.map((step, i) => {
@@ -2850,7 +2848,8 @@ function renderCookModeInline(r) {
     '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:10px">' +
       '<button id="cook-mode-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)">Cooking</div>' +
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px">📋 Plan</button>' +
+      '<button id="cook-mode-edit" data-cook-edit="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">Edit</button>' +
+      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px;margin-left:4px">📋 Plan</button>' +
       '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">Ask AI</button>' +
     '</div>' +
 
@@ -3799,45 +3798,67 @@ function bindEvents() {
   })
 
   // Cook Mode
+  async function fetchStepAmounts(recipeId) {
+    const r = state.recipes.find(x => x.id === recipeId)
+    if (!r || !r.ingredients || !r.instructions) return
+    if (state.cookMode?.stepAmounts || state.cookMode?.stepAmountsLoading) return
+    state.cookMode = { ...state.cookMode, stepAmountsLoading: true }
+    render()
+    try {
+      const prompt = 'Given this ingredient list and recipe instructions, for each numbered step list which ingredients (with exact amounts) are used. Return ONLY valid JSON: {"steps":[{"step":1,"amounts":["2 tbsp butter"]},{"step":2,"amounts":["1 cup cream"]}]}. Only include steps that use specific ingredients with amounts. Ingredients:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
+      })
+      const data = await res.json()
+      const text = data.content?.[0]?.text || ''
+      const clean = text.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+      const map = {}
+      ;(parsed.steps || []).forEach(s => { map[s.step] = s.amounts || [] })
+      state.cookMode = { ...state.cookMode, stepAmounts: map, stepAmountsLoading: false }
+    } catch(e) {
+      state.cookMode = { ...state.cookMode, stepAmountsLoading: false }
+    }
+    render()
+  }
+
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      state.cookMode = { recipeId: el.dataset.cookMode, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
+      const recipeId = el.dataset.cookMode
+      state.cookMode = { recipeId, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
       render()
+      // Start fetching step amounts immediately in background
+      fetchStepAmounts(recipeId)
     })
   })
   document.getElementById('cook-mode-close')?.addEventListener('click', () => {
     state.cookMode = null; render()
   })
+  document.querySelectorAll('[data-cook-edit]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.cookEdit
+      state.cookMode = null
+      state.expandedRecipe = rid
+      state.editingRecipeId = rid
+      render()
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + rid + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 50)
+    })
+  })
   document.getElementById('cook-tab-ingredients')?.addEventListener('click', () => {
     state.cookMode = { ...state.cookMode, tab: 'ingredients' }; render()
   })
-  document.getElementById('cook-tab-instructions')?.addEventListener('click', async () => {
-    state.cookMode = { ...state.cookMode, tab: 'instructions' }; render()
-    // If we don't have step amounts yet, fetch them now
-    if (!state.cookMode.stepAmounts && !state.cookMode.stepAmountsLoading) {
-      const r = state.recipes.find(x => x.id === state.cookMode.recipeId)
-      if (!r || !r.ingredients || !r.instructions) return
-      state.cookMode = { ...state.cookMode, stepAmountsLoading: true }; render()
-      try {
-        const prompt = 'Given this ingredient list and these recipe instructions, for each numbered step tell me which ingredients (with their exact amounts) are used in that step. Return ONLY valid JSON like: {"steps":[{"step":1,"amounts":["2 tbsp butter","1 cup cream"]},{"step":2,"amounts":["1 tsp salt"]}]}. Do not include steps that use no specific ingredients. Ingredient list:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
-        })
-        const data = await res.json()
-        const text = data.content?.[0]?.text || ''
-        const clean = text.replace(/```json|```/g, '').trim()
-        const parsed = JSON.parse(clean)
-        const map = {}
-        ;(parsed.steps || []).forEach(s => { map[s.step] = s.amounts || [] })
-        state.cookMode = { ...state.cookMode, stepAmounts: map, stepAmountsLoading: false }
-      } catch(e) {
-        state.cookMode = { ...state.cookMode, stepAmountsLoading: false }
-      }
-      render()
-    }
+  document.getElementById('cook-tab-instructions')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, tab: 'instructions' }
+    render()
+    // Fallback: if fetch didn't start yet, start it now
+    fetchStepAmounts(state.cookMode.recipeId)
   })
 
   // Ingredient checkoff in cook mode
