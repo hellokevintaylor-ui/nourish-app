@@ -797,6 +797,40 @@ function linkifyTimers(html) {
   })
 }
 
+// ── STEP AMOUNTS ──────────────────────────────────────────────────────────────
+async function fetchStepAmounts(recipeId) {
+  const r = state.recipes.find(x => x.id === recipeId)
+  if (!r || !r.ingredients || !r.instructions) return
+  if (!state.cookMode || state.cookMode.recipeId !== recipeId) return
+  if (state.cookMode.stepAmounts || state.cookMode.stepAmountsLoading) return
+  state.cookMode = { ...state.cookMode, stepAmountsLoading: true }
+  render()
+  try {
+    const prompt = 'Given this ingredient list and recipe instructions, for each numbered step list which ingredients (with exact amounts) are used in that step. Return ONLY valid JSON with no extra text: {"steps":[{"step":1,"amounts":["2 tbsp butter","1 cup cream"]},{"step":2,"amounts":["1 tsp salt"]}]}. Only include steps that use ingredients with measurable amounts. Do not include steps with no ingredients.\n\nIngredients:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
+    })
+    const data = await res.json()
+    const text = (data.content || []).find(b => b.type === 'text')?.text || ''
+    const clean = text.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(clean)
+    const map = {}
+    ;(parsed.steps || []).forEach(s => { map[s.step] = s.amounts || [] })
+    if (state.cookMode && state.cookMode.recipeId === recipeId) {
+      state.cookMode = { ...state.cookMode, stepAmounts: map, stepAmountsLoading: false }
+      render()
+    }
+  } catch(e) {
+    console.warn('fetchStepAmounts error:', e)
+    if (state.cookMode && state.cookMode.recipeId === recipeId) {
+      state.cookMode = { ...state.cookMode, stepAmountsLoading: false }
+      render()
+    }
+  }
+}
+
 // ── RENDER ────────────────────────────────────────────────────────────────────
 function render() {
   const app = document.getElementById('app')
@@ -2764,13 +2798,14 @@ function renderTagOrganizerModal() {
 }
 
 function renderCookModeInline(r) {
-  const { tab, scaledIngredients, scaleLabel, checkedIngredients, stepAmounts, stepAmountsLoading } = state.cookMode || {}
+  const { tab, scaledIngredients, scaleLabel, checkedIngredients, stepAmounts, stepAmountsLoading, editing } = state.cookMode || {}
   const activeTab = tab || 'ingredients'
+  const isEditing = editing || false
 
   const ingredientSource = scaledIngredients || r.ingredients || ''
   const ingredients = ingredientSource.split('\n').map(l => l.trim()).filter(Boolean)
-
   const rawInstructions = r.instructions || r.text || ''
+
   const steps = rawInstructions
     .split(/\n+/)
     .map(l => l.trim())
@@ -2778,19 +2813,10 @@ function renderCookModeInline(r) {
     .map(l => l.replace(/^(step\s*\d+[.:]?\s*|\d+\.\s*)/i, ''))
     .filter(l => l.length > 4)
 
-  // Parse ingredient amounts for chips on instruction steps
-  // stepAmounts comes from AI — keyed by step number (1-based)
   const getChipsForStep = (stepIdx) => {
     if (!stepAmounts) return []
     return stepAmounts[stepIdx + 1] || []
   }
-
-  const notesHtml = r.cookingNotes
-    ? '<div style="margin-top:16px;padding:12px 14px;background:var(--gray-50);border:0.5px solid var(--border);border-radius:10px">' +
-        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">My notes</div>' +
-        '<div style="font-size:14px;line-height:1.6;color:var(--text-2)">' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' +
-      '</div>'
-    : ''
 
   const tabBtn = (tabId, label) =>
     '<button id="cook-tab-' + tabId + '" style="flex:1;padding:10px;font-size:13px;font-weight:' +
@@ -2800,40 +2826,8 @@ function renderCookModeInline(r) {
 
   const checkedSet = checkedIngredients || new Set()
 
-  const ingredientsHtml = ingredients.length > 0
-    ? ingredients.map((line, i) => {
-        const isChecked = checkedSet.has(i)
-        return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);cursor:pointer" class="cook-ing-row" data-ing-idx="' + i + '">' +
-          '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'var(--border-strong)':'var(--accent)') + ';margin-top:8px;flex-shrink:0"></div>' +
-          '<div style="font-size:15px;line-height:1.4;color:' + (isChecked?'var(--text-4)':'var(--text)') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + linkifyTimers(esc(line)) + '</div>' +
-        '</div>'
-      }).join('')
-    : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No ingredients listed</div>'
-
-  // Show loading state while AI maps amounts to steps
-  const amountsLoadingBanner = stepAmountsLoading
-    ? '<div style="font-size:12px;color:var(--text-3);padding:8px 0 4px;font-style:italic">Loading ingredient amounts...</div>'
-    : ''
-
-  const instructionsHtml = steps.length > 0
-    ? amountsLoadingBanner + steps.map((step, i) => {
-        const chips = getChipsForStep(i)
-        const chipsHtml = chips.length > 0
-          ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">' +
-              chips.map(c => '<span style="font-size:11px;font-weight:500;color:var(--text-2);background:var(--gray-100);border:0.5px solid var(--border-strong);border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
-            '</div>'
-          : ''
-        return '<div style="padding:12px 0;border-bottom:0.5px solid var(--border)">' +
-          '<div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Step ' + (i+1) + '</div>' +
-          '<div style="font-size:15px;line-height:1.7;color:var(--text)">' + linkifyTimers(esc(step)) + '</div>' +
-          chipsHtml +
-        '</div>'
-      }).join('') + notesHtml
-    : (rawInstructions
-        ? '<div style="font-size:15px;line-height:1.8;color:var(--text);padding:12px 0">' + linkifyTimers(esc(rawInstructions)) + '</div>' + notesHtml
-        : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No instructions listed</div>')
-
-  const scaleRow = '<div style="display:flex;gap:6px;padding:8px 0 4px;align-items:center">' +
+  // ── INGREDIENTS TAB ──
+  const scaleRow = '<div style="display:flex;gap:6px;padding:8px 0 6px;align-items:center">' +
     '<span style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0">Scale</span>' +
     ['½x','1x','2x','3x'].map(s => {
       const isActive = (s === '1x' && !scaledIngredients) || scaleLabel === s
@@ -2841,28 +2835,89 @@ function renderCookModeInline(r) {
     }).join('') +
   '</div>'
 
-  // Inline card — same shape as recipe card, swapped in place
+  const ingredientsView = isEditing
+    ? '<div style="padding-top:8px">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Recipe name</div>' +
+        '<input id="cook-edit-name" value="' + esc(r.name) + '" style="width:100%;padding:9px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;font-weight:600;background:var(--gray-50);color:var(--text);outline:none;margin-bottom:12px" />' +
+        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Ingredients</div>' +
+        '<textarea id="cook-edit-ingredients" style="width:100%;min-height:180px;padding:10px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:var(--gray-50);color:var(--text);outline:none;resize:vertical">' + esc(r.ingredients || '') + '</textarea>' +
+        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:var(--black);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save changes</button>' +
+      '</div>'
+    : scaleRow + (ingredients.length > 0
+        ? ingredients.map((line, i) => {
+            const isChecked = checkedSet.has(i)
+            return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);cursor:pointer" class="cook-ing-row" data-ing-idx="' + i + '">' +
+              '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'var(--border-strong)':'var(--accent)') + ';margin-top:8px;flex-shrink:0"></div>' +
+              '<div style="font-size:15px;line-height:1.4;color:' + (isChecked?'var(--text-4)':'var(--text)') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + linkifyTimers(esc(line)) + '</div>' +
+            '</div>'
+          }).join('')
+        : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No ingredients yet — tap Edit to add</div>')
+
+  // ── INSTRUCTIONS TAB ──
+  const amountsLoading = stepAmountsLoading
+    ? '<div style="font-size:12px;color:var(--text-3);padding:6px 0 2px;font-style:italic">Loading ingredient amounts...</div>'
+    : ''
+
+  const instructionsView = isEditing
+    ? '<div style="padding-top:8px">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Instructions</div>' +
+        '<textarea id="cook-edit-instructions" style="width:100%;min-height:220px;padding:10px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:var(--gray-50);color:var(--text);outline:none;resize:vertical">' + esc(rawInstructions) + '</textarea>' +
+        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:var(--black);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save changes</button>' +
+      '</div>'
+    : (steps.length > 0
+        ? amountsLoading + steps.map((step, i) => {
+            const chips = getChipsForStep(i)
+            const chipsHtml = chips.length > 0
+              ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">' +
+                  chips.map(c => '<span style="font-size:11px;font-weight:500;color:var(--text-2);background:var(--gray-100);border:0.5px solid var(--border-strong);border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
+                '</div>'
+              : ''
+            return '<div style="padding:12px 0;border-bottom:0.5px solid var(--border)">' +
+              '<div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Step ' + (i+1) + '</div>' +
+              '<div style="font-size:15px;line-height:1.7;color:var(--text)">' + linkifyTimers(esc(step)) + '</div>' +
+              chipsHtml +
+            '</div>'
+          }).join('')
+        : (rawInstructions
+            ? amountsLoading + '<div style="font-size:15px;line-height:1.8;color:var(--text);padding:12px 0">' + linkifyTimers(esc(rawInstructions)) + '</div>'
+            : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No instructions yet — tap Edit to add</div>'))
+
+  // ── NOTES TAB ──
+  const notesView = isEditing
+    ? '<div style="padding-top:8px">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">My cooking notes</div>' +
+        '<textarea id="cook-edit-notes" placeholder="What worked, substitutions, tips..." style="width:100%;min-height:160px;padding:10px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:var(--gray-50);color:var(--text);outline:none;resize:vertical">' + esc(r.cookingNotes || '') + '</textarea>' +
+        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:var(--black);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save notes</button>' +
+      '</div>'
+    : (r.cookingNotes
+        ? '<div style="padding:12px 0;font-size:15px;line-height:1.7;color:var(--text-2);white-space:pre-wrap">' + esc(r.cookingNotes) + '</div>'
+        : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No notes yet — tap Edit to add</div>')
+
+  const content =
+    activeTab === 'ingredients' ? ingredientsView :
+    activeTab === 'instructions' ? instructionsView :
+    notesView
+
   return '<div style="border-top:0.5px solid var(--border)">' +
 
-    // Black header bar — same width as card
-    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:10px">' +
+    // Black header
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
       '<button id="cook-mode-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)">Cooking</div>' +
-      '<button id="cook-mode-edit" data-cook-edit="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">Edit</button>' +
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px;margin-left:4px">📋 Plan</button>' +
-      '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">Ask AI</button>' +
+      '<button id="cook-mode-edit-toggle" style="background:' + (isEditing?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">' + (isEditing?'Done':'Edit') + '</button>' +
+      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px;margin-left:2px">📋 Plan</button>' +
+      '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:2px">Ask AI</button>' +
     '</div>' +
 
-    // Tabs
+    // Three tabs
     '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white)">' +
       tabBtn('ingredients', 'Ingredients') +
       tabBtn('instructions', 'Instructions') +
+      tabBtn('notes', 'Notes') +
     '</div>' +
 
     // Content
-    '<div style="padding:0 14px 16px">' +
-      (activeTab === 'ingredients' ? scaleRow + ingredientsHtml : instructionsHtml) +
-    '</div>' +
+    '<div style="padding:0 14px 16px">' + content + '</div>' +
 
   '</div>'
 }
@@ -3798,32 +3853,6 @@ function bindEvents() {
   })
 
   // Cook Mode
-  async function fetchStepAmounts(recipeId) {
-    const r = state.recipes.find(x => x.id === recipeId)
-    if (!r || !r.ingredients || !r.instructions) return
-    if (state.cookMode?.stepAmounts || state.cookMode?.stepAmountsLoading) return
-    state.cookMode = { ...state.cookMode, stepAmountsLoading: true }
-    render()
-    try {
-      const prompt = 'Given this ingredient list and recipe instructions, for each numbered step list which ingredients (with exact amounts) are used. Return ONLY valid JSON: {"steps":[{"step":1,"amounts":["2 tbsp butter"]},{"step":2,"amounts":["1 cup cream"]}]}. Only include steps that use specific ingredients with amounts. Ingredients:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
-      })
-      const data = await res.json()
-      const text = data.content?.[0]?.text || ''
-      const clean = text.replace(/```json|```/g, '').trim()
-      const parsed = JSON.parse(clean)
-      const map = {}
-      ;(parsed.steps || []).forEach(s => { map[s.step] = s.amounts || [] })
-      state.cookMode = { ...state.cookMode, stepAmounts: map, stepAmountsLoading: false }
-    } catch(e) {
-      state.cookMode = { ...state.cookMode, stepAmountsLoading: false }
-    }
-    render()
-  }
-
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
@@ -3837,20 +3866,42 @@ function bindEvents() {
   document.getElementById('cook-mode-close')?.addEventListener('click', () => {
     state.cookMode = null; render()
   })
-  document.querySelectorAll('[data-cook-edit]').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation()
-      const rid = el.dataset.cookEdit
-      state.cookMode = null
-      state.expandedRecipe = rid
-      state.editingRecipeId = rid
-      render()
-      setTimeout(() => {
-        const card = document.querySelector('[data-rid="' + rid + '"]')
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 50)
-    })
+
+  // Toggle edit mode inside cook card
+  document.getElementById('cook-mode-edit-toggle')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, editing: !state.cookMode.editing }
+    render()
   })
+
+  // Save edits from inside cook card
+  document.getElementById('cook-edit-save')?.addEventListener('click', async () => {
+    const rid = state.cookMode?.recipeId
+    const r = state.recipes.find(x => x.id === rid)
+    if (!r) return
+    const name = document.getElementById('cook-edit-name')?.value?.trim() || r.name
+    const ingredients = document.getElementById('cook-edit-ingredients')?.value?.trim() || r.ingredients
+    const instructions = document.getElementById('cook-edit-instructions')?.value?.trim() || r.instructions
+    const notes = document.getElementById('cook-edit-notes')?.value?.trim() ?? r.cookingNotes
+    // Apply changes to local state
+    if (document.getElementById('cook-edit-name')) { r.name = name }
+    if (document.getElementById('cook-edit-ingredients')) { r.ingredients = ingredients }
+    if (document.getElementById('cook-edit-instructions')) {
+      r.instructions = instructions
+      // Clear step amounts so they re-fetch with new instructions
+      state.cookMode = { ...state.cookMode, stepAmounts: null, stepAmountsLoading: false }
+    }
+    if (document.getElementById('cook-edit-notes')) { r.cookingNotes = notes }
+    // Persist to DB
+    await db.updateRecipe(rid, { name, ingredients, instructions, cooking_notes: notes })
+    state.cookMode = { ...state.cookMode, editing: false }
+    render()
+  })
+
+  // Notes tab
+  document.getElementById('cook-tab-notes')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, tab: 'notes' }; render()
+  })
+
   document.getElementById('cook-tab-ingredients')?.addEventListener('click', () => {
     state.cookMode = { ...state.cookMode, tab: 'ingredients' }; render()
   })
