@@ -76,7 +76,7 @@ const state = {
   gamePlanLoading: false,
   gamePlanView: 'timeline',
   gamePlanChats: {},
-  timerSlider: null,  // { low, high, current, label, anchorTop, anchorLeft }
+  timerSlider: null,  // { low, high, current, label }
 }
 
 const GOAL_PRESETS = {
@@ -769,8 +769,8 @@ function parseTimerDuration(text) {
   // Range with "to" — return both bounds
   const toMatch = text.match(/(\d+)\s+to\s+(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?/)
   if (toMatch) return { low: toSecs(toMatch[1], toMatch[3]), high: toSecs(toMatch[2], toMatch[3]), isRange: true, label: text }
-  // Range with dash
-  const dashMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?/)
+  // Range with dash — REQUIRE a time unit so '100-120 ml' doesn't match
+  const dashMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)/)
   if (dashMatch) return { low: toSecs(dashMatch[1], dashMatch[3]), high: toSecs(dashMatch[2], dashMatch[3]), isRange: true, label: text }
   // Hours + minutes
   const hourMin = text.match(/(\d+)\s*(?:hour|hr|h)\s*(?:(\d+)\s*(?:min|minute|minutes|mins))?/)
@@ -786,14 +786,14 @@ function parseTimerDuration(text) {
 
 // Linkify time references — ranges get a slider button, single times get a direct start button
 function linkifyTimers(html) {
-  return html.replace(/(\d+\s+to\s+\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*[-–]\s*\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*(?:hour|hr|h)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:min|minute|minutes|mins|sec|second|seconds|secs))/gi, (match) => {
+  return html.replace(/(\d+\s+to\s+\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*[-–]\s*\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)|\d+\s*(?:hour|hr|h)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:min|minute|minutes|mins|sec|second|seconds|secs))/gi, (match) => {
     const parsed = parseTimerDuration(match)
     if (!parsed) return match
     if (parsed.isRange) {
       // Range — show slider button
-      return '<button class="timer-link timer-range-link" data-timer-low="' + parsed.low + '" data-timer-high="' + parsed.high + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
+      return '<button class="timer-link timer-range-link" data-timer-low="' + parsed.low + '" data-timer-high="' + parsed.high + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--accent-light);border:1px solid var(--accent-mid);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
     }
-    return '<button class="timer-link" data-timer-seconds="' + parsed.seconds + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
+    return '<button class="timer-link" data-timer-seconds="' + parsed.seconds + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--accent-light);border:1px solid var(--accent-mid);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
   })
 }
 
@@ -811,19 +811,19 @@ function render() {
       ${clipBanner}
       <!-- HEADER -->
       <div class="header">
-        <div class="header-title"><em>Mise en Place</em></div>
+        <div class="header-title">Mise En Place</div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
         </div>
       </div>
 
       <!-- PERMANENT ACTION ROW -->
-      <div style="background:var(--forest);padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid rgba(255,255,255,0.1)">
-        <button class="icon-btn" id="clip-url-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">📎 Clip</button>
-        <button class="icon-btn" id="paste-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">📋 Paste</button>
-        <button class="icon-btn" id="force-update-btn" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">↻ Update</button>
-        <button class="icon-btn" id="sync-toggle" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">🔗 Sync</button>
-        <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle" style="background:rgba(255,255,255,0.12);color:white;border-color:rgba(255,255,255,0.2)">⚙️ Goals</button>
+      <div style="background:var(--white);padding:8px 14px;display:flex;flex-wrap:nowrap;gap:6px;border-bottom:0.5px solid var(--border);overflow-x:auto">
+        <button class="icon-btn" id="clip-url-btn" style="border-color:#1a1a1a;color:#1a1a1a;font-weight:700">📎 Clip</button>
+        <button class="icon-btn" id="paste-btn">📋 Paste</button>
+        <button class="icon-btn" id="force-update-btn">↻ Update</button>
+        <button class="icon-btn" id="sync-toggle">🔗 Sync</button>
+        <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle" style="${state.showGoals?'border-color:var(--accent);color:var(--accent);':'border-color:#9d174d;color:#9d174d;'}">⚙️ Goals</button>
       </div>
 
       <!-- GOALS PANEL -->
@@ -979,45 +979,42 @@ function render() {
 
   // Timer slider popover
   if (state.timerSlider) {
-    const { low, high, current, label, anchorTop, anchorLeft } = state.timerSlider
-    const pct = ((current - low) / (high - low)) * 100
+    const { low, high, current, label } = state.timerSlider
     const mins = Math.round(current / 60)
-    const popover = document.createElement('div')
-    popover.id = 'timer-slider-popover'
-    popover.style.cssText = 'position:fixed;z-index:2000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:14px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.2);min-width:200px;font-family:inherit'
-    popover.style.top = Math.min(anchorTop + 30, window.innerHeight - 160) + 'px'
-    popover.style.left = Math.min(anchorLeft, window.innerWidth - 220) + 'px'
-    popover.innerHTML =
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:8px">⏱ ' + esc(label) + '</div>' +
-      '<div style="font-size:28px;font-weight:800;color:var(--forest);text-align:center;margin-bottom:8px;font-variant-numeric:tabular-nums">' + mins + ' min</div>' +
-      '<input id="timer-range-slider" type="range" min="' + low + '" max="' + high + '" step="60" value="' + current + '" style="width:100%;accent-color:var(--forest);margin-bottom:12px" />' +
-      '<div style="display:flex;gap:8px">' +
-        '<button id="timer-slider-start" style="flex:1;background:var(--forest);color:white;border:none;border-radius:10px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Start</button>' +
-        '<button id="timer-slider-cancel" style="background:none;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer;font-family:inherit;color:var(--ink3)">✕</button>' +
+    // Centered modal overlay — works consistently inside cook mode and main app
+    const overlay = document.createElement('div')
+    overlay.id = 'timer-slider-popover'
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:24px'
+    overlay.innerHTML =
+      '<div style="background:white;border-radius:16px;padding:20px;width:100%;max-width:280px;font-family:inherit">' +
+        '<div style="font-size:11px;font-weight:600;color:#888;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px">⏱ ' + esc(label) + '</div>' +
+        '<div id="timer-mins-display" style="font-size:36px;font-weight:700;color:#1a1a1a;text-align:center;margin-bottom:12px;font-variant-numeric:tabular-nums">' + mins + ' min</div>' +
+        '<input id="timer-range-slider" type="range" min="' + low + '" max="' + high + '" step="60" value="' + current + '" style="width:100%;accent-color:#3d52c4;margin-bottom:16px" />' +
+        '<div style="display:flex;gap:8px">' +
+          '<button id="timer-slider-start" style="flex:1;background:#1a1a1a;color:white;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Start timer</button>' +
+          '<button id="timer-slider-cancel" style="background:none;border:1.5px solid #ddd;border-radius:10px;padding:12px 14px;font-size:14px;cursor:pointer;font-family:inherit;color:#888">✕</button>' +
+        '</div>' +
       '</div>'
-    document.body.appendChild(popover)
+    document.body.appendChild(overlay)
 
     document.getElementById('timer-range-slider')?.addEventListener('input', e => {
       state.timerSlider.current = parseInt(e.target.value)
       const m = Math.round(state.timerSlider.current / 60)
-      popover.querySelector('div[style*="28px"]').textContent = m + ' min'
+      document.getElementById('timer-mins-display').textContent = m + ' min'
     })
     document.getElementById('timer-slider-start')?.addEventListener('click', () => {
       unlockAudio()
       startTimer(state.timerSlider.current, state.timerSlider.label)
       state.timerSlider = null
-      popover.remove()
+      overlay.remove()
     })
     document.getElementById('timer-slider-cancel')?.addEventListener('click', () => {
       state.timerSlider = null
-      popover.remove()
+      overlay.remove()
     })
-    // Close on outside tap
-    setTimeout(() => {
-      document.addEventListener('click', e => {
-        if (!popover.contains(e.target)) { state.timerSlider = null; popover.remove() }
-      }, { once: true })
-    }, 0)
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { state.timerSlider = null; overlay.remove() }
+    })
   }
 
   // Re-render timer bar if any timers active (survives render cycles)
@@ -2812,13 +2809,13 @@ function renderCookMode() {
   const ingredientSource = scaledIngredients || r.ingredients || ''
   const ingredients = ingredientSource.split('\n').map(l => l.trim()).filter(Boolean)
   const instructionsHtml = formatRecipeText(r.instructions || r.text || '')
-  const notesHtml = r.cookingNotes ? '<div style="margin-top:20px;padding:12px 14px;background:var(--sage4);border-radius:10px;font-size:14px;color:var(--forest);line-height:1.6"><strong>My Notes</strong><br>' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' : ''
+  const notesHtml = r.cookingNotes ? '<div style="margin-top:20px;padding:12px 14px;background:var(--gray-50);border:0.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text-2);line-height:1.6"><strong style=\"color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;\">My notes</strong><br>' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' : ''
 
-  return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
+  return '<div style="position:fixed;inset:0;z-index:2000;background:var(--white);display:flex;flex-direction:column;font-family:inherit">' +
 
     // Header
-    '<div style="background:var(--forest);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
-      '<button id="cook-mode-close" style="background:rgba(255,255,255,0.2);border:none;cursor:pointer;font-size:20px;color:white;padding:6px 10px;line-height:1;border-radius:8px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">×</button>' +
+    '<div style="background:#1a1a1a;padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+      '<button id="cook-mode-close" style="width:32px;height:32px;background:rgba(255,255,255,0.1);border:none;cursor:pointer;font-size:18px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-size:16px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style="font-size:12px;opacity:0.75">(' + scaleLabel + ')</span>' : '') + '</div>' +
       '</div>' +
@@ -2826,9 +2823,9 @@ function renderCookMode() {
     '</div>' +
 
     // Tab bar
-    '<div style="display:flex;border-bottom:2px solid var(--cream3);background:white;flex-shrink:0">' +
-      '<button id="cook-tab-ingredients" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='ingredients'?'700':'500') + ';color:' + (activeTab==='ingredients'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:3px solid ' + (activeTab==='ingredients'?'var(--forest)':'transparent') + ';cursor:pointer;font-family:inherit">🥘 Ingredients</button>' +
-      '<button id="cook-tab-instructions" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='instructions'?'700':'500') + ';color:' + (activeTab==='instructions'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:3px solid ' + (activeTab==='instructions'?'var(--forest)':'transparent') + ';cursor:pointer;font-family:inherit">📋 Instructions</button>' +
+    '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white);flex-shrink:0">' +
+      '<button id="cook-tab-ingredients" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='ingredients'?'700':'500') + ';color:' + (activeTab==='ingredients'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:2px solid ' + (activeTab==='ingredients'?'var(--accent)':'transparent') + ';cursor:pointer;font-family:inherit">Ingredients</button>' +
+      '<button id="cook-tab-instructions" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='instructions'?'700':'500') + ';color:' + (activeTab==='instructions'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:2px solid ' + (activeTab==='instructions'?'var(--accent)':'transparent') + ';cursor:pointer;font-family:inherit">Instructions</button>' +
     '</div>' +
 
     // Content
@@ -2837,8 +2834,8 @@ function renderCookMode() {
         ingredients.length > 0
           ? ingredients.map(line =>
               '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--cream3)">' +
-                '<div style="width:8px;height:8px;border-radius:50%;background:var(--forest2);margin-top:6px;flex-shrink:0"></div>' +
-                '<div style="font-size:16px;line-height:1.4;color:var(--ink)">' + linkifyTimers(esc(line)) + '</div>' +
+                '<div style="width:6px;height:6px;border-radius:50%;background:var(--accent);margin-top:8px;flex-shrink:0"></div>' +
+                '<div style="font-size:16px;line-height:1.4;color:var(--text)">' + linkifyTimers(esc(line)) + '</div>' +
               '</div>'
             ).join('')
           : '<div style="color:var(--ink3);font-style:italic;padding:20px 0">No ingredients listed</div>'
@@ -2923,7 +2920,7 @@ function renderGamePlanModal() {
 
   // ── FULLSCREEN COOK VIEW ──
   if (view === 'fullscreen' && result) {
-    return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
+    return '<div style="position:fixed;inset:0;z-index:2000;background:var(--white);display:flex;flex-direction:column;font-family:inherit">' +
       '<div style="background:var(--forest);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
         '<button id="gp-exit-fullscreen" style="background:rgba(255,255,255,0.2);border:none;cursor:pointer;font-size:20px;color:white;padding:6px 10px;line-height:1;border-radius:8px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">×</button>' +
         '<div style="flex:1;min-width:0">' +
@@ -3193,14 +3190,11 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       unlockAudio()
-      const rect = el.getBoundingClientRect()
       state.timerSlider = {
         low: parseInt(el.dataset.timerLow),
         high: parseInt(el.dataset.timerHigh),
         current: parseInt(el.dataset.timerLow), // start at low end
-        label: el.dataset.timerLabel,
-        anchorTop: rect.bottom,
-        anchorLeft: rect.left
+        label: el.dataset.timerLabel
       }
       render()
     })
