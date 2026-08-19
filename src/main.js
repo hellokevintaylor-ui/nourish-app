@@ -690,15 +690,15 @@ function renderTimerBar() {
     const timeStr = mins + ':' + String(secs).padStart(2, '0')
     const pct = timer.totalSeconds > 0 ? (timer.remaining / timer.totalSeconds) * 100 : 0
     const isDone = timer.remaining === 0
-    const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--forest)'
+    const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--accent)'
     return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
-        '<div style="font-size:11px;font-weight:600;color:var(--ink3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timer.label) + '</div>' +
-        '<button class="timer-stop-btn" data-timer-id="' + timer.id + '" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+        '<div style="font-size:11px;font-weight:600;color:var(--text-3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timer.label) + '</div>' +
+        '<button class="timer-stop-btn" data-timer-id="' + timer.id + '" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-3);padding:0;line-height:1">×</button>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:8px">' +
         '<div style="font-size:22px;font-weight:800;color:' + barColor + ';font-variant-numeric:tabular-nums;min-width:55px">' + (isDone ? '✓ Done!' : timeStr) + '</div>' +
-        '<div style="flex:1;height:4px;background:var(--cream3);border-radius:2px">' +
+        '<div style="flex:1;height:4px;background:var(--gray-200);border-radius:2px">' +
           '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width 1s linear"></div>' +
         '</div>' +
       '</div>' +
@@ -706,7 +706,7 @@ function renderTimerBar() {
   }).join('')
 
   const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:4px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:200px;max-width:240px;font-family:inherit;touch-action:none;user-select:none">' +
-    '<div id="timer-drag-handle" style="font-size:10px;font-weight:700;color:var(--forest);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;cursor:grab;display:flex;align-items:center;justify-content:space-between">⏱ Timers <span style="color:var(--ink4);letter-spacing:2px">⠿</span></div>' +
+    '<div id="timer-drag-handle" style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;cursor:grab;display:flex;align-items:center;justify-content:space-between">⏱ Timers <span style="color:var(--text-4);letter-spacing:2px">⠿</span></div>' +
     rows +
   '</div>'
 
@@ -872,7 +872,7 @@ function render() {
         <!-- Activity level -->
         <div class="goal-field" style="margin-top:8px">
           <label>Activity Level</label>
-          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:var(--forest);color:white;font-size:13px">
+          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:var(--black);color:white;font-size:13px">
             <option value="sedentary" ${state.goals.activity_level==='sedentary'?'selected':''}>Sedentary (desk job, little exercise)</option>
             <option value="light" ${state.goals.activity_level==='light'?'selected':''}>Lightly Active (1-3 days/week)</option>
             <option value="moderate" ${state.goals.activity_level==='moderate'?'selected':''}>Moderately Active (3-5 days/week)</option>
@@ -906,7 +906,7 @@ function render() {
           <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
         })()}
 
-        <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--forest);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
+        <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--accent);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
 
       </div>` : ''}
       <!-- SYNC PANEL -->
@@ -972,7 +972,7 @@ function render() {
       ${state.calendarRecipePreview ? renderCalendarRecipePreviewModal() : ''}
 
       <!-- SCROLL TO TOP -->
-      <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--forest);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
+      <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--black);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
     </div>
   `
   bindEvents()
@@ -1107,7 +1107,6 @@ function renderTagFilterChips(namespace) {
 
   if (!hasTwoTiers) {
     return '<div class="tag-filter-wrap">' +
-      '<div style="margin-bottom:5px">' + selectAllBtn + '</div>' +
       '<div class="tag-filter-row">' +
         allTags.map(chipBtn).join('') +
         '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
@@ -1116,10 +1115,9 @@ function renderTagFilterChips(namespace) {
   }
 
   return '<div class="tag-filter-wrap">' +
-    '<div style="margin-bottom:6px">' + selectAllBtn + '</div>' +
-    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Category</div>' +
+    '<div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Category</div>' +
     '<div class="tag-filter-row" style="margin-bottom:8px">' + categories.map(chipBtn).join('') + '</div>' +
-    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Style</div>' +
+    '<div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Style</div>' +
     '<div class="tag-filter-row">' +
       styles.map(chipBtn).join('') +
       '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
@@ -1131,32 +1129,31 @@ function renderTagFilterChips(namespace) {
 function renderRecipeCard(r) {
   const isExpanded = state.expandedRecipe === r.id
   const pt = r.prepTime
+
+  // ── COLLAPSED: name + tags + prep time summary only ──
   const prepSummary = pt
-    ? '<div class="recipe-prep-summary">' +
-        '⏱ ' + pt.active_min + ' min active' +
+    ? '<div class="recipe-prep-summary">⏱ ' + pt.active_min + ' min' +
         (pt.passive_min > 0 ? ' + ' + pt.passive_min + ' min passive' : '') +
-        ' · ' + (pt.difficulty || 'Unknown') +
+        ' · ' + (pt.difficulty || '') +
         (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? ' · Make-ahead ✓' : '') +
       '</div>'
     : ''
+
   const header = '<div class="recipe-card" data-rid="' + r.id + '">' +
     '<div class="recipe-card-header">' +
-      '<div>' +
-        '<div class="recipe-name">' + esc(r.name) + '</div>' +
-        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
+      '<div style="min-width:0;flex:1">' +
+        '<div class="recipe-name">' + esc(r.name) + (r.archived ? ' <span style="font-size:10px;color:var(--text-4);font-weight:400">(archived)</span>' : '') + '</div>' +
+        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview" style="margin-top:4px">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         prepSummary +
-        (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
-        (r.clippedFrom ? '<div class="recipe-meta"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:var(--forest2);text-decoration:none">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta" style="margin-top:2px"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:var(--accent);text-decoration:none;font-size:11px">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
       '</div>' +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
 
   if (!isExpanded) return header + '</div>'
 
-  const notesSection = state.editingNotes === r.id
-    ? '<textarea class="notes-textarea" id="notes-ta-' + r.id + '" placeholder="What worked, what to change, substitutions...">' + esc(r.cookingNotes||'') + '</textarea>' +
-      '<button class="notes-save-btn" data-notes-save="' + r.id + '">Save Notes</button>'
-    : '<div class="notes-display ' + (!r.cookingNotes ? 'notes-empty' : '') + '">' + (r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!') + '</div>'
+  // ── EXPANDED: action buttons + tag editor + prep time box ──
+  // No ingredients, no instructions — those live in Cook mode
 
   const tagChips = (r.tags||[]).map(t =>
     '<span class="tag-chip">' + esc(t) +
@@ -1172,12 +1169,12 @@ function renderRecipeCard(r) {
   const tagPicker = isPickerOpen ? (
     '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
     (hasTwoTiers ? (
-      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
+      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
       pickerCategories.map(t => {
         const checked = (r.tags||[]).includes(t.name)
         return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
       }).join('') +
-      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:1px solid var(--cream3);margin-top:4px">Style</div>' : '') +
+      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Style</div>' : '') +
       pickerStyles.map(t => {
         const checked = (r.tags||[]).includes(t.name)
         return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
@@ -1193,92 +1190,53 @@ function renderRecipeCard(r) {
     '</div>'
   ) : ''
 
-  const isEditingRecipe = state.editingRecipeId === r.id
-  const isScaling = state.scaleModal?.recipeId === r.id
-  const scaleButtons = '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">' +
-    '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Scale:</span>' +
-    ['½x', '2x', '3x'].map(s => '<button class="scale-btn" data-scale="' + s + '" data-recipe-id="' + r.id + '">' + s + '</button>').join('') +
-  '</div>'
-  const scaleResult = isScaling ? ('<div class="scale-result-box">' +
-    (state.scaleModal.loading ? '<div style="color:var(--ink3);font-style:italic;font-size:12px">Scaling ingredients...</div>' :
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:6px">Scaled ingredients (' + state.scaleModal.label + '):</div>' +
-      '<div class="recipe-text" style="background:var(--cream2);border-radius:8px;padding:8px">' + formatRecipeText(state.scaleModal.ingredients) + '</div>' +
-      '<div style="display:flex;gap:6px;margin-top:8px">' +
-        '<button class="add-btn" style="background:var(--forest);color:white;border-color:var(--forest)" data-cook-scaled="' + r.id + '">👨‍🍳 Cook</button>' +
-        '<button class="add-btn" data-save-scaled="' + r.id + '">Save as new</button>' +
-        '<button class="modal-cancel" data-close-scale="' + r.id + '">Close</button>' +
-      '</div>'
-    ) + '</div>') : ''
+  // Prep time box
+  const prepBox = pt ? (
+    '<div class="prep-time-box" style="margin-top:10px">' +
+      '<div class="prep-time-header">' +
+        '<span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">Prep time</span>' +
+        '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
+      '</div>' +
+      '<div class="prep-time-grid">' +
+        '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
+        (pt.passive_min > 0 ? '<div class="prep-time-stat"><div class="prep-time-val">' + pt.passive_min + ' min</div><div class="prep-time-label">Passive</div></div>' : '') +
+        '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
+        '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
+      '</div>' +
+      (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
+      (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">Multitask tip:</span> ' + esc(pt.multitask) + '</div>' : '') +
+    '</div>'
+  ) : (
+    '<div class="prep-time-box prep-time-empty" style="margin-top:10px">' +
+      '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
+        (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
+      '</button>' +
+    '</div>'
+  )
 
   const body = '<div class="recipe-body">' +
-    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original</a></div>' : '') +
-    scaleButtons +
-    scaleResult +
-    '<div class="recipe-section-label cooking-notes-label">Ingredients' +
-      '<button class="notes-edit-btn" data-recipe-edit="' + r.id + '">' + (isEditingRecipe ? 'Done' : 'Edit') + '</button>' +
-    '</div>' +
-    (isEditingRecipe ?
-      '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Recipe Title</label>' +
-      '<input class="notes-textarea" id="edit-recipe-name-' + r.id + '" value="' + esc(r.name) + '" style="margin-top:4px;font-weight:600" /></div>' +
-      '<textarea class="notes-textarea" id="edit-ingredients-' + r.id + '" style="min-height:120px">' + esc(r.ingredients || '') + '</textarea>' +
-      '<div class="recipe-section-label" style="margin-top:8px">Instructions</div>' +
-      '<textarea class="notes-textarea" id="edit-instructions-' + r.id + '" style="min-height:120px">' + esc(r.instructions || '') + '</textarea>' +
-      '<button class="notes-save-btn" data-recipe-save="' + r.id + '" style="margin-top:8px">Save Changes</button>'
-    :
-      (r.ingredients ? '<div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '<div class="recipe-text" style="color:var(--ink4);font-style:italic">No ingredients yet -- tap Edit to add</div>')
-    ) +
-    (isEditingRecipe ? '' :
-      '<div class="recipe-section-label">Instructions</div>' +
-      (r.instructions ? '<div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : (r.text ? '<div class="recipe-text">' + formatRecipeText(r.text) + '</div>' : ''))
-    ) +
-    '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
-      '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
-    '</div>' +
-    notesSection +
-    '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
-    // Prep time at bottom
-    (pt ? (
-      '<div class="prep-time-box">' +
-        '<div class="prep-time-header">' +
-          '<span>⏱ Prep Time</span>' +
-          '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '" title="Re-estimate">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
-        '</div>' +
-        '<div class="prep-time-grid">' +
-          '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
-          (pt.passive_min > 0 ? '<div class="prep-time-stat"><div class="prep-time-val">' + pt.passive_min + ' min</div><div class="prep-time-label">Passive</div></div>' : '') +
-          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
-          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
-        '</div>' +
-        (pt.equipment && pt.equipment.length ? '<div class="prep-time-row"><span class="prep-time-key">🍳 Equipment:</span> ' + pt.equipment.join(', ') + '</div>' : '') +
-        (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Multitask:</span> ' + esc(pt.multitask) + '</div>' : '') +
-        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">🗓 Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
-        (pt.quick_version ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Quick version:</span> ' + esc(pt.quick_version) + '</div>' : '') +
-      '</div>'
-    ) : (
-      '<div class="prep-time-box prep-time-empty">' +
-        '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
-          (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
-        '</button>' +
-      '</div>'
-    )) +
-    '<div class="recipe-actions" style="display:flex;flex-wrap:nowrap;gap:4px">' +
-      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--forest);color:white;border-color:var(--forest);flex:1.2;font-size:11px;padding:5px 4px;white-space:nowrap">👨‍🍳 Cook</button>' +
-      '<button class="ra-btn ra-shop" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">+ List</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">Log</button>' +
-      '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:5px 4px">+ Week</button>' +
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">📋 Plan</button>' +
-      '<button class="ra-btn ra-ask" data-ask="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">Ask AI</button>' +
+    // Source link
+    (r.clippedFrom ? '<div class="recipe-link" style="margin-bottom:8px"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original ↗</a></div>' : '') +
+    // Tag row
+    '<div class="tag-row" style="margin-bottom:4px">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
+    // Prep time
+    prepBox +
+    // Action buttons — Cook, + List, Log, + Week, Archive/Restore, Del, Share
+    '<div class="recipe-actions" style="margin-top:12px">' +
+      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--black);color:white;border-color:var(--black);flex:1.4;font-size:11px;padding:7px 4px;white-space:nowrap;font-weight:700">Cook</button>' +
+      '<button class="ra-btn ra-shop" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">+ List</button>' +
+      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Log</button>' +
+      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px;border-color:var(--accent);color:var(--accent)">+ Week</button>' +
       (r.archived
-        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest);flex:1;font-size:11px;padding:5px 4px">Restore</button>'
-        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3);flex:1;font-size:11px;padding:5px 4px">Archive</button>') +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.6;font-size:11px;padding:5px 4px">Del</button>' +
-      '<button class="ra-btn" data-share-recipe="' + r.id + '" style="flex:0.8;font-size:11px;padding:5px 4px">📤 Share</button>' +
+        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--accent)">Restore</button>'
+        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-3)">Archive</button>') +
+      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.7;font-size:11px;padding:7px 4px">Del</button>' +
+      '<button class="ra-btn" data-share-recipe="' + r.id + '" style="flex:0.7;font-size:11px;padding:7px 4px">📤</button>' +
     '</div>' +
   '</div>'
 
   return header + body + '</div>'
 }
-
 function renderSearchBar(id, value, placeholder) {
   return '<div class="tab-search-wrap">' +
     '<input class="tab-search-input" id="' + id + '" placeholder="' + placeholder + '" value="' + esc(value) + '" />' +
@@ -1323,18 +1281,18 @@ function renderRecipes() {
   // Compact list row renderer
   const renderListRow = (r) => {
     const isExpanded = state.expandedRecipe === r.id
-    const tags = (r.tags || []).slice(0, 3).map(t => `<span style="background:var(--sage4);color:var(--forest);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600">${esc(t)}</span>`).join('')
+    const tags = (r.tags || []).slice(0, 3).map(t => `<span style="background:var(--accent-light);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;border:1px solid var(--accent-mid)">${esc(t)}</span>`).join('')
     if (!isExpanded) {
-      return `<div class="recipe-list-row" data-expand-recipe="${r.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--cream3);cursor:pointer;background:white">
+      return `<div class="recipe-list-row" data-expand-recipe="${r.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:0.5px solid var(--border);cursor:pointer;background:var(--white)">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
           ${tags ? `<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">${tags}</div>` : ''}
         </div>
-        <div style="font-size:18px;color:var(--ink3);flex-shrink:0">›</div>
+        <div style="font-size:18px;color:var(--text-3);flex-shrink:0">›</div>
       </div>`
     }
     // Expanded — show full card inline
-    return `<div style="border-bottom:2px solid var(--forest2)">${renderRecipeCard(r)}</div>`
+    return `<div style="border-bottom:2px solid var(--accent)">${renderRecipeCard(r)}</div>`
   }
 
   return `
@@ -1342,10 +1300,10 @@ function renderRecipes() {
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <div style="display:flex;gap:6px">
-          <button class="add-btn" id="scan-recipe-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Scan</button>
-          <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">Clip URL</button>
+          <button class="add-btn" id="scan-recipe-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">Scan</button>
+          <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">Clip URL</button>
           <button class="add-btn" id="add-recipe-btn">+ Add</button>
-          <button class="add-btn" id="organize-tags-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">🏷 Tags</button>
+          <button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">🏷 Tags</button>
         </div>
       </div>
       <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
@@ -1355,19 +1313,19 @@ function renderRecipes() {
       <!-- Sort + View controls -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
         <div style="display:flex;gap:4px">
-          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--forest)':'var(--border)'};background:${sort==='newest'?'var(--forest)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
-          <button class="recipe-sort-btn ${sort==='az'?'active':''}" data-sort="az" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='az'?'var(--forest)':'var(--border)'};background:${sort==='az'?'var(--forest)':'white'};color:${sort==='az'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">A→Z</button>
-          <button class="recipe-sort-btn ${sort==='za'?'active':''}" data-sort="za" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='za'?'var(--forest)':'var(--border)'};background:${sort==='za'?'var(--forest)':'white'};color:${sort==='za'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Z→A</button>
+          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--accent)':'var(--border)'};background:${sort==='newest'?'var(--accent)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
+          <button class="recipe-sort-btn ${sort==='az'?'active':''}" data-sort="az" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='az'?'var(--accent)':'var(--border)'};background:${sort==='az'?'var(--accent)':'white'};color:${sort==='az'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">A→Z</button>
+          <button class="recipe-sort-btn ${sort==='za'?'active':''}" data-sort="za" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='za'?'var(--accent)':'var(--border)'};background:${sort==='za'?'var(--accent)':'white'};color:${sort==='za'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Z→A</button>
         </div>
         <div style="display:flex;gap:4px">
-          <button id="view-cards-btn" title="Card view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${!isListView?'var(--forest)':'var(--border)'};background:${!isListView?'var(--sage4)':'white'};cursor:pointer">⊟</button>
-          <button id="view-list-btn" title="List view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${isListView?'var(--forest)':'var(--border)'};background:${isListView?'var(--sage4)':'white'};cursor:pointer">☰</button>
+          <button id="view-cards-btn" title="Card view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${!isListView?'var(--accent)':'var(--border)'};background:${!isListView?'var(--sage4)':'white'};cursor:pointer">⊟</button>
+          <button id="view-list-btn" title="List view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${isListView?'var(--accent)':'var(--border)'};background:${isListView?'var(--sage4)':'white'};cursor:pointer">☰</button>
         </div>
       </div>
 
       ${archivedCount > 0 ? `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <button id="toggle-archived-btn" style="font-size:12px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit">
+          <button id="toggle-archived-btn" style="font-size:12px;color:var(--text-3);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit">
             ${state.showArchived ? '← Back to recipes' : '📦 Archived (' + archivedCount + ')'}
           </button>
         </div>
@@ -1383,8 +1341,8 @@ function renderRecipes() {
           <div class="clip-field-label">Tags</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
             ${getTagsForNamespace('recipe').map(t =>
-              `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:8px 10px;min-width:0">
-                <input type="checkbox" class="r-tag-check" data-tag="${esc(t.name)}" ${state.addRecipeModalDraft.tags.includes(t.name) ? 'checked' : ''} style="accent-color:var(--forest);flex-shrink:0;width:16px;height:16px" />
+              `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--gray-100);border-radius:8px;padding:8px 10px;min-width:0">
+                <input type="checkbox" class="r-tag-check" data-tag="${esc(t.name)}" ${state.addRecipeModalDraft.tags.includes(t.name) ? 'checked' : ''} style="accent-color:var(--accent);flex-shrink:0;width:16px;height:16px" />
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.name)}</span>
               </label>`
             ).join('')}
@@ -1425,10 +1383,10 @@ function renderPantry() {
     '</div>' +
     (getTagsForNamespace('location').length > 0 ?
       '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
+      '<span style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
       getTagsForNamespace('location').map(t =>
         '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
-        '<input type="checkbox" class="pantry-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
+        '<input type="checkbox" class="pantry-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--accent)" />' +
         esc(t.name) + '</label>'
       ).join('') +
       '</div>'
@@ -1485,7 +1443,7 @@ function renderShopItems(items) {
         '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
         '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
       :
-        '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer;' + (isChecked ? 'text-decoration:line-through;color:var(--ink4)' : '') + '" title="Tap to edit">' + esc(i.name) + '</div>'
+        '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer;' + (isChecked ? 'text-decoration:line-through;color:var(--text-4)' : '') + '" title="Tap to edit">' + esc(i.name) + '</div>'
       ) +
       '<div class="shop-item-tags">' +
         (!isChecked ? chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' + picker : '') +
@@ -1517,7 +1475,7 @@ function renderShop() {
       '<div class="section-title">Shopping List</div>' +
       '<div style="display:flex;gap:6px">' +
         (state.shopList.length > 0 ? '<button class="icon-btn" id="shop-copy-btn">📤 Share</button>' : '') +
-        (done.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear-checked" style="background:var(--cream2);color:var(--ink2);border:1px solid var(--border)">Clear checked (' + done.length + ')</button>' : '') +
+        (done.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear-checked" style="background:var(--gray-100);color:var(--text-2);border:1px solid var(--border)">Clear checked (' + done.length + ')</button>' : '') +
         (state.shopList.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear">Clear all</button>' : '') +
       '</div>' +
     '</div>' +
@@ -1527,7 +1485,7 @@ function renderShop() {
     '</div>' +
     (state._shopPantryWarning ? (
       '<div style="background:#fff8e6;border:1.5px solid var(--gold);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px">' +
-        '<div style="font-weight:600;color:var(--ink);margin-bottom:6px">🧺 Already in pantry: <em>' + esc(state._shopPantryWarning) + '</em></div>' +
+        '<div style="font-weight:600;color:var(--text);margin-bottom:6px">🧺 Already in pantry: <em>' + esc(state._shopPantryWarning) + '</em></div>' +
         '<div style="display:flex;gap:8px">' +
           '<button class="add-btn" id="shop-add-anyway" style="font-size:12px;padding:5px 12px">Add anyway</button>' +
           '<button class="modal-cancel" id="shop-skip-item" style="font-size:12px;padding:5px 12px">Skip</button>' +
@@ -1536,10 +1494,10 @@ function renderShop() {
     ) : '') +
     (getTagsForNamespace('location').length > 0 ?
       '<div style="margin-top:6px;margin-bottom:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
+      '<span style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
       getTagsForNamespace('location').map(t =>
         '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
-        '<input type="checkbox" class="shop-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
+        '<input type="checkbox" class="shop-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--accent)" />' +
         esc(t.name) + '</label>'
       ).join('') +
       '</div>'
@@ -1553,12 +1511,12 @@ function renderShop() {
         '<button class="shop-got-it-btn" id="shop-got-it">Got it all!</button>' +
       '</div>' +
       renderShopItems(need)
-    : (state.shopList.length > 0 && need.length === 0 && done.length > 0 ? '<div style="font-size:13px;color:var(--ink3);padding:12px 0;text-align:center">✅ All done! Items will clear in 1 hour.</div>' : '')) +
+    : (state.shopList.length > 0 && need.length === 0 && done.length > 0 ? '<div style="font-size:13px;color:var(--text-3);padding:12px 0;text-align:center">✅ All done! Items will clear in 1 hour.</div>' : '')) +
     // Checked / crossed-off items
     (done.length > 0 ?
       '<div style="margin-top:14px;border-top:1px solid var(--cream3);padding-top:10px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-          '<div style="font-size:10px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">In cart (' + done.length + ')</div>' +
+          '<div style="font-size:10px;color:var(--text-4);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">In cart (' + done.length + ')</div>' +
           '<button class="clear-pantry-btn" id="shop-clear-cart" style="font-size:10px;padding:3px 8px">Remove all</button>' +
         '</div>' +
         renderShopItems(done) +
@@ -1660,10 +1618,10 @@ function renderLogInner() {
   const weeklyGoal = goal * 7
   const weeklyDiff = weeklyNet - weeklyGoal
   const deficitSurplus = weeklyDiff < 0
-    ? { label: Math.abs(weeklyDiff).toLocaleString() + ' cal deficit', color: 'var(--forest)', bg: 'var(--sage4)' }
+    ? { label: Math.abs(weeklyDiff).toLocaleString() + ' cal deficit', color: 'var(--accent)', bg: 'var(--sage4)' }
     : weeklyDiff > 0
     ? { label: weeklyDiff.toLocaleString() + ' cal surplus', color: 'var(--terra)', bg: '#fff5f2' }
-    : { label: 'On target', color: 'var(--forest)', bg: 'var(--sage4)' }
+    : { label: 'On target', color: 'var(--accent)', bg: 'var(--sage4)' }
 
   const search = state.logSearch || ''
   const logTagFilter = state.logTagFilter || null
@@ -1684,7 +1642,7 @@ function renderLogInner() {
             '<input id="edit-log-food-' + e.id + '" value="' + esc(e.food) + '" style="font-size:13px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit" />' +
             '<div style="display:flex;gap:6px;align-items:center">' +
               '<input id="edit-log-cals-' + e.id + '" type="number" value="' + (e.calories||0) + '" style="width:80px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit;font-size:13px" />' +
-              '<span style="font-size:11px;color:var(--ink3)">kcal</span>' +
+              '<span style="font-size:11px;color:var(--text-3)">kcal</span>' +
               '<button class="add-btn" data-save-log="' + e.id + '" style="flex:1">Save</button>' +
               '<button class="modal-cancel" data-cancel-log="' + e.id + '" style="padding:6px 10px">Cancel</button>' +
             '</div>' +
@@ -1721,13 +1679,13 @@ function renderLogInner() {
     const foods = entries.slice(0, 3).map(e => esc(e.food)).join(', ') + (entries.length > 3 ? ' +' + (entries.length - 3) + ' more' : '')
     const barPct = Math.min((dayCals / goal) * 100, 100)
     const barColor = diff > 200 ? 'var(--terra)' : diff > 0 ? 'var(--gold)' : 'var(--forest2)'
-    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--accent-light);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
-        '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--forest)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
-        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCalsIn > 0 ? dayCals + ' net cal' + (dayBurned > 0 ? ' <span style="font-size:10px;color:var(--forest)">(-' + dayBurned + ' burned)</span>' : '') : '--') + '</span>' +
+        '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--accent)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--text-2)">' + (dayCalsIn > 0 ? dayCals + ' net cal' + (dayBurned > 0 ? ' <span style="font-size:10px;color:var(--accent)">(-' + dayBurned + ' burned)</span>' : '') : '--') + '</span>' +
       '</div>' +
-      (dayCalsIn > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
-      (foods ? '<div style="font-size:10px;color:var(--ink3)">' + foods + '</div>' : '') +
+      (dayCalsIn > 0 ? '<div style="height:3px;background:var(--gray-200);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
+      (foods ? '<div style="font-size:10px;color:var(--text-3)">' + foods + '</div>' : '') +
     '</div>'
   }).join('')
 
@@ -1737,8 +1695,8 @@ function renderLogInner() {
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
       '<button class="cal-nav" id="log-prev-day">&#8249;</button>' +
       '<div style="text-align:center">' +
-        '<div style="font-size:15px;font-weight:700;color:var(--forest)">' + dayLabel + '</div>' +
-        (!isToday ? '<div style="font-size:11px;color:var(--ink3)">' + viewedDate.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</div>' : '') +
+        '<div style="font-size:15px;font-weight:700;color:var(--accent)">' + dayLabel + '</div>' +
+        (!isToday ? '<div style="font-size:11px;color:var(--text-3)">' + viewedDate.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</div>' : '') +
       '</div>' +
       '<button class="cal-nav" id="log-next-day" ' + (isToday ? 'disabled style="opacity:0.3"' : '') + '>&#8250;</button>' +
     '</div>' +
@@ -1751,7 +1709,7 @@ function renderLogInner() {
       '</div>' +
       '<div style="text-align:right">' +
         (burned > 0 ?
-          '<div style="font-size:11px;color:var(--ink3)">&#127869; ' + cals + ' in &nbsp;&#127939; ' + burned + ' out</div>' +
+          '<div style="font-size:11px;color:var(--text-3)">&#127869; ' + cals + ' in &nbsp;&#127939; ' + burned + ' out</div>' +
           '<div><span class="log-total-val">' + net + '</span><span class="log-total-goal"> net / ' + goal + '</span></div>'
         :
           '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>'
@@ -1766,17 +1724,17 @@ function renderLogInner() {
           const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr)
           return existing ? existing.weight : ''
         })()) + '" />' +
-        '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">' + ((state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr) ? '&#9998; Update' : '&#9881; Log') + ' Weight</button>' +
+        '<button class="add-btn" id="log-weight-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">' + ((state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr) ? '&#9998; Update' : '&#9881; Log') + ' Weight</button>' +
       '</div>'
     ) : '') +
 
     // 4. Today's Meals — what's already logged
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
+    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
     // 5. Log Meals — structured form
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Log Meals</div>' +
-    '<div style="background:var(--cream2);border-radius:12px;padding:12px;margin-bottom:10px">' +
+    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Log Meals</div>' +
+    '<div style="background:var(--gray-100);border-radius:12px;padding:12px;margin-bottom:10px">' +
       '<div style="display:flex;gap:6px;margin-bottom:6px">' +
         '<input id="log-qty" placeholder="Qty" type="number" min="0" step="0.1" style="width:60px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
         '<select id="log-unit" style="width:90px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:white">' +
@@ -1798,14 +1756,14 @@ function renderLogInner() {
         '<button class="add-btn" id="log-add-btn" style="white-space:nowrap">+ Add</button>' +
       '</div>' +
     '</div>' +
-    (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
+    (!isToday ? '<div style="font-size:10px;color:var(--text-3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
-          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
+          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--text-3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
         ).join('') +
-        '<button class="log-search-result" id="log-search-clear" style="color:var(--ink3);font-style:italic">Clear search</button>' +
+        '<button class="log-search-result" id="log-search-clear" style="color:var(--text-3);font-style:italic">Clear search</button>' +
       '</div>' : '') +
     '</div>' +
     (recipeTags.length > 0 ?
@@ -1816,10 +1774,10 @@ function renderLogInner() {
     : '') +
 
     // 6. Exercise
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
+    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
     '<div class="log-add-row">' +
       '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
-      '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
+      '<button class="add-btn" id="log-exercise-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">+ Add</button>' +
     '</div>' +
     (viewedExercise && viewedExercise.length > 0 ?
       viewedExercise.map(e =>
@@ -1827,7 +1785,7 @@ function renderLogInner() {
           '<div style="flex:1">' +
             '<div class="log-food">' + esc(e.activity) + '</div>' +
             '<div class="log-cal-row-entry">' +
-              '<span class="log-cal" style="color:var(--forest)">-' + e.calories_burned + ' kcal burned</span>' +
+              '<span class="log-cal" style="color:var(--accent)">-' + e.calories_burned + ' kcal burned</span>' +
               (e.calories_burned > 0 ? '<button class="log-breakdown-btn" data-ex-breakdown-id="' + e.id + '">?</button>' : '') +
             '</div>' +
             (state.logBreakdownId === 'ex-' + e.id && e.breakdown ?
@@ -1836,32 +1794,32 @@ function renderLogInner() {
           '<button class="remove-btn" data-ex-del="' + e.id + '">x</button>' +
         '</div>'
       ).join('')
-    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
+    : '<div style="font-size:12px;color:var(--text-4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
 
     // 7. Weight progress chart
     renderWeightProgress() +
 
     // Today's calorie summary (compact, between chart and log weight)
-    '<div style="background:var(--cream2);border-radius:10px;padding:8px 14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Today</div>' +
-      '<div style="font-size:13px;font-weight:700;color:var(--ink)">' +
+    '<div style="background:var(--gray-100);border-radius:10px;padding:8px 14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Today</div>' +
+      '<div style="font-size:13px;font-weight:700;color:var(--text)">' +
         (burned > 0
-          ? cals + ' in · ' + burned + ' burned · <span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + net + ' net</span>'
-          : '<span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + cals + '</span> cal'
+          ? cals + ' in · ' + burned + ' burned · <span style="color:' + (rem >= 0 ? 'var(--accent)' : 'var(--terra)') + '">' + net + ' net</span>'
+          : '<span style="color:' + (rem >= 0 ? 'var(--accent)' : 'var(--terra)') + '">' + cals + '</span> cal'
         ) +
       '</div>' +
-      '<div style="font-size:11px;color:var(--ink3)">' + (rem >= 0 ? rem + ' left' : Math.abs(rem) + ' over') + ' · goal ' + goal + '</div>' +
+      '<div style="font-size:11px;color:var(--text-3)">' + (rem >= 0 ? rem + ' left' : Math.abs(rem) + ' over') + ' · goal ' + goal + '</div>' +
     '</div>' +
 
     // 8. Last 7 days summary bar
     '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
+      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
       '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
-      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
+      '<div style="font-size:11px;color:var(--text-3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
     '</div>' +
 
     // 9. Day-by-day breakdown of last 7 days
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">Day by day</div>' +
+    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">Day by day</div>' +
     weekRows +
 
   '</div>'
@@ -1997,11 +1955,11 @@ function renderWeightProgress() {
     const adjEndDay = todayDay + daysToTargetFromNow
     const diffDays = origEndDay - adjEndDay
     const diffWeeks = Math.round(Math.abs(diffDays) / 7)
-    if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of plan!'; nudgeColor = 'var(--forest)' }
+    if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of plan!'; nudgeColor = 'var(--accent)' }
     else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead of plan!'; nudgeColor = 'var(--forest2)' }
     else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind plan — keep at it.'; nudgeColor = 'var(--terra)' }
     else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind plan — keep going!'; nudgeColor = 'var(--gold)' }
-    else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
+    else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--accent)' }
   }
 
   // Start dot (at startWeight on startDate)
@@ -2010,10 +1968,10 @@ function renderWeightProgress() {
 
   return '<div style="margin-top:16px">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
+      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
       '<div style="display:flex;gap:3px">' +
         ['1W','2W','1M','3M','All'].map(w =>
-          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--forest)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--forest)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
+          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--accent)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--accent)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
         ).join('') +
       '</div>' +
     '</div>' +
@@ -2021,11 +1979,11 @@ function renderWeightProgress() {
 
       // Stats: Start · Current · Lost · To go · Target
       '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink3)">' + startWeight + '</div><div style="font-size:10px;color:var(--ink3)">Start</div></div>' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest)">' + latestWeight + '</div><div style="font-size:10px;color:var(--ink3)">Current</div></div>' +
-        (lostSoFar > 0.1 ? '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest2)">-' + lostSoFar.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">Lost</div></div>' : '') +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">To go</div></div>' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--ink3)">Target</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--text-3)">' + startWeight + '</div><div style="font-size:10px;color:var(--text-3)">Start</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--accent)">' + latestWeight + '</div><div style="font-size:10px;color:var(--text-3)">Current</div></div>' +
+        (lostSoFar > 0.1 ? '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--accent)">-' + lostSoFar.toFixed(1) + '</div><div style="font-size:10px;color:var(--text-3)">Lost</div></div>' : '') +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--text-2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--text-3)">To go</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--text-3)">Target</div></div>' +
       '</div>' +
 
       // SVG Graph
@@ -2065,7 +2023,7 @@ function renderWeightProgress() {
         // Actual trajectory forward (colored dashed — extrapolated from your actual pace)
 
         // Actual logged weights (dotted green — your real journey connecting weigh-ins)
-        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
+        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
 
         // Actual dots with date labels
         actualPoints.map((p, i) => {
@@ -2076,27 +2034,27 @@ function renderWeightProgress() {
           const anchor = cx > W - 50 ? 'end' : 'start'
           const labelY = cy > H - padB - 20 ? cy - 10 : cy + 14
           const isLatest = i === actualPoints.length - 1
-          return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (isLatest ? 4.5 : 3.5) + '" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' +
+          return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (isLatest ? 4.5 : 3.5) + '" fill="var(--accent)" stroke="white" stroke-width="1.5"/>' +
             '<text x="' + labelX.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="' + anchor + '" font-size="7" fill="var(--ink3)">' + dateLabel + '</text>' +
-            (isLatest ? '<text x="' + (cx > W-60 ? cx-6 : cx+6).toFixed(1) + '" y="' + (cy-7).toFixed(1) + '" text-anchor="' + (cx>W-60?'end':'start') + '" font-size="8" font-weight="bold" fill="var(--forest)">' + p.weight + '</text>' : '')
+            (isLatest ? '<text x="' + (cx > W-60 ? cx-6 : cx+6).toFixed(1) + '" y="' + (cy-7).toFixed(1) + '" text-anchor="' + (cx>W-60?'end':'start') + '" font-size="8" font-weight="bold" fill="var(--accent)">' + p.weight + '</text>' : '')
         }).join('') +
 
       '</svg>' +
 
       // Dates line
-      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
-        (adjProjPath && daysToTargetFromNow > 0 ? ' &nbsp;·&nbsp; Updated: <strong style="color:var(--forest2)">' + new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</strong>' : '') +
+      (projection ? '<div style="font-size:11px;color:var(--text-3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
+        (adjProjPath && daysToTargetFromNow > 0 ? ' &nbsp;·&nbsp; Updated: <strong style="color:var(--accent)">' + new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</strong>' : '') +
       '</div>' : '') +
 
       // Nudge
-      (nudgeMsg ? '<div style="font-size:12px;font-weight:600;color:' + nudgeColor + ';margin-top:8px;text-align:center;padding:6px 10px;background:var(--cream2);border-radius:8px">' + nudgeMsg + '</div>' : '') +
+      (nudgeMsg ? '<div style="font-size:12px;font-weight:600;color:' + nudgeColor + ';margin-top:8px;text-align:center;padding:6px 10px;background:var(--gray-100);border-radius:8px">' + nudgeMsg + '</div>' : '') +
 
       // Legend
       '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
-        (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
+        (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
       '</div>' +
 
     '</div>' +
@@ -2107,12 +2065,12 @@ function renderWeightProgress() {
         weightLog.slice().reverse().slice(0, 5).map(e =>
           '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
             '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
-            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}) + '</span>' +
+            '<span style="font-size:11px;color:var(--text-3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}) + '</span>' +
             '<button class="remove-btn" data-weight-del="' + e.id + '">x</button>' +
           '</div>'
         ).join('') +
       '</div>'
-    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0">Log your first weigh-in to start tracking!</div>') +
+    : '<div style="font-size:12px;color:var(--text-4);padding:4px 0">Log your first weigh-in to start tracking!</div>') +
 
   '</div>'
 }
@@ -2248,8 +2206,8 @@ function renderCalendarRecipePreviewModal() {
   return '<div class="modal-bg" id="cal-recipe-preview-bg" style="z-index:200;align-items:flex-end">' +
     '<div class="modal-sheet" style="max-height:88vh;overflow-y:auto;border-radius:20px 20px 0 0;padding:0">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:1">' +
-        '<div style="font-size:13px;font-weight:600;color:var(--ink2)">Recipe</div>' +
-        '<button id="cal-recipe-preview-close" style="background:none;border:none;font-size:20px;color:var(--ink3);cursor:pointer;line-height:1;padding:0">&times;</button>' +
+        '<div style="font-size:13px;font-weight:600;color:var(--text-2)">Recipe</div>' +
+        '<button id="cal-recipe-preview-close" style="background:none;border:none;font-size:20px;color:var(--text-3);cursor:pointer;line-height:1;padding:0">&times;</button>' +
       '</div>' +
       '<div style="padding:0 4px 20px">' + cardHtml + '</div>' +
     '</div>' +
@@ -2285,7 +2243,7 @@ function renderCalendar() {
     html += '<span class="cal-day-date">' + formatDate(date).split(', ')[1] + '</span>'
     if (dateMeals.length > 0) {
       const dinnerDefault = localStorage.getItem('mep_dinner_time') || '7:00 PM'
-      html += '<button class="cal-game-plan-btn" data-game-plan-slot="Day" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(dinnerDefault) + '" style="margin-left:auto;font-size:10px;padding:3px 9px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan Day</button>'
+      html += '<button class="cal-game-plan-btn" data-game-plan-slot="Day" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(dinnerDefault) + '" style="margin-left:auto;font-size:10px;padding:3px 9px;background:var(--black);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan Day</button>'
     }
     html += '</div>'
 
@@ -2297,18 +2255,18 @@ function renderCalendar() {
       html += '<span>' + slot + '</span>'
       if (slotHasRecipe) {
         const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
-        html += '<button class="cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(defaultTime) + '" style="font-size:10px;padding:2px 7px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan</button>'
+        html += '<button class="cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(defaultTime) + '" style="font-size:10px;padding:2px 7px;background:var(--black);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan</button>'
       }
       html += '</div>'
 
       entries.forEach(entry => {
         html += '<div class="cal-entry">'
         html += (entry.recipe_id
-          ? '<button class="cal-entry-name" data-go-recipe="' + entry.recipe_id + '" style="background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:var(--forest);font-weight:600;font-size:13px;padding:0;text-decoration:underline dotted">' + esc(entry.recipe_name || 'Unnamed') + '</button>'
+          ? '<button class="cal-entry-name" data-go-recipe="' + entry.recipe_id + '" style="background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:var(--accent);font-weight:600;font-size:13px;padding:0;text-decoration:underline dotted">' + esc(entry.recipe_name || 'Unnamed') + '</button>'
           : '<span class="cal-entry-name">' + esc(entry.recipe_name || 'Unnamed') + '</span>')
         html += '<div class="cal-entry-actions">'
         html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
-        if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--sage4);color:var(--forest)">+ List</button>'
+        if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--accent-light);color:var(--accent)">+ List</button>'
         html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">&times;</button>'
         html += '</div>'
         html += '</div>'
@@ -2345,7 +2303,7 @@ function renderCalendar() {
     html += '</div>'
 
     // Then recipe search
-    html += '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Or search recipes</div>'
+    html += '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Or search recipes</div>'
     html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" />'
 
     // Tag filter chips
@@ -2479,15 +2437,15 @@ function renderTags() {
   const renderChip = (t, ns) =>
     '<span class="tag-library-chip" style="display:inline-flex;align-items:center;gap:4px;margin:3px">' +
       esc(t.name) +
-      '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns + '" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+      '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns + '" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--text-3);padding:0;line-height:1">×</button>' +
     '</span>'
 
   const renderSection = (title, hint, tags, ns, addId, tagType) =>
     '<div class="tags-section">' +
       '<div class="tags-section-title">' + title + '</div>' +
-      '<div class="tags-section-hint" style="font-size:11px;color:var(--ink3);margin-bottom:8px">' + hint + '</div>' +
+      '<div class="tags-section-hint" style="font-size:11px;color:var(--text-3);margin-bottom:8px">' + hint + '</div>' +
       '<div class="tags-section-chips" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">' +
-        (tags.length ? tags.map(t => renderChip(t, ns)).join('') : '<span style="font-size:12px;color:var(--ink4);font-style:italic">None yet</span>') +
+        (tags.length ? tags.map(t => renderChip(t, ns)).join('') : '<span style="font-size:12px;color:var(--text-4);font-style:italic">None yet</span>') +
       '</div>' +
       '<div class="tag-add-row" style="display:flex;gap:6px">' +
         '<input class="tag-lib-input" id="' + addId + '" placeholder="Add tag..." style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
@@ -2498,27 +2456,27 @@ function renderTags() {
   return '<div class="tab-content">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
       '<div class="section-title">Tag Library</div>' +
-      '<button class="add-btn" id="organize-tags-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2);font-size:12px">' +
+      '<button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2);font-size:12px">' +
         (hasTyped ? '✦ Re-organize' : '✦ Auto-organize') +
       '</button>' +
     '</div>' +
     renderSearchBar('tag-search', state.tagSearch || '', 'Search tags...') +
 
     // Recipe tags — split into Category and Style if typed, flat if not
-    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
-      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🥘 Recipe Tags</div>' +
+    '<div style="background:var(--gray-100);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:2px">🥘 Recipe Tags</div>' +
       (hasTyped ? (
         renderSection('Category', 'What the dish IS — protein, cuisine, main ingredient (Pork, Pasta, Salad)', categoryTags, 'recipe', 'new-lib-tag-recipe-category', 'category') +
         renderSection('Style', 'How it\'s made or when — method, occasion (Sous Vide, Weeknight, Party)', styleTags, 'recipe', 'new-lib-tag-recipe-style', 'style')
       ) : (
-        '<div style="font-size:12px;color:var(--ink3);margin-bottom:10px">Tap <strong>✦ Auto-organize</strong> to split into Category and Style for better filtering.</div>' +
+        '<div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Tap <strong>✦ Auto-organize</strong> to split into Category and Style for better filtering.</div>' +
         renderSection('All Recipe Tags', 'Meal type, occasion, cooking method, main ingredient', recipeTags, 'recipe', 'new-lib-tag-recipe', 'category')
       )) +
     '</div>' +
 
     // Location tags
-    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px">' +
-      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🛒 Pantry & Store Tags</div>' +
+    '<div style="background:var(--gray-100);border-radius:12px;padding:12px 14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:2px">🛒 Pantry & Store Tags</div>' +
       renderSection('Location Tags', 'Store aisle, fridge section, pantry shelf', locationTags, 'location', 'new-lib-tag-location', 'category') +
     '</div>' +
   '</div>'
@@ -2534,7 +2492,7 @@ function linkifyRecipes(text) {
     const escapedName = esc(r.name)
     const re = new RegExp('(?<![\\w-])' + escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'g')
     html = html.replace(re,
-      '<button class="chat-recipe-link" data-go-recipe="' + r.id + '" style="background:none;border:none;padding:0;color:var(--forest);font-weight:700;text-decoration:underline dotted;cursor:pointer;font-family:inherit;font-size:inherit">' + escapedName + '</button>'
+      '<button class="chat-recipe-link" data-go-recipe="' + r.id + '" style="background:none;border:none;padding:0;color:var(--accent);font-weight:700;text-decoration:underline dotted;cursor:pointer;font-family:inherit;font-size:inherit">' + escapedName + '</button>'
     )
   })
   // Linkify time references
@@ -2566,15 +2524,15 @@ function renderChat() {
   return '<div class="chat-fullpage">' +
     // Recipe context banner
     (ctx ? (
-      '<div style="background:var(--sage4);border-bottom:1.5px solid var(--forest2);padding:8px 14px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="background:var(--accent-light);border-bottom:1.5px solid var(--forest2);padding:8px 14px;display:flex;justify-content:space-between;align-items:center">' +
         '<div style="display:flex;align-items:center;gap:10px">' +
-          '<button id="chat-back-to-recipe" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--forest);padding:0;line-height:1;font-family:inherit" title="Back to recipe">←</button>' +
+          '<button id="chat-back-to-recipe" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--accent);padding:0;line-height:1;font-family:inherit" title="Back to recipe">←</button>' +
           '<div>' +
-            '<div style="font-size:10px;color:var(--forest);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Asking about</div>' +
-            '<button id="chat-go-to-recipe" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);text-decoration:underline dotted;font-family:inherit;text-align:left">' + esc(ctx.name) + '</button>' +
+            '<div style="font-size:10px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Asking about</div>' +
+            '<button id="chat-go-to-recipe" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;font-weight:700;color:var(--accent);text-decoration:underline dotted;font-family:inherit;text-align:left">' + esc(ctx.name) + '</button>' +
           '</div>' +
         '</div>' +
-        '<button id="chat-clear-context" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✕ Clear</button>' +
+        '<button id="chat-clear-context" style="font-size:11px;color:var(--text-3);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✕ Clear</button>' +
       '</div>'
     ) : '') +
     '<div class="chat-messages" id="chat-messages">' + chatHtml + '</div>' +
@@ -2770,7 +2728,7 @@ function renderTagOrganizerModal() {
     return '<div class="modal-bg" id="tag-organizer-bg">' +
       '<div class="modal-sheet">' +
         '<div class="modal-title">🏷 Organize Tags</div>' +
-        '<div style="text-align:center;padding:30px 0;color:var(--ink3)">Asking AI to sort your tags...</div>' +
+        '<div style="text-align:center;padding:30px 0;color:var(--text-3)">Asking AI to sort your tags...</div>' +
       '</div>' +
     '</div>'
   }
@@ -2778,10 +2736,10 @@ function renderTagOrganizerModal() {
   const renderTagRow = (t) => {
     const type = t.tag_type || 'category'
     return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--cream3)">' +
-      '<div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">' + esc(t.name) + '</div>' +
+      '<div style="flex:1;font-size:13px;font-weight:600;color:var(--text)">' + esc(t.name) + '</div>' +
       '<div style="display:flex;gap:4px">' +
-        '<button class="tag-type-btn ' + (type === 'category' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="category" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='category'?'var(--forest)':'var(--border)') + ';background:' + (type==='category'?'var(--forest)':'white') + ';color:' + (type==='category'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Category</button>' +
-        '<button class="tag-type-btn ' + (type === 'style' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="style" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='style'?'var(--forest)':'var(--border)') + ';background:' + (type==='style'?'var(--forest)':'white') + ';color:' + (type==='style'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Style</button>' +
+        '<button class="tag-type-btn ' + (type === 'category' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="category" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='category'?'var(--accent)':'var(--border)') + ';background:' + (type==='category'?'var(--accent)':'white') + ';color:' + (type==='category'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Category</button>' +
+        '<button class="tag-type-btn ' + (type === 'style' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="style" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='style'?'var(--accent)':'var(--border)') + ';background:' + (type==='style'?'var(--accent)':'white') + ';color:' + (type==='style'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Style</button>' +
       '</div>' +
     '</div>'
   }
@@ -2789,9 +2747,9 @@ function renderTagOrganizerModal() {
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
         '<div class="modal-title" style="margin:0">🏷 Organize Tags</div>' +
-        '<button id="tag-organizer-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+        '<button id="tag-organizer-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-3);padding:0;line-height:1">×</button>' +
       '</div>' +
-      '<div style="font-size:12px;color:var(--ink3);margin-bottom:14px">Category = what the dish is (Pork, Pasta). Style = how it\'s made (Sous Vide, Weeknight). Filtering uses Category as OR, then Style to narrow.</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:14px">Category = what the dish is (Pork, Pasta). Style = how it\'s made (Sous Vide, Weeknight). Filtering uses Category as OR, then Style to narrow.</div>' +
       tags.sort((a, b) => a.name.localeCompare(b.name)).map(renderTagRow).join('') +
       '<div style="margin-top:16px">' +
         '<button class="modal-save" id="tag-organizer-save" style="width:100%">Save</button>' +
@@ -2808,47 +2766,121 @@ function renderCookMode() {
 
   const ingredientSource = scaledIngredients || r.ingredients || ''
   const ingredients = ingredientSource.split('\n').map(l => l.trim()).filter(Boolean)
-  const instructionsHtml = formatRecipeText(r.instructions || r.text || '')
-  const notesHtml = r.cookingNotes ? '<div style="margin-top:20px;padding:12px 14px;background:var(--gray-50);border:0.5px solid var(--border);border-radius:10px;font-size:14px;color:var(--text-2);line-height:1.6"><strong style=\"color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:0.6px;\">My notes</strong><br>' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' : ''
+
+  // ── AI-assisted step+amounts parsing ──
+  // We parse steps from instructions and attach ingredient amounts as chips
+  const rawInstructions = r.instructions || r.text || ''
+  const steps = rawInstructions
+    .split(/\n+/)
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(l => l.replace(/^(step\s*\d+[.:]?\s*|\d+\.\s*)/i, ''))
+    .filter(l => l.length > 4)
+
+  // Simple heuristic: find ingredient mentions in each step
+  // Match things like "1 cup", "2 tbsp", "3 cloves", "1 lb" etc from ingredient list
+  const ingAmountRegex = /^([\d¼½¾⅓⅔⅛⅜⅝⅞\/\-\s]+(?:cup|tbsp|tsp|oz|lb|g|kg|ml|l|clove|cloves|can|can|bunch|sprig|sprigs|slice|slices|piece|pieces|stalk|stalks|head|heads|inch|cm|medium|large|small|whole)?[\s]*)(.+)/i
+  const parsedIngredients = ingredients.map(line => {
+    const m = line.match(ingAmountRegex)
+    if (!m) return { amount: '', name: line.toLowerCase() }
+    return { amount: m[1].trim(), name: m[2].toLowerCase().trim(), full: line }
+  })
+
+  const getChipsForStep = (stepText) => {
+    const stepLower = stepText.toLowerCase()
+    const matches = []
+    parsedIngredients.forEach(ing => {
+      if (!ing.name) return
+      // Check if the step mentions this ingredient
+      const words = ing.name.replace(/[^a-z\s]/g, '').split(/\s+/).filter(w => w.length > 3)
+      const anyMatch = words.some(w => stepLower.includes(w))
+      if (anyMatch && ing.amount) {
+        matches.push(ing.full || (ing.amount + ' ' + ing.name))
+      }
+    })
+    return matches
+  }
+
+  const notesHtml = r.cookingNotes
+    ? '<div style="margin-top:20px;padding:12px 14px;background:var(--gray-50);border:0.5px solid var(--border);border-radius:10px">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">My notes</div>' +
+        '<div style="font-size:14px;line-height:1.6;color:var(--text-2)">' + esc(r.cookingNotes).replace(/\n/g, '<br>') + '</div>' +
+      '</div>'
+    : ''
+
+  const tabBtn = (tabId, label) =>
+    '<button id="cook-tab-' + tabId + '" style="flex:1;padding:11px;font-size:13px;font-weight:' +
+    (activeTab===tabId?'700':'500') + ';color:' + (activeTab===tabId?'var(--accent)':'var(--text-3)') +
+    ';background:none;border:none;border-bottom:2px solid ' + (activeTab===tabId?'var(--accent)':'transparent') +
+    ';cursor:pointer;font-family:inherit">' + label + '</button>'
+
+  const ingredientsHtml = ingredients.length > 0
+    ? ingredients.map((line, i) => {
+        const isChecked = (state.cookMode.checkedIngredients || new Set()).has(i)
+        return '<div style="display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:0.5px solid var(--border);cursor:pointer" class="cook-ing-row" data-ing-idx="' + i + '">' +
+          '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'var(--border-strong)':'var(--accent)') + ';margin-top:8px;flex-shrink:0"></div>' +
+          '<div style="font-size:16px;line-height:1.4;color:' + (isChecked?'var(--text-4)':'var(--text)') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + linkifyTimers(esc(line)) + '</div>' +
+        '</div>'
+      }).join('')
+    : '<div style="color:var(--text-4);font-style:italic;padding:20px 0">No ingredients listed</div>'
+
+  const instructionsHtml = steps.length > 0
+    ? steps.map((step, i) => {
+        const chips = getChipsForStep(step)
+        const chipsHtml = chips.length > 0
+          ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' +
+              chips.map(c => '<span style="font-size:11px;font-weight:500;color:var(--text-2);background:var(--gray-100);border:0.5px solid var(--border-strong);border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
+            '</div>'
+          : ''
+        return '<div style="padding:14px 0;border-bottom:0.5px solid var(--border)">' +
+          '<div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">Step ' + (i+1) + '</div>' +
+          '<div style="font-size:15px;line-height:1.7;color:var(--text)">' + linkifyTimers(esc(step)) + '</div>' +
+          chipsHtml +
+        '</div>'
+      }).join('') + notesHtml
+    : (rawInstructions
+        ? '<div style="font-size:15px;line-height:1.8;color:var(--text)">' + linkifyTimers(esc(rawInstructions)) + '</div>' + notesHtml
+        : '<div style="color:var(--text-4);font-style:italic;padding:20px 0">No instructions listed</div>')
+
+  // Scale buttons row (shown on ingredients tab)
+  const scaleRow = '<div style="display:flex;gap:6px;padding:10px 0 4px;align-items:center">' +
+    '<span style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0">Scale</span>' +
+    ['½x','1x','2x','3x'].map(s => {
+      const isActive = s === '1x' && !scaledIngredients || scaleLabel === s
+      return '<button class="scale-btn' + (isActive?' scale-btn-active':'') + '" data-scale="' + s + '" data-recipe-id="' + r.id + '" style="' + (isActive?'background:var(--black);color:white;border-color:var(--black)':'') + '">' + s + '</button>'
+    }).join('') +
+  '</div>'
 
   return '<div style="position:fixed;inset:0;z-index:2000;background:var(--white);display:flex;flex-direction:column;font-family:inherit">' +
 
-    // Header
-    '<div style="background:#1a1a1a;padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+    // Black header
+    '<div style="background:#1a1a1a;padding:env(safe-area-inset-top,14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
       '<button id="cook-mode-close" style="width:32px;height:32px;background:rgba(255,255,255,0.1);border:none;cursor:pointer;font-size:18px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:16px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style="font-size:12px;opacity:0.75">(' + scaleLabel + ')</span>' : '') + '</div>' +
+        '<div style="font-size:15px;font-weight:700;color:white;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name) + (scaleLabel ? ' <span style=\"font-size:12px;opacity:0.6\">(' + scaleLabel + ')</span>' : '') + '</div>' +
+        '<div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">' + (r.clippedFrom ? esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) : 'Recipe') + '</div>' +
       '</div>' +
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.3);font-size:12px">📋 Plan</button>' +
+      // Plan + Ask AI live here now
+      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:11px;flex-shrink:0">📋 Plan</button>' +
+      '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">Ask AI</button>' +
     '</div>' +
 
     // Tab bar
     '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white);flex-shrink:0">' +
-      '<button id="cook-tab-ingredients" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='ingredients'?'700':'500') + ';color:' + (activeTab==='ingredients'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:2px solid ' + (activeTab==='ingredients'?'var(--accent)':'transparent') + ';cursor:pointer;font-family:inherit">Ingredients</button>' +
-      '<button id="cook-tab-instructions" style="flex:1;padding:12px;font-size:14px;font-weight:' + (activeTab==='instructions'?'700':'500') + ';color:' + (activeTab==='instructions'?'var(--forest)':'var(--ink3)') + ';background:none;border:none;border-bottom:2px solid ' + (activeTab==='instructions'?'var(--accent)':'transparent') + ';cursor:pointer;font-family:inherit">Instructions</button>' +
+      tabBtn('ingredients', 'Ingredients') +
+      tabBtn('instructions', 'Instructions') +
     '</div>' +
 
     // Content
-    '<div style="flex:1;overflow-y:auto;padding:20px 16px">' +
-      (activeTab === 'ingredients' ? (
-        ingredients.length > 0
-          ? ingredients.map(line =>
-              '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--cream3)">' +
-                '<div style="width:6px;height:6px;border-radius:50%;background:var(--accent);margin-top:8px;flex-shrink:0"></div>' +
-                '<div style="font-size:16px;line-height:1.4;color:var(--text)">' + linkifyTimers(esc(line)) + '</div>' +
-              '</div>'
-            ).join('')
-          : '<div style="color:var(--ink3);font-style:italic;padding:20px 0">No ingredients listed</div>'
-      ) : (
-        instructionsHtml
-          ? '<div style="font-size:16px;line-height:1.8">' + instructionsHtml + '</div>' + notesHtml
-          : '<div style="color:var(--ink3);font-style:italic;padding:20px 0">No instructions listed</div>'
-      )) +
+    '<div style="flex:1;overflow-y:auto;padding:4px 16px 20px">' +
+      (activeTab === 'ingredients'
+        ? scaleRow + ingredientsHtml
+        : instructionsHtml
+      ) +
     '</div>' +
 
   '</div>'
 }
-
 function gpChatKey() {
   const { date, slot } = state.gamePlanModal || {}
   return (date || 'today') + '-' + (slot || 'Dinner')
@@ -2885,7 +2917,7 @@ function renderGamePlanModal() {
   if (view === 'chat') {
     const bubbles = chatMessages.map(m =>
       '<div style="display:flex;flex-direction:column;align-items:' + (m.role === 'user' ? 'flex-end' : 'flex-start') + ';margin-bottom:10px">' +
-        '<div style="max-width:85%;background:' + (m.role === 'user' ? 'var(--forest)' : 'var(--cream2)') + ';color:' + (m.role === 'user' ? 'white' : 'var(--ink)') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
+        '<div style="max-width:85%;background:' + (m.role === 'user' ? 'var(--accent)' : 'var(--cream2)') + ';color:' + (m.role === 'user' ? 'white' : 'var(--text)') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
           (m.role === 'assistant' ? linkifyTimers(esc(m.content).replace(/\n/g, '<br>')) : esc(m.content).replace(/\n/g, '<br>')) +
         '</div>' +
       '</div>'
@@ -2894,25 +2926,25 @@ function renderGamePlanModal() {
     return '<div class="modal-bg" id="game-plan-bg">' +
       '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--cream3);flex-shrink:0">' +
-          '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--forest);padding:0;line-height:1;font-family:inherit">←</button>' +
+          '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--accent);padding:0;line-height:1;font-family:inherit">←</button>' +
           '<div style="flex:1;display:flex;align-items:center;gap:8px">' +
             '<div>' +
-              '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Game Plan</div>' +
-              '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
+              '<div style="font-size:14px;font-weight:700;color:var(--accent)">✦ Game Plan</div>' +
+              '<div style="font-size:11px;color:var(--text-3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
             '</div>' +
-            '<button id="gp-start-over" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">↺ Redo</button>' +
+            '<button id="gp-start-over" style="font-size:11px;color:var(--text-3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">↺ Redo</button>' +
           '</div>' +
-          '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+          '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-3);padding:0;line-height:1">×</button>' +
         '</div>' +
         '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
           (chatMessages.length === 0
-            ? '<div style="color:var(--ink4);font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>'
+            ? '<div style="color:var(--text-4);font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>'
             : bubbles) +
-          (chatLoading ? '<div style="text-align:center;padding:10px;color:var(--ink3);font-size:13px">thinking...</div>' : '') +
+          (chatLoading ? '<div style="text-align:center;padding:10px;color:var(--text-3);font-size:13px">thinking...</div>' : '') +
         '</div>' +
         '<div style="padding:10px 12px;border-top:1px solid var(--cream3);display:flex;gap:8px;flex-shrink:0">' +
           '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />' +
-          '<button id="gp-chat-send" style="background:var(--forest);color:white;border:none;border-radius:12px;padding:9px 14px;font-size:16px;cursor:pointer" ' + (chatLoading ? 'disabled' : '') + '>▶</button>' +
+          '<button id="gp-chat-send" style="background:var(--black);color:white;border:none;border-radius:12px;padding:9px 14px;font-size:16px;cursor:pointer" ' + (chatLoading ? 'disabled' : '') + '>▶</button>' +
         '</div>' +
       '</div>' +
     '</div>'
@@ -2921,7 +2953,7 @@ function renderGamePlanModal() {
   // ── FULLSCREEN COOK VIEW ──
   if (view === 'fullscreen' && result) {
     return '<div style="position:fixed;inset:0;z-index:2000;background:var(--white);display:flex;flex-direction:column;font-family:inherit">' +
-      '<div style="background:var(--forest);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+      '<div style="background:var(--black);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
         '<button id="gp-exit-fullscreen" style="background:rgba(255,255,255,0.2);border:none;cursor:pointer;font-size:20px;color:white;padding:6px 10px;line-height:1;border-radius:8px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">×</button>' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:15px;font-weight:700;color:white">' + slotLabel + ' Game Plan</div>' +
@@ -2933,8 +2965,8 @@ function renderGamePlanModal() {
         result.map((item, i) => {
           const isLast = i === result.length - 1
           return '<div style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--cream3)">' +
-            '<div style="min-width:65px;font-size:13px;font-weight:700;color:var(--forest);padding-top:3px">' + esc(item.time) + '</div>' +
-            '<div style="font-size:17px;line-height:1.5;color:var(--ink);' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+            '<div style="min-width:65px;font-size:13px;font-weight:700;color:var(--accent);padding-top:3px">' + esc(item.time) + '</div>' +
+            '<div style="font-size:17px;line-height:1.5;color:var(--text);' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
           '</div>'
         }).join('') +
       '</div>' +
@@ -2944,24 +2976,24 @@ function renderGamePlanModal() {
   if (loading) {
     content = '<div style="text-align:center;padding:30px 0">' +
       '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
-      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your ' + slotLabel.toLowerCase() + '...</div>' +
-      '<div style="font-size:12px;color:var(--ink3);margin-top:6px">Reading your recipes and building a timeline</div>' +
+      '<div style="font-size:14px;font-weight:600;color:var(--accent)">Planning your ' + slotLabel.toLowerCase() + '...</div>' +
+      '<div style="font-size:12px;color:var(--text-3);margin-top:6px">Reading your recipes and building a timeline</div>' +
       '</div>'
   } else if (result) {
     content =
       '<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<span style="font-size:12px;color:var(--ink3)">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at</span>' +
+        '<span style="font-size:12px;color:var(--text-3)">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at</span>' +
         '<input id="gp-dinner-time" value="' + esc(timeVal) + '" style="width:90px;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
         '<button class="add-btn" id="gp-regenerate" style="font-size:12px;padding:5px 12px">↺ Redo</button>' +
       '</div>' +
       '<div style="position:relative;padding-left:18px">' +
-        '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--forest2);opacity:0.3;border-radius:2px"></div>' +
+        '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--accent);opacity:0.3;border-radius:2px"></div>' +
         result.map((item, i) => {
           const isLast = i === result.length - 1
           return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
-            '<div style="position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--forest)' : 'var(--forest2)') + ';border:2px solid white;box-shadow:0 0 0 1.5px var(--forest2)"></div>' +
-            '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--forest);padding-top:2px">' + esc(item.time) + '</div>' +
-            '<div style="font-size:13px;color:var(--ink);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+            '<div style="position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--accent)' : 'var(--forest2)') + ';border:2px solid white;box-shadow:0 0 0 1.5px var(--forest2)"></div>' +
+            '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--accent);padding-top:2px">' + esc(item.time) + '</div>' +
+            '<div style="font-size:13px;color:var(--text);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
           '</div>'
         }).join('') +
       '</div>'
@@ -2972,7 +3004,7 @@ function renderGamePlanModal() {
         '<span style="font-size:13px;font-weight:600">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at:</span>' +
         '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
       '</div>' +
-      '<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;display:flex;align-items:center;gap:5px">' +
+      '<div style="font-size:12px;color:var(--text-3);margin-bottom:12px;display:flex;align-items:center;gap:5px">' +
         '📅 ' + dateLabel +
       '</div>' +
       '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, skipping the potatoes tonight, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px">' + esc(savedNotes) + '</textarea>' +
@@ -2985,13 +3017,13 @@ function renderGamePlanModal() {
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
         '<div class="modal-title" style="margin:0">📋 ' + slotLabel + ' Game Plan</div>' +
-        '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1;flex-shrink:0">×</button>' +
+        '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-3);padding:0;line-height:1;flex-shrink:0">×</button>' +
       '</div>' +
       '<div class="modal-sub" style="margin-bottom:14px">' + dateLabel + '</div>' +
       content +
       (result ? '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
-        '<button id="gp-start-cooking" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
-        '<button class="modal-save" id="gp-tweak" style="background:white;color:var(--forest);border:2px solid var(--forest);width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
+        '<button id="gp-start-cooking" style="background:var(--black);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
+        '<button class="modal-save" id="gp-tweak" style="background:white;color:var(--accent);border:2px solid var(--accent);width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
       '</div>' : '') +
     '</div>' +
   '</div>'
@@ -3005,7 +3037,7 @@ function renderScanPicker() {
       '<div class="modal-sub">Choose how to get your recipe photo</div>' +
       '<div style="display:flex;flex-direction:column;gap:10px;margin:16px 0">' +
         '<button class="modal-save" id="scan-use-camera" style="font-size:15px;padding:14px">Take Photo</button>' +
-        '<button class="modal-save" id="scan-use-library" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2);font-size:15px;padding:14px">Choose from Library</button>' +
+        '<button class="modal-save" id="scan-use-library" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2);font-size:15px;padding:14px">Choose from Library</button>' +
       '</div>' +
       '<button class="modal-cancel" id="scan-picker-cancel">Cancel</button>' +
     '</div>' +
@@ -3028,13 +3060,13 @@ function renderAddToWeekModal() {
     '<div class="modal-sheet">' +
       '<div class="modal-title">+ Week</div>' +
       '<div class="modal-sub">' + esc(m.recipeName) + '</div>' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Day</div>' +
+      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Day</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">' +
         days.map(d =>
           '<button class="tag-filter-chip ' + (selectedDay === d.iso ? 'active' : '') + '" data-week-day="' + d.iso + '">' + d.label + '</button>'
         ).join('') +
       '</div>' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Meal</div>' +
+      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Meal</div>' +
       '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px">' +
         slots.map(s =>
           '<button class="tag-filter-chip ' + (m.selectedSlot === s ? 'active' : '') + '" data-week-slot="' + s + '">' + s + '</button>'
@@ -3086,8 +3118,8 @@ function renderPasteModal() {
     '<div class="clip-field-label">Tags</div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">' +
       recipeTags.map(t =>
-        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:8px 10px;min-width:0">' +
-        '<input type="checkbox" class="paste-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest);flex-shrink:0;width:16px;height:16px" />' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--gray-100);border-radius:8px;padding:8px 10px;min-width:0">' +
+        '<input type="checkbox" class="paste-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--accent);flex-shrink:0;width:16px;height:16px" />' +
         '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.name) + '</span></label>'
       ).join('') +
     '</div>'
@@ -3122,7 +3154,7 @@ function renderShopReview() {
             (locationTags.length > 0 ?
               '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
                 locationTags.map(t =>
-                  '<button class="shop-review-tag-btn ' + (itemTags.includes(t.name) ? 'active' : '') + '" data-review-tag-idx="' + idx + '" data-review-tag="' + esc(t.name) + '" style="font-size:10px;padding:2px 7px;border-radius:5px;border:1.5px solid ' + (itemTags.includes(t.name) ? 'var(--forest)' : 'var(--border)') + ';background:' + (itemTags.includes(t.name) ? 'var(--forest)' : 'white') + ';color:' + (itemTags.includes(t.name) ? 'white' : 'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + esc(t.name) + '</button>'
+                  '<button class="shop-review-tag-btn ' + (itemTags.includes(t.name) ? 'active' : '') + '" data-review-tag-idx="' + idx + '" data-review-tag="' + esc(t.name) + '" style="font-size:10px;padding:2px 7px;border-radius:5px;border:1.5px solid ' + (itemTags.includes(t.name) ? 'var(--accent)' : 'var(--border)') + ';background:' + (itemTags.includes(t.name) ? 'var(--accent)' : 'white') + ';color:' + (itemTags.includes(t.name) ? 'white' : 'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + esc(t.name) + '</button>'
                 ).join('') +
               '</div>'
             : '')
@@ -3156,7 +3188,7 @@ function renderLogModal() {
       : '') +
       '<div class="lm-cal-row">' +
         (estimating ?
-          '<div style="flex:1;font-size:13px;color:var(--ink3);font-style:italic;padding:8px">Estimating calories...</div>'
+          '<div style="flex:1;font-size:13px;color:var(--text-3);font-style:italic;padding:8px">Estimating calories...</div>'
         :
           '<input id="lm-cals" type="number" placeholder="Calories (auto-filled)" style="flex:1" value="' + (m.calories || '') + '" />' +
           '<button class="lm-estimate-btn" id="lm-estimate">Estimate</button>'
@@ -3784,7 +3816,7 @@ function bindEvents() {
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      state.cookMode = { recipeId: el.dataset.cookMode, tab: 'ingredients' }
+      state.cookMode = { recipeId: el.dataset.cookMode, tab: 'ingredients', checkedIngredients: new Set() }
       render()
     })
   })
@@ -3796,10 +3828,19 @@ function bindEvents() {
   })
   document.getElementById('cook-tab-instructions')?.addEventListener('click', () => {
     state.cookMode = { ...state.cookMode, tab: 'instructions' }; render()
-    setTimeout(() => {
-      const content = document.querySelector('#cook-mode-close')?.closest('div[style*="position:fixed"]')?.querySelector('div[style*="overflow-y:auto"]')
-      if (content) content.scrollTop = 0
-    }, 50)
+  })
+
+  // Ingredient checkoff in cook mode
+  document.querySelectorAll('.cook-ing-row').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.ingIdx)
+      if (!state.cookMode) return
+      const checked = state.cookMode.checkedIngredients || new Set()
+      if (checked.has(idx)) checked.delete(idx)
+      else checked.add(idx)
+      state.cookMode = { ...state.cookMode, checkedIngredients: checked }
+      render()
+    })
   })
 
   document.getElementById('organize-tags-btn')?.addEventListener('click', async () => {
