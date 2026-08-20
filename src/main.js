@@ -2800,7 +2800,7 @@ Rules:
     console.error('No JSON array found:', gpClean.slice(0, 200))
     return null
   }
-  let gpSteps
+  var gpSteps
   try { gpSteps = JSON.parse(gpMatch[0]) } catch(e) {
     console.error('JSON parse error:', e)
     return null
@@ -2812,40 +2812,57 @@ function gpParseConstraints(notes) {
   var constraints = { startMins: null, gapStartMins: null, gapEndMins: null }
   if (!notes) return constraints
   var lower = notes.toLowerCase()
+  var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
 
-  // Extract start time
-  var startNow = lower.includes('start now') || lower.includes('starting now') || lower.includes('can start now')
-  var startMatch = lower.match(/(?:start|starting|begin|free|available|can cook|can start)(?:\s+(?:at|from))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
-  if (!startMatch) startMatch = lower.match(/(?:it(?:'s| is)|right now|currently|now is|time is)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+  // ── START TIME ──
+  var startNow = /(?:start|starting|begin|prep)\s+now|can start now|starting now/i.test(lower)
+  var startMatch = lower.match(/(?:start|starting|begin|free|available|can cook|can start|prepping?)(?:\s+(?:at|from))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+  if (!startMatch) startMatch = lower.match(/(?:it(?:'s| is)|right now|currently|now is|time is|current time)\s*[:\-]?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
 
   if (startNow) {
-    var n = new Date()
-    constraints.startMins = n.getHours() * 60 + n.getMinutes()
+    constraints.startMins = nowMins
   } else if (startMatch) {
     var t = startMatch[1].trim()
     if (!/am|pm/i.test(t)) t += ' PM'
     constraints.startMins = gpParseTime(t)
   }
 
-  // Extract gap — "break between 6:30 and 7", "away from 6:30 to 7", "break from 6:30-7"
-  var gapMatch = lower.match(/(?:break|gap|away|unavailable|off|gone|busy)(?:[^.]*?)(?:between|from)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:and|to|-|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
+  // ── GAP: explicit range "break between X and Y" / "away from X to Y" ──
+  var gapMatch = lower.match(/(?:break|gap|away|unavailable|off|gone|busy|leave|leaving|out)(?:[^\d]*)(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)(?:\s*(?:and|to|until|till|-)\s*)(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
   if (gapMatch) {
     var gs = gapMatch[1].trim(), ge = gapMatch[2].trim()
     if (!/am|pm/i.test(gs)) gs += ' PM'
     if (!/am|pm/i.test(ge)) ge += ' PM'
     constraints.gapStartMins = gpParseTime(gs)
     constraints.gapEndMins = gpParseTime(ge)
-  } else {
-    // "back at 7", "free again at 7" — gap end only, gap start = gapEnd - 30min
-    var backMatch = lower.match(/(?:back|return|free again|available again|start again)(?:\s+at)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
+  }
+
+  // ── GAP: "back at X" / "return at X" / "resume at X" / "free at X" ──
+  if (!constraints.gapEndMins) {
+    var backMatch = lower.match(/(?:back|return|resume|free again|available|start again|come back|finish cooking)(?:\s+(?:at|by|around))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
     if (backMatch) {
       var ge2 = backMatch[1].trim()
       if (!/am|pm/i.test(ge2)) ge2 += ' PM'
       constraints.gapEndMins = gpParseTime(ge2)
-      constraints.gapStartMins = constraints.gapEndMins - 30
+      // Estimate gap start from context — look for duration "90 minutes" / "an hour"
+      var durMatch = lower.match(/(\d+)\s*(?:hour|hr)s?/i)
+      var dur = durMatch ? parseInt(durMatch[1]) * 60 : 0
+      if (!dur) { var durMatch2 = lower.match(/(\d+)\s*min/i); dur = durMatch2 ? parseInt(durMatch2[1]) : 0 }
+      if (dur && constraints.startMins !== null) {
+        constraints.gapStartMins = constraints.startMins + dur
+      } else {
+        // Fall back: gap starts 30 min before gap end
+        constraints.gapStartMins = constraints.gapEndMins - 30
+      }
     }
   }
 
+  // ── VALIDATE: gapStart must be after start, gapEnd must be before dinner ──
+  if (constraints.gapStartMins && constraints.startMins && constraints.gapStartMins < constraints.startMins) {
+    constraints.gapStartMins = constraints.startMins + 60
+  }
+
+  console.log('gpParseConstraints:', JSON.stringify(constraints))
   return constraints
 }
 
@@ -3198,12 +3215,13 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
     var lower = stepText.toLowerCase()
     var matches = []
     parsedIngs.forEach(ing => {
-      if (!ing.name || !ing.amount) return
+      if (!ing.name) return
       // Get significant words — at least 4 chars, not stop words
       var words = ing.name.replace(/[^a-z\s]/g,'').split(/\s+/).filter(w => w.length >= 4 && !stopWords.has(w))
       if (words.length === 0) return
-      // Require ALL significant words to appear in the step (not just one)
-      var hit = words.every(w => { try { return new RegExp('\\b' + w).test(lower) } catch(e) { return false } })
+      // At least ONE significant word must appear — prefer longer/more specific words
+      var hit = words.some(w => w.length >= 5 && !stopWords.has(w) && (function() { try { return new RegExp('\\b' + w).test(lower) } catch(e) { return false } })())
+      if (!hit) hit = words.every(w => { try { return new RegExp('\\b' + w).test(lower) } catch(e) { return false } })
       if (hit && !matches.find(m => m === ing.full)) matches.push(ing.full)
     })
     return matches
@@ -5912,7 +5930,8 @@ async function estimateCaloriesAI(description) {
       // Use the stored target time — don't try to parse it from the message
       var targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
       // Summarize conversation as notes
-      var convoNotes = 'TARGET MEAL TIME: ' + targetTime + '. ' + state.gamePlanChats[chatKey].filter(m => m.role === 'user').map(m => m.content).join('. ')
+      var convoHistory = state.gamePlanChats[chatKey].map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
+      var convoNotes = 'TARGET MEAL TIME: ' + targetTime + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + convoHistory
       state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Got it! Building your timeline now...' })
       state.gamePlanChatLoading = false
       state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
@@ -6017,9 +6036,9 @@ async function gpGenerateHandler() {
     var notesInput = document.getElementById('gp-notes')?.value?.trim()
     var gpGenChatKey = date + '-' + slot
     var chatHistory = state.gamePlanChats[gpGenChatKey] || []
-    var chatNotes = chatHistory.filter(m => m.role === 'user').map(m => m.content).join('. ')
+    var chatNotes = chatHistory.map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
     var baseNotes = notesInput || chatNotes || state.gamePlanModal.notes || ''
-    var notes = 'TARGET MEAL TIME: ' + timeVal + '. ' + baseNotes
+    var notes = 'TARGET MEAL TIME: ' + timeVal + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + baseNotes
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
