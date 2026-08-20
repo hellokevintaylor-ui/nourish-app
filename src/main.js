@@ -5864,7 +5864,6 @@ async function gpGenerateHandler() {
     state.gamePlanResult = finalResult
     // Also store result IN the modal so inline renderers can see it
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false }
-    const chatKey = date + '-' + slot
     const slotLabel = slot === 'Day' ? 'whole day' : slot
     const timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
     // Preserve existing chat history, just add the result as an assistant message
