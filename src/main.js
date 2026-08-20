@@ -4622,7 +4622,7 @@ function bindEvents() {
     }
   })
   document.getElementById('shop-add-anyway')?.addEventListener('click', async () => {
-    const { val, tags } = state._shopPendingItem || {}
+    var { val, tags } = state._shopPendingItem || {}
     if (!val) return
     var saved = await db.addShopItem(val, 'Manual')
     if (saved) {
@@ -4719,7 +4719,7 @@ function bindEvents() {
     if (btn) { btn.textContent = '...'; btn.disabled = true }
     var weight = state.goals.weight || 155
     var age = state.goals.age || 35
-    const { calories, breakdown } = await estimateCaloriesAI(
+    var { calories, breakdown } = await estimateCaloriesAI(
       'Calories BURNED (not consumed) during: "' + activity + '" for a person weighing ' + weight + ' lbs, age ' + age + '. ' +
       'Reply with ONLY:\nCALORIES: [number]\nBREAKDOWN: [brief explanation]\nNo other text.'
     )
@@ -4837,7 +4837,7 @@ async function estimateCaloriesAI(description) {
     var btn = document.getElementById('log-add-btn')
     if (btn) { btn.textContent = '...'; btn.disabled = true }
     try {
-      const { calories, breakdown } = await estimateCaloriesAI(aiQuery)
+      var { calories, breakdown } = await estimateCaloriesAI(aiQuery)
       var isToday = (state.logDayOffset || 0) === 0
       var dateStr = isToday ? null : state._viewedDateStr
       var saved = await db.addLogEntry(foodStr + (notes ? ' (' + notes + ')' : ''), calories, null, dateStr)
@@ -5049,7 +5049,7 @@ async function estimateCaloriesAI(description) {
     } else {
       description = portion || state.logModal.recipeName
     }
-    const { calories, breakdown } = await estimateCaloriesAI(description)
+    var { calories, breakdown } = await estimateCaloriesAI(description)
     state.logModal = { ...state.logModal, estimating: false, calories, breakdown,
       estimateMsg: 'Estimated ' + calories + ' kcal. You can adjust before saving.' }
     render()
@@ -5421,7 +5421,7 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.cal-recipe-option[data-pick-recipe]').forEach(el => {
     el.addEventListener('click', async () => {
       if (!state.calendarSlot) return
-      const { date, slot } = state.calendarSlot
+      var { date, slot } = state.calendarSlot
       var saved = await db.saveMealPlanEntry(date, slot, el.dataset.pickRecipe, el.dataset.pickName, '')
       if (saved) state.mealPlan.push(saved)
       state.calendarSlot = null
@@ -5626,7 +5626,7 @@ async function estimateCaloriesAI(description) {
   document.getElementById('cal-manual-add')?.addEventListener('click', async () => {
     var val = document.getElementById('cal-manual-input')?.value?.trim()
     if (!val || !state.calendarSlot) return
-    const { date, slot } = state.calendarSlot
+    var { date, slot } = state.calendarSlot
     var saved = await db.saveMealPlanEntry(date, slot, null, val)
     if (saved) state.mealPlan.push(saved)
     state.calendarSlot = null; state.calendarTagFilter = null; render()
@@ -5655,7 +5655,7 @@ async function estimateCaloriesAI(description) {
       var date = el.dataset.gamePlanDate
       var recipeId = el.dataset.gamePlanRid
       var calGpKey = date + '-' + slot
-      var hasPriorChat = state.gamePlanChats[calGpKey] && state.gamePlanChats[chatKey].length > 0
+      var hasPriorChat = state.gamePlanChats[calGpKey] && state.gamePlanChats[calGpKey].length > 0
       var hasPriorResult = state._lastGamePlan?.slot === slot && state._lastGamePlan?.date === date && state.gamePlanResult
 
       if (hasPriorChat) {
@@ -5687,7 +5687,7 @@ async function estimateCaloriesAI(description) {
     })
   })
   document.querySelectorAll('#gp-tweak').forEach(btn => btn.addEventListener('click', () => {
-    const { slot: twkSlot, targetTime: twkTime, result: twkModalResult } = state.gamePlanModal || {}
+    var { slot: twkSlot, targetTime: twkTime, result: twkModalResult } = state.gamePlanModal || {}
     var twkResult = twkModalResult || state.gamePlanResult
     if (!twkResult) return
     var chatKey = gpChatKey()
@@ -5697,7 +5697,7 @@ async function estimateCaloriesAI(description) {
       var twkTimelineText = twkResult.map(item => item.time + ' — ' + item.step).join('\n')
       state.gamePlanChats[chatKey] = [{
         role: 'assistant',
-        content: 'Here\'s your ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + twkTimelineText + '\n\nWhat tweaks would you like to make?'
+        content: 'Here\'s your ' + twkSlotLabel + ' cooking timeline (dinner at ' + (twkTime || '7:00 PM') + '):\n\n' + twkTimelineText + '\n\nWhat tweaks would you like to make?'
       }]
     }
     state.gamePlanView = 'chat'
@@ -5715,7 +5715,7 @@ async function estimateCaloriesAI(description) {
   }))
 
   document.querySelectorAll('#gp-start-over').forEach(btn => btn.addEventListener('click', () => {
-    const { date: soDate, slot: soSlot } = state.gamePlanModal || {}
+    var { date: soDate, slot: soSlot } = state.gamePlanModal || {}
     var chatKey = (soDate || 'today') + '-' + (soSlot || 'Dinner')
     var planKey = soDate + '-' + soSlot
     // Wipe everything
@@ -5744,7 +5744,7 @@ async function estimateCaloriesAI(description) {
   })
 
   document.getElementById('gp-tweak-from-fullscreen')?.addEventListener('click', () => {
-    const { slot: scSlot, targetTime: scTime } = state.gamePlanModal || {}
+    var { slot: scSlot, targetTime: scTime } = state.gamePlanModal || {}
     var scResult = state.gamePlanResult
     if (!scResult) return
     var scChatKey = gpChatKey()
@@ -5753,7 +5753,7 @@ async function estimateCaloriesAI(description) {
       var timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
       state.gamePlanChats[chatKey] = [{
         role: 'assistant',
-        content: 'Here\'s your ' + twkSlotLabel + ' plan (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+        content: 'Here\'s your ' + twkSlotLabel + ' plan (dinner at ' + (twkTime || '7:00 PM') + '):\n\n' + twkTimelineText + '\n\nWhat tweaks would you like to make?'
       }]
     }
     state.gamePlanView = 'chat'; render()
@@ -5812,7 +5812,7 @@ async function estimateCaloriesAI(description) {
       state.gamePlanChatLoading = false
       state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
       render()
-      const { slot: gpSlot, date: gpDate, recipeId: gpRid } = state.gamePlanModal
+      var { slot: gpSlot, date: gpDate, recipeId: gpRid } = state.gamePlanModal
       let gpResult = null
       try {
         gpResult = await generateGamePlan(gpSlot, targetTime, gpDate, gpRid, convoNotes)
@@ -5832,7 +5832,7 @@ async function estimateCaloriesAI(description) {
     }
 
     try {
-      const { slot, targetTime, result, date: gpDate } = state.gamePlanModal || {}
+      var { slot, targetTime, result, date: gpDate } = state.gamePlanModal || {}
       var hasResult = !!result
       let system
       if (hasResult) {
@@ -5902,7 +5902,7 @@ async function estimateCaloriesAI(description) {
 
 async function gpGenerateHandler() {
     if (!state.gamePlanModal) return
-    const { slot, date, recipeId } = state.gamePlanModal
+    var { slot, date, recipeId } = state.gamePlanModal
     // Time: from input if it exists, otherwise from state
     var timeInput = document.getElementById('gp-dinner-time')?.value?.trim()
     var timeVal = timeInput || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
@@ -5938,8 +5938,9 @@ async function gpGenerateHandler() {
     var slotLabel = slot === 'Day' ? 'whole day' : slot
     var timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
     // Preserve existing chat history, just add the result as an assistant message
-    if (!state.gamePlanChats[regenChatKey]) state.gamePlanChats[regenChatKey] = []
-    state.gamePlanChats[regenChatKey].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
+    var regenChatKey2 = (date || 'today') + '-' + (slot || 'Dinner')
+    if (!state.gamePlanChats[regenChatKey2]) state.gamePlanChats[regenChatKey2] = []
+    state.gamePlanChats[regenChatKey2].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
     state.gamePlanView = 'result'
     // Persist plan so it survives close/reopen
     var planKey = date + '-' + slot
@@ -5954,7 +5955,7 @@ async function gpGenerateHandler() {
   }
   document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
     var timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
-    const { slot, date, recipeId, notes } = state.gamePlanModal
+    var { slot, date, recipeId, notes } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
@@ -5967,7 +5968,6 @@ async function gpGenerateHandler() {
     state.gamePlanResult = finalResult2
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
     // Re-seed chat thread with new timeline
-    var regenChatKey = date + '-' + slot
     var slotLabel = slot === 'Day' ? 'whole day' : slot
     var timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
     var seedMessages = []
