@@ -1161,22 +1161,23 @@ function renderTagFilterChips(namespace) {
 function renderRecipeCard(r) {
   const isExpanded = state.expandedRecipe === r.id
   const pt = r.prepTime
+
+  // Collapsed: name + tags + prep summary only
   const prepSummary = pt
-    ? '<div class="recipe-prep-summary">' +
-        '⏱ ' + pt.active_min + ' min active' +
+    ? '<div class="recipe-prep-summary">⏱ ' + pt.active_min + ' min' +
         (pt.passive_min > 0 ? ' + ' + pt.passive_min + ' min passive' : '') +
-        ' · ' + (pt.difficulty || 'Unknown') +
+        ' · ' + (pt.difficulty || '') +
         (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? ' · Make-ahead ✓' : '') +
       '</div>'
     : ''
+
   const header = '<div class="recipe-card" data-rid="' + r.id + '">' +
     '<div class="recipe-card-header">' +
-      '<div>' +
-        '<div class="recipe-name">' + esc(r.name) + '</div>' +
-        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
+      '<div style="min-width:0;flex:1">' +
+        '<div class="recipe-name">' + esc(r.name) + (r.archived ? ' <span style="font-size:10px;color:#a8a8a3;font-weight:400">(archived)</span>' : '') + '</div>' +
+        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview" style="margin-top:4px">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         prepSummary +
-        (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
-        (r.clippedFrom ? '<div class="recipe-meta"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:var(--forest2);text-decoration:none">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta" style="margin-top:2px"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:#3d52c4;text-decoration:none;font-size:11px">📎 ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
       '</div>' +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
@@ -1193,31 +1194,24 @@ function renderRecipeCard(r) {
     return header + renderGamePlanInline(r) + '</div>'
   }
 
-  const notesSection = state.editingNotes === r.id
-    ? '<textarea class="notes-textarea" id="notes-ta-' + r.id + '" placeholder="What worked, what to change, substitutions...">' + esc(r.cookingNotes||'') + '</textarea>' +
-      '<button class="notes-save-btn" data-notes-save="' + r.id + '">Save Notes</button>'
-    : '<div class="notes-display ' + (!r.cookingNotes ? 'notes-empty' : '') + '">' + (r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!') + '</div>'
+  // Expanded: prep time box + Cook button + action row only
+  // No ingredients or instructions shown here — those are in Cook mode
 
-  const tagChips = (r.tags||[]).map(t =>
-    '<span class="tag-chip">' + esc(t) +
-    '<button class="tag-chip-remove" data-remove-tag="' + esc(t) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe">×</button>' +
-    '</span>'
-  ).join('')
-  const tagPickerBtn = '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe">+ Tag</button>'
+  // Tag picker
   const isPickerOpen = state.tagPickerOpen === r.id + '-recipe'
   const mealTags = getTagsForNamespace('recipe').slice().sort((a, b) => a.name.localeCompare(b.name))
   const pickerCategories = mealTags.filter(t => !t.tag_type || t.tag_type === 'category')
   const pickerStyles = mealTags.filter(t => t.tag_type === 'style')
   const hasTwoTiers = pickerStyles.length > 0
   const tagPicker = isPickerOpen ? (
-    '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
+    '<div class="tag-picker-popover" id="tag-picker-popover">' +
     (hasTwoTiers ? (
-      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
+      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
       pickerCategories.map(t => {
         const checked = (r.tags||[]).includes(t.name)
         return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
       }).join('') +
-      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:1px solid var(--cream3);margin-top:4px">Style</div>' : '') +
+      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:0.5px solid #e8e8e5;margin-top:4px">Style</div>' : '') +
       pickerStyles.map(t => {
         const checked = (r.tags||[]).includes(t.name)
         return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
@@ -1233,55 +1227,12 @@ function renderRecipeCard(r) {
     '</div>'
   ) : ''
 
-  const isEditingRecipe = state.editingRecipeId === r.id
-  const isScaling = state.scaleModal?.recipeId === r.id
-  const scaleButtons = '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">' +
-    '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Scale:</span>' +
-    ['½x', '2x', '3x'].map(s => '<button class="scale-btn" data-scale="' + s + '" data-recipe-id="' + r.id + '">' + s + '</button>').join('') +
-  '</div>'
-  const scaleResult = isScaling ? ('<div class="scale-result-box">' +
-    (state.scaleModal.loading ? '<div style="color:var(--ink3);font-style:italic;font-size:12px">Scaling ingredients...</div>' :
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:6px">Scaled ingredients (' + state.scaleModal.label + '):</div>' +
-      '<div class="recipe-text" style="background:var(--cream2);border-radius:8px;padding:8px">' + formatRecipeText(state.scaleModal.ingredients) + '</div>' +
-      '<div style="display:flex;gap:6px;margin-top:8px">' +
-        '<button class="add-btn" style="background:var(--forest);color:white;border-color:var(--forest)" data-cook-scaled="' + r.id + '">👨‍🍳 Cook</button>' +
-        '<button class="add-btn" data-save-scaled="' + r.id + '">Save as new</button>' +
-        '<button class="modal-cancel" data-close-scale="' + r.id + '">Close</button>' +
-      '</div>'
-    ) + '</div>') : ''
-
-  const body = '<div class="recipe-body">' +
-    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original</a></div>' : '') +
-    scaleButtons +
-    scaleResult +
-    '<div class="recipe-section-label cooking-notes-label">Ingredients' +
-      '<button class="notes-edit-btn" data-recipe-edit="' + r.id + '">' + (isEditingRecipe ? 'Done' : 'Edit') + '</button>' +
-    '</div>' +
-    (isEditingRecipe ?
-      '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Recipe Title</label>' +
-      '<input class="notes-textarea" id="edit-recipe-name-' + r.id + '" value="' + esc(r.name) + '" style="margin-top:4px;font-weight:600" /></div>' +
-      '<textarea class="notes-textarea" id="edit-ingredients-' + r.id + '" style="min-height:120px">' + esc(r.ingredients || '') + '</textarea>' +
-      '<div class="recipe-section-label" style="margin-top:8px">Instructions</div>' +
-      '<textarea class="notes-textarea" id="edit-instructions-' + r.id + '" style="min-height:120px">' + esc(r.instructions || '') + '</textarea>' +
-      '<button class="notes-save-btn" data-recipe-save="' + r.id + '" style="margin-top:8px">Save Changes</button>'
-    :
-      (r.ingredients ? '<div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '<div class="recipe-text" style="color:var(--ink4);font-style:italic">No ingredients yet -- tap Edit to add</div>')
-    ) +
-    (isEditingRecipe ? '' :
-      '<div class="recipe-section-label">Instructions</div>' +
-      (r.instructions ? '<div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : (r.text ? '<div class="recipe-text">' + formatRecipeText(r.text) + '</div>' : ''))
-    ) +
-    '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
-      '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
-    '</div>' +
-    notesSection +
-    '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
-    // Prep time at bottom
-    (pt ? (
-      '<div class="prep-time-box">' +
+  // Prep time box
+  const prepBox = pt
+    ? ('<div class="prep-time-box" style="margin-top:10px">' +
         '<div class="prep-time-header">' +
-          '<span>⏱ Prep Time</span>' +
-          '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '" title="Re-estimate">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
+          '<span style="font-size:11px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px">Prep time</span>' +
+          '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
         '</div>' +
         '<div class="prep-time-grid">' +
           '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
@@ -1289,30 +1240,39 @@ function renderRecipeCard(r) {
           '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
           '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
         '</div>' +
-        (pt.equipment && pt.equipment.length ? '<div class="prep-time-row"><span class="prep-time-key">🍳 Equipment:</span> ' + pt.equipment.join(', ') + '</div>' : '') +
-        (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Multitask:</span> ' + esc(pt.multitask) + '</div>' : '') +
-        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">🗓 Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
-        (pt.quick_version ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Quick version:</span> ' + esc(pt.quick_version) + '</div>' : '') +
-      '</div>'
-    ) : (
-      '<div class="prep-time-box prep-time-empty">' +
+        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
+        (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">Multitask tip:</span> ' + esc(pt.multitask) + '</div>' : '') +
+      '</div>')
+    : ('<div class="prep-time-box prep-time-empty" style="margin-top:10px">' +
         '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
           (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
         '</button>' +
-      '</div>'
-    )) +
-    '<div class="recipe-actions" style="display:flex;flex-wrap:nowrap;gap:4px">' +
-      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--forest);color:white;border-color:var(--forest);flex:1.2;font-size:11px;padding:5px 4px;white-space:nowrap">👨‍🍳 Cook</button>' +
-      '<button class="ra-btn ra-shop" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">+ List</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">Log</button>' +
-      '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:5px 4px">+ Week</button>' +
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">📋 Plan</button>' +
-      '<button class="ra-btn ra-ask" data-ask="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">Ask AI</button>' +
+      '</div>')
+
+  const sourceLink = r.clippedFrom
+    ? '<div class="recipe-link" style="margin-bottom:8px"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original ↗</a></div>'
+    : ''
+
+  const body = '<div class="recipe-body">' +
+    sourceLink +
+    // Tag picker (no chips — header already shows them)
+    (tagPicker ? '<div style="position:relative;margin-bottom:4px">' + tagPicker + '</div>' : '') +
+    // Prep time box
+    prepBox +
+    // Cook — full width black button on its own row
+    '<div style="margin-top:12px">' +
+      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="width:100%;background:#1a1a1a;color:white;border-color:#1a1a1a;font-size:12px;padding:8px 4px;font-weight:700;border-radius:8px">Cook</button>' +
+    '</div>' +
+    // Secondary action row — all same grey style
+    '<div class="recipe-actions" style="margin-top:6px">' +
+      '<button class="ra-btn" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">+ List</button>' +
+      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">+ Week</button>' +
+      '<button class="ra-btn" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Log</button>' +
+      '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe" style="flex:1;font-size:11px;padding:7px 4px;border-radius:8px;border:1.5px solid #d4d4d0;background:white;cursor:pointer;font-family:inherit;color:#3a3a38">+ Tag</button>' +
       (r.archived
-        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest);flex:1;font-size:11px;padding:5px 4px">Restore</button>'
-        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3);flex:1;font-size:11px;padding:5px 4px">Archive</button>') +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.6;font-size:11px;padding:5px 4px">Del</button>' +
-      '<button class="ra-btn" data-share-recipe="' + r.id + '" style="flex:0.8;font-size:11px;padding:5px 4px">📤 Share</button>' +
+        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Restore</button>'
+        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Archive</button>') +
+      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.8;font-size:11px;padding:7px 4px">Del</button>' +
     '</div>' +
   '</div>'
 
