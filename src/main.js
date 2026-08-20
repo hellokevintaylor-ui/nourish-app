@@ -2729,11 +2729,12 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   var recipeNames = (mealText.match(/=== (.+?) ===/g) || []).map(m => m.replace(/===/g, '').trim())
   console.log('recipeNames:', recipeNames)
   var slotLabel = isWholeDay ? 'the whole day' : slot
-  var prompt = `You are a professional chef planning a dinner cooking session. Your job is to output ONE unified list of steps that intelligently interleaves ALL recipes so everything is ready at ${targetTime}.
+  var prompt = `You are a professional chef planning a cooking session. Output ONE unified list of steps so everything is ready at EXACTLY ${targetTime}.
 
-DINNER: ${mealDate} at ${targetTime}
-RECIPES BEING MADE: ${recipeNames.join(', ')}
-${notes ? 'IMPORTANT USER CONSTRAINTS (these are hard requirements, not suggestions — build the entire schedule around them):\n' + notes : ''}
+SERVE AT: ${targetTime} — this is the FIXED target. The last cooking step must finish at ${targetTime}. Work BACKWARDS from this time.
+DATE: ${mealDate}
+RECIPES: ${recipeNames.join(', ')}
+${notes ? 'USER CONSTRAINTS (hard requirements — the schedule MUST respect these):\n' + notes : ''}
 
 FULL RECIPE DETAILS:
 ${mealText}
@@ -5783,12 +5784,27 @@ async function estimateCaloriesAI(description) {
     state.gamePlanChats[chatKey].push({ role: 'user', content: text })
 
     // Capture meal time if user is answering "what time"
-    var timeMatch = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+    // Try to capture time from message — handles "8pm", "8:30pm", "8:30 PM", "8" (assume PM for dinner)
+    var timeMatch = text.match(/\b(\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))/i)
+    if (!timeMatch) {
+      // bare number like "8" or "8 o'clock" — only if context is clearly about eating time
+      var bareMatch = text.match(/\beat\s+(\d{1,2})\b|\b(\d{1,2})\s*o.?clock/i)
+      if (bareMatch) timeMatch = [null, (bareMatch[1]||bareMatch[2])]
+    }
     if (timeMatch && state.gamePlanModal && !state.gamePlanModal.result) {
-      var captured = timeMatch[1].trim()
-      // Normalize e.g. "7pm" -> "7:00 PM"
-      var norm = captured.replace(/(\d+)(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
-                           .replace(/(\d+):(\d+)(am|pm)/i, (_, h, m, ap) => h + ':' + m + ' ' + ap.toUpperCase())
+      var captured = (timeMatch[1]||'').trim()
+      var norm = captured
+      if (/^\d{1,2}$/.test(norm)) {
+        // bare number — assume PM
+        var h = parseInt(norm)
+        norm = (h < 12 ? h : h) + ':00 PM'
+      } else {
+        norm = norm.replace(/(\d+):(\d+)\s*(am|pm)/i, (_, h, m, ap) => h + ':' + m + ' ' + ap.toUpperCase())
+                   .replace(/(\d+)\s*(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
+        // If no AM/PM specified, assume PM for dinner context
+        if (!/AM|PM/.test(norm)) norm = norm.trim() + ' PM'
+      }
+      console.log('Captured meal time:', captured, '->', norm)
       state.gamePlanModal = { ...state.gamePlanModal, targetTime: norm }
       if (state.gamePlanModal.date && state.gamePlanModal.slot) {
         localStorage.setItem('mep_dinner_time', norm)
@@ -5807,7 +5823,7 @@ async function estimateCaloriesAI(description) {
       // Use the stored target time — don't try to parse it from the message
       var targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
       // Summarize conversation as notes
-      var convoNotes = state.gamePlanChats[chatKey].filter(m => m.role === 'user').map(m => m.content).join('. ')
+      var convoNotes = 'TARGET MEAL TIME: ' + targetTime + '. ' + state.gamePlanChats[chatKey].filter(m => m.role === 'user').map(m => m.content).join('. ')
       state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Got it! Building your timeline now...' })
       state.gamePlanChatLoading = false
       state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
@@ -5911,7 +5927,8 @@ async function gpGenerateHandler() {
     var gpGenChatKey = date + '-' + slot
     var chatHistory = state.gamePlanChats[gpGenChatKey] || []
     var chatNotes = chatHistory.filter(m => m.role === 'user').map(m => m.content).join('. ')
-    var notes = notesInput || chatNotes || state.gamePlanModal.notes || ''
+    var baseNotes = notesInput || chatNotes || state.gamePlanModal.notes || ''
+    var notes = 'TARGET MEAL TIME: ' + timeVal + '. ' + baseNotes
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
@@ -5954,28 +5971,29 @@ async function gpGenerateHandler() {
     }, 50)
   }
   document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
-    var timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
-    var { slot, date, recipeId, notes } = state.gamePlanModal
+    if (!state.gamePlanModal) return
+    var { slot, date, recipeId, targetTime: storedTime, notes } = state.gamePlanModal
+    var timeVal = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    var regenKey = date + '-' + slot
+    var regenChatKey = regenKey
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
-    state._lastGamePlan = { slot, date, targetTime: timeVal }
-    state.gamePlanLoading = true
+    // Clear saved so old plan doesn't leak back
+    delete state.savedGamePlans[regenKey]
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, result: null, generating: true }
     state.gamePlanResult = null
+    state._lastGamePlan = { slot, date, targetTime: timeVal }
     render()
-    var result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
-    state.gamePlanLoading = false
-    var finalResult2 = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    var regenNotes = 'TARGET MEAL TIME: ' + timeVal + '. ' + (notes || '')
+    var regenResult = await generateGamePlan(slot, timeVal, date, recipeId, regenNotes)
+    var finalResult2 = regenResult || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     state.gamePlanResult = finalResult2
-    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
-    // Re-seed chat thread with new timeline
+    state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
+    // Add new result to chat history
+    if (!state.gamePlanChats[regenChatKey]) state.gamePlanChats[regenChatKey] = []
     var slotLabel = slot === 'Day' ? 'whole day' : slot
-    var timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
-    var seedMessages = []
-    if (notes) seedMessages.push({ role: 'user', content: notes })
-    seedMessages.push({ role: 'assistant', content: 'Here\'s your updated ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
-    state.gamePlanChats[chatKey] = seedMessages
+    var timelineText = finalResult2.map(item => item.time + ' — ' + item.step).join('\n')
+    state.gamePlanChats[regenChatKey].push({ role: 'assistant', content: 'Here\'s your updated plan (eat at ' + timeVal + '):\n\n' + timelineText })
     state.gamePlanView = 'result'
-    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'result', result: finalResult2, generating: false }
     state.savedGamePlans[regenKey] = { ...state.gamePlanModal }
     saveGamePlanToDb()
     render()
