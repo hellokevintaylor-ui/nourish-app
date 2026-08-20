@@ -73,6 +73,9 @@ const state = {
   logModal: null,
   gamePlanModal: false,
   savedGamePlans: {},  // keyed by date-slot, persists plans across open/close
+  gamePlanTab: 'ingredients',  // active tab in game plan result view
+  gamePlanCheckedIngs: new Set(),
+  gamePlanNotes: '',
   gamePlanResult: null,
   gamePlanLoading: false,
   gamePlanView: 'timeline',
@@ -2705,7 +2708,7 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
 
 DINNER: ${mealDate} at ${targetTime}
 RECIPES BEING MADE: ${recipeNames.join(', ')}
-${notes ? 'NOTES: ' + notes : ''}
+${notes ? 'IMPORTANT USER CONSTRAINTS (these are hard requirements, not suggestions — build the entire schedule around them):\n' + notes : ''}
 
 FULL RECIPE DETAILS:
 ${mealText}
@@ -2976,6 +2979,204 @@ async function saveGamePlanToDb() {
   )
 }
 
+async function initGamePlanChat() {
+  if (!state.gamePlanModal) return
+  const { slot, date, recipeId } = state.gamePlanModal
+  const chatKey = gpChatKey()
+  if (state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0) return // already started
+  if (state.gamePlanChatLoading) return
+
+  // Build context about the meal
+  const mealDate = date || new Date().toISOString().slice(0,10)
+  const entries = state.mealPlan.filter(e => e.date === mealDate && (slot === 'Day' || e.meal_slot === slot) && e.recipe_id)
+  const recipeNames = entries.map(e => e.recipe_name || 'recipe').join(', ')
+  const defaultTime = slot === 'Lunch' ? '12:30 PM' : '7:00 PM'
+  const targetTime = state.gamePlanModal.targetTime || defaultTime
+
+  const openingPrompt = 'I want to help you plan cooking ' + (recipeNames || 'your meal') + ' for ' + slot.toLowerCase() + ' at ' + targetTime + '. ' +
+    'Before I build the timeline, tell me: When can you start? Any prep already done? Anything to work around? ' +
+    'Or just say "generate it" and I\'ll build a plan now.'
+
+  state.gamePlanChats[chatKey] = [{ role: 'assistant', content: openingPrompt }]
+  state.gamePlanModal = { ...state.gamePlanModal, view: 'planning-chat' }
+  render()
+}
+
+
+function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
+  const { slot, targetTime, date } = gp
+  const slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
+  const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+  const chatKey = gpChatKey()
+  const chatMessages = state.gamePlanChats[chatKey] || []
+  const chatLoading = state.gamePlanChatLoading || false
+  const generating = gp.generating || false
+  const dateLabel = date
+    ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
+    : new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
+
+  const bubbles = chatMessages.map(m =>
+    '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:10px">' +
+      '<div style="max-width:88%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:' + (m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px') + ';padding:10px 13px;font-size:13px;line-height:1.6">' +
+        esc(m.content).replace(/\n/g,'<br>') +
+      '</div>' +
+    '</div>'
+  ).join('')
+
+  const generatingBanner = generating
+    ? '<div style="text-align:center;padding:16px;color:#6e6e69;font-size:13px">📋 Building your timeline...</div>'
+    : ''
+
+  const thinkingDots = chatLoading && !generating
+    ? '<div style="display:flex;gap:4px;padding:8px 12px;background:#f2f2f0;border-radius:16px 16px 16px 4px;width:fit-content;margin-bottom:10px">' +
+        '<span style="width:7px;height:7px;background:#6e6e69;border-radius:50%;animation:chatDot 1.2s infinite"></span>' +
+        '<span style="width:7px;height:7px;background:#6e6e69;border-radius:50%;animation:chatDot 1.2s infinite;animation-delay:0.2s"></span>' +
+        '<span style="width:7px;height:7px;background:#6e6e69;border-radius:50%;animation:chatDot 1.2s infinite;animation-delay:0.4s"></span>' +
+      '</div>'
+    : ''
+
+  const header = blackHeader(
+    '📋 Plan ' + slotLabel,
+    dateLabel,
+    '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Start over</button>'
+  )
+
+  const body =
+    '<div id="gp-chat-messages" style="padding:14px;min-height:160px;max-height:360px;overflow-y:auto">' +
+      (chatMessages.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:30px 0">Starting your plan...</div>' : bubbles) +
+      thinkingDots +
+      generatingBanner +
+    '</div>' +
+    '<div style="padding:8px 14px 12px;border-top:0.5px solid #e8e8e5">' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px">' +
+        '<input id="gp-chat-input" placeholder="e.g. I can start at 5pm, already made the rice..." style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none" ' + (chatLoading||generating?'disabled':'') + ' />' +
+        '<button id="gp-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit" ' + (chatLoading||generating?'disabled':'') + '>Send</button>' +
+      '</div>' +
+      '<button id="gp-generate" style="width:100%;padding:9px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit" ' + (generating?'disabled':'') + '>' +
+        (generating ? '⏳ Generating...' : '📋 Generate the plan now') +
+      '</button>' +
+    '</div>'
+
+  return wrapFn(header + body)
+}
+
+
+function renderGamePlanResult(gp, blackHeader, wrapFn) {
+  const { slot, targetTime, date, result, view } = gp
+  const slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
+  const timeVal = targetTime || '7:00 PM'
+  const dateLabel = date
+    ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
+    : ''
+  const chatKey = gpChatKey()
+  const chatMessages = state.gamePlanChats[chatKey] || []
+  const hasPriorChat = chatMessages.length > 0
+  const gpTab = state.gamePlanTab || 'ingredients'
+  const gpNotes = state.gamePlanNotes || gp.notes || ''
+
+  // Gather all ingredients from recipes in this meal slot
+  const mealDate = date || new Date().toISOString().slice(0,10)
+  const entries = state.mealPlan.filter(e => e.date === mealDate && (slot === 'Day' || e.meal_slot === slot) && e.recipe_id)
+  const allIngredients = []
+  entries.forEach(entry => {
+    const r = state.recipes.find(x => x.id === entry.recipe_id)
+    if (r && r.ingredients) {
+      const lines = r.ingredients.split('\n').map(l => l.trim()).filter(Boolean)
+      lines.forEach(line => allIngredients.push({ recipe: r.name, line }))
+    }
+  })
+
+  // Parse ingredient amounts for plan step chips (same logic as cook mode)
+  const ingAmountRegex = /^([\d¼½¾⅓⅔⅛⅜⅝⅞\/\-\s]+(?:cup|cups|tbsp|tsp|oz|lb|g|kg|ml|l|clove|cloves|can|cans|bunch|sprig|sprigs|slice|slices|piece|pieces|stalk|stalks|head|heads|inch|cm|medium|large|small|whole)?[\s]*)(.+)/i
+  const parsedIngs = allIngredients.map(({ line, recipe }) => {
+    const m = line.match(ingAmountRegex)
+    if (!m) return { amount: '', name: line.toLowerCase(), full: line, recipe }
+    return { amount: m[1].trim(), name: m[2].toLowerCase().trim(), full: line, recipe }
+  })
+  const stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each','fresh','dried','ground','large','small','medium'])
+  const getChips = (stepText) => {
+    const lower = stepText.toLowerCase()
+    const matches = []
+    parsedIngs.forEach(ing => {
+      if (!ing.name || !ing.amount) return
+      const words = ing.name.replace(/[^a-z\s]/g,'').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w))
+      const hit = words.some(w => { try { return new RegExp('\\b' + w + '\\b').test(lower) } catch(e) { return false } })
+      if (hit && !matches.find(m => m === ing.full)) matches.push(ing.full)
+    })
+    return matches
+  }
+
+  const checkedIngs = state.gamePlanCheckedIngs || new Set()
+
+  const tabBtn = (tabId, label) =>
+    '<button class="gp-tab-btn" data-gp-tab="' + tabId + '" style="flex:1;padding:10px;font-size:13px;font-weight:' +
+    (gpTab===tabId?'700':'500') + ';color:' + (gpTab===tabId?'#3d52c4':'#6e6e69') +
+    ';background:none;border:none;border-bottom:2px solid ' + (gpTab===tabId?'#3d52c4':'transparent') +
+    ';cursor:pointer;font-family:inherit">' + label + '</button>'
+
+  // ── INGREDIENTS TAB ──
+  const ingredientsTab = allIngredients.length > 0
+    ? allIngredients.map((ing, i) => {
+        const isChecked = checkedIngs.has(i)
+        return '<div class="gp-ing-row" data-gp-ing="' + i + '" style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid #e8e8e5;cursor:pointer">' +
+          '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'#d4d4d0':'#3d52c4') + ';margin-top:8px;flex-shrink:0"></div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:15px;line-height:1.4;color:' + (isChecked?'#a8a8a3':'#1a1a1a') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + esc(ing.line) + '</div>' +
+            (entries.length > 1 ? '<div style="font-size:10px;color:#a8a8a3;margin-top:2px">' + esc(ing.recipe) + '</div>' : '') +
+          '</div>' +
+        '</div>'
+      }).join('')
+    : '<div style="color:#a8a8a3;font-style:italic;padding:16px 0;font-size:13px">No ingredients found for this meal</div>'
+
+  // ── PLAN TAB ──
+  const planTab = result.map((item, i) => {
+    const isLast = i === result.length - 1
+    const chips = getChips(item.step)
+    const chipsHtml = chips.length > 0
+      ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">' +
+          chips.map(c => '<span style="font-size:11px;font-weight:500;color:#3a3a38;background:#f2f2f0;border:0.5px solid #d4d4d0;border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
+        '</div>'
+      : ''
+    return '<div style="padding:12px 0;border-bottom:' + (isLast?'none':'0.5px solid #e8e8e5') + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<input class="gp-time-input" data-gp-step="' + i + '" value="' + esc(item.time) + '" style="width:72px;font-size:11px;font-weight:700;color:#3d52c4;background:none;border:none;border-bottom:1.5px solid transparent;outline:none;padding:1px 2px;font-family:inherit;text-transform:uppercase;letter-spacing:0.4px;cursor:text" />' +
+      '</div>' +
+      '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+      chipsHtml +
+    '</div>'
+  }).join('')
+
+  // ── NOTES TAB ──
+  const notesTab =
+    '<div style="padding-top:8px">' +
+      '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Cooking notes</div>' +
+      '<textarea id="gp-notes-edit" placeholder="What worked, what to tweak next time, substitutions..." style="width:100%;min-height:140px;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical;box-sizing:border-box">' + esc(gpNotes) + '</textarea>' +
+      '<button id="gp-notes-save" style="margin-top:8px;padding:8px 16px;background:#1a1a1a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save notes</button>' +
+    '</div>'
+
+  const tabContent = gpTab === 'ingredients' ? ingredientsTab : gpTab === 'plan' ? planTab : notesTab
+
+  const header = blackHeader(
+    slotLabel + ' Game Plan',
+    dateLabel + ' · eat at ' + esc(timeVal),
+    '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>'
+  )
+
+  const tabs = '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
+    tabBtn('ingredients', 'Ingredients') +
+    tabBtn('plan', 'Plan') +
+    tabBtn('notes', 'Notes') +
+  '</div>'
+
+  const actions = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;padding-top:12px;border-top:0.5px solid #e8e8e5">' +
+    '<button id="gp-start-cooking" style="width:100%;padding:10px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
+    '<button id="gp-tweak" style="width:100%;padding:10px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
+  '</div>'
+
+  return wrapFn(header + tabs + '<div style="padding:0 14px 14px">' + tabContent + (gpTab === 'plan' ? actions : '') + '</div>')
+}
+
+
 function renderGamePlanInline(r) {
   const gp = state.gamePlanModal || {}
   const { slot, targetTime, date, result, notes, generating, view } = gp
@@ -2999,88 +3200,17 @@ function renderGamePlanInline(r) {
       (extra || '') +
     '</div>'
 
-  if (view === 'chat') {
-    const bubbles = chatMessages.map(m =>
-      '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:10px">' +
-        '<div style="max-width:85%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
-          (m.role==='assistant' ? linkifyTimers(esc(m.content).replace(/\n/g,'<br>')) : esc(m.content).replace(/\n/g,'<br>')) +
-        '</div>' +
-      '</div>'
-    ).join('')
-    return '<div style="border-top:0.5px solid #e8e8e5">' +
-      blackHeader('✦ Tweak Game Plan', slotLabel + ' · ' + dateLabel,
-        '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
-        '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>') +
-      '<div id="gp-chat-messages" style="padding:14px;min-height:160px;max-height:360px;overflow-y:auto">' +
-        (chatMessages.length===0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>' : bubbles) +
-        (chatLoading ? '<div style="text-align:center;padding:10px;color:#6e6e69;font-size:13px">thinking...</div>' : '') +
-      '</div>' +
-      '<div style="padding:10px 14px;border-top:0.5px solid #e8e8e5;display:flex;gap:8px">' +
-        '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none" />' +
-        '<button id="gp-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"' + (chatLoading?' disabled':'') + '>Send</button>' +
-      '</div>' +
-    '</div>'
+  // Chat-first planning (no result yet, or tweaking after result)
+  if (!result || view === 'chat' || view === 'planning-chat') {
+    return renderGamePlanChatFirst(gp, blackHeader, inner => '<div style="border-top:0.5px solid #e8e8e5">' + inner + '</div>')
   }
 
-  if (generating) {
-    return '<div style="border-top:0.5px solid #e8e8e5">' +
-      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
-      '<div style="padding:40px 20px;text-align:center">' +
-        '<div style="font-size:24px;margin-bottom:12px">📋</div>' +
-        '<div style="font-size:14px;font-weight:600;color:#1a1a1a">Building your timeline...</div>' +
-        '<div style="font-size:12px;color:#6e6e69;margin-top:6px">Working backwards from ' + esc(timeVal) + '</div>' +
-      '</div>' +
-    '</div>'
-  }
-
-  if (!result) {
-    const savedNotes = gp.notes || ''
-    return '<div style="border-top:0.5px solid #e8e8e5">' +
-      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
-      '<div style="padding:14px">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
-          '<span style="font-size:13px;font-weight:600;color:#3a3a38;white-space:nowrap">Eat at</span>' +
-          '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:9px 12px;border:1.5px solid #3d52c4;border-radius:10px;font-size:15px;font-family:inherit;text-align:center;font-weight:700;color:#3d52c4;outline:none" />' +
-        '</div>' +
-        '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, already made the sauce..." style="width:100%;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px;line-height:1.5;outline:none">' + esc(savedNotes) + '</textarea>' +
-        '<button id="gp-generate" style="width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Generate Game Plan</button>' +
-      '</div>' +
-    '</div>'
-  }
-
-  const timeline = result.map((item, i) => {
-    const isLast = i === result.length - 1
-    return '<div style="padding:12px 0;border-bottom:' + (isLast ? 'none' : '0.5px solid #e8e8e5') + '">' +
-      '<div style="font-size:11px;font-weight:700;color:#3d52c4;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">' + esc(item.time) + '</div>' +
-      '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-    '</div>'
-  }).join('')
-
-  return '<div style="border-top:0.5px solid #e8e8e5">' +
-    blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal),
-      '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>') +
-    '<div style="padding:0 14px 14px">' +
-      timeline +
-      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;padding-top:14px;border-top:0.5px solid #e8e8e5">' +
-        '<button id="gp-start-cooking" style="width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
-        '<button id="gp-tweak" style="width:100%;padding:11px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
-      '</div>' +
-    '</div>' +
-  '</div>'
+  return renderGamePlanResult(gp, blackHeader, inner => '<div style="border-top:0.5px solid #e8e8e5">' + inner + '</div>')
 }
 
 function renderGamePlanCalInline() {
   const gp = state.gamePlanModal || {}
-  const { slot, targetTime, date, result, notes, generating, view } = gp
-  const slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
-  const timeVal = targetTime || '7:00 PM'
-  const chatKey = gpChatKey()
-  const chatMessages = state.gamePlanChats[chatKey] || []
-  const chatLoading = state.gamePlanChatLoading || false
-  const hasPriorChat = chatMessages.length > 0
-  const dateLabel = date
-    ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
-    : ''
+  const { result, view } = gp
 
   const blackHeader = (title, sub, extra) =>
     '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
@@ -3094,76 +3224,12 @@ function renderGamePlanCalInline() {
 
   const wrap = (inner) => '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-top:8px;margin-bottom:4px">' + inner + '</div>'
 
-  if (view === 'chat') {
-    const bubbles = chatMessages.map(m =>
-      '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:10px">' +
-        '<div style="max-width:85%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
-          (m.role==='assistant' ? linkifyTimers(esc(m.content).replace(/\n/g,'<br>')) : esc(m.content).replace(/\n/g,'<br>')) +
-        '</div>' +
-      '</div>'
-    ).join('')
-    return wrap(
-      blackHeader('✦ Tweak', slotLabel + ' · ' + dateLabel,
-        '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
-        '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>') +
-      '<div id="gp-chat-messages" style="padding:14px;min-height:120px;max-height:300px;overflow-y:auto">' +
-        (chatMessages.length===0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>' : bubbles) +
-        (chatLoading ? '<div style="text-align:center;padding:10px;color:#6e6e69;font-size:13px">thinking...</div>' : '') +
-      '</div>' +
-      '<div style="padding:10px 14px;border-top:0.5px solid #e8e8e5;display:flex;gap:8px">' +
-        '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none" />' +
-        '<button id="gp-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"' + (chatLoading?' disabled':'') + '>Send</button>' +
-      '</div>'
-    )
+  if (!result || view === 'chat' || view === 'planning-chat') {
+    return renderGamePlanChatFirst(gp, blackHeader, wrap)
   }
 
-  if (generating) {
-    return wrap(
-      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
-      '<div style="padding:30px 20px;text-align:center">' +
-        '<div style="font-size:20px;margin-bottom:10px">📋</div>' +
-        '<div style="font-size:13px;font-weight:600;color:#1a1a1a">Building your timeline...</div>' +
-        '<div style="font-size:11px;color:#6e6e69;margin-top:4px">Working backwards from ' + esc(timeVal) + '</div>' +
-      '</div>'
-    )
-  }
-
-  if (!result) {
-    const savedNotes = gp.notes || ''
-    return wrap(
-      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
-      '<div style="padding:14px">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
-          '<span style="font-size:13px;font-weight:600;color:#3a3a38;white-space:nowrap">Eat at</span>' +
-          '<input id="gp-dinner-time" value="' + esc(timeVal) + '" style="flex:1;padding:8px 12px;border:1.5px solid #3d52c4;border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700;color:#3d52c4;outline:none" />' +
-        '</div>' +
-        '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. start at 4:30, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:60px;box-sizing:border-box;margin-bottom:10px;line-height:1.5;outline:none">' + esc(savedNotes) + '</textarea>' +
-        '<button id="gp-generate" style="width:100%;padding:10px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Generate Game Plan</button>' +
-      '</div>'
-    )
-  }
-
-  const timeline = result.map((item, i) => {
-    const isLast = i === result.length - 1
-    return '<div style="padding:12px 0;border-bottom:' + (isLast ? 'none' : '0.5px solid #e8e8e5') + '">' +
-      '<div style="font-size:11px;font-weight:700;color:#3d52c4;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">' + esc(item.time) + '</div>' +
-      '<div style="font-size:14px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-    '</div>'
-  }).join('')
-
-  return wrap(
-    blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal),
-      '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>') +
-    '<div style="padding:0 14px 14px">' +
-      timeline +
-      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:0.5px solid #e8e8e5">' +
-        '<button id="gp-start-cooking" style="width:100%;padding:10px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
-        '<button id="gp-tweak" style="width:100%;padding:10px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
-      '</div>' +
-    '</div>'
-  )
+  return renderGamePlanResult(gp, blackHeader, wrap)
 }
-
 
 function renderGamePlanModal() { return '' }
 function _renderGamePlanModal_unused() {
@@ -4037,12 +4103,17 @@ function bindEvents() {
       } else {
         state.gamePlanResult = null
         state.gamePlanLoading = false
-        state.gamePlanView = 'timeline'
+        state.gamePlanView = 'planning-chat'
+        state.gamePlanTab = 'ingredients'
+        state.gamePlanCheckedIngs = new Set()
+        state.gamePlanNotes = ''
         state._lastGamePlan = { slot, date: today }
-        state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
+        state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid, view: 'planning-chat' }
       }
       state.expandedRecipe = rid
       render()
+      // Start planning chat if fresh plan
+      if (!state.gamePlanModal?.result) initGamePlanChat()
       setTimeout(() => {
         const card = document.querySelector('[data-rid="' + rid + '"]')
         if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -4067,6 +4138,66 @@ function bindEvents() {
 
   // Game plan generate — use delegation since button can be in multiple inline locations
   document.querySelectorAll('#gp-generate').forEach(btn => btn.addEventListener('click', gpGenerateHandler))
+
+  // Game Plan tabs
+  document.querySelectorAll('.gp-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.gamePlanTab = btn.dataset.gpTab
+      render()
+    })
+  })
+
+  // Game Plan ingredient checkoff
+  document.querySelectorAll('.gp-ing-row').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.gpIng)
+      const checked = state.gamePlanCheckedIngs
+      if (checked.has(idx)) checked.delete(idx); else checked.add(idx)
+      render()
+    })
+  })
+
+  // Game Plan time editing — inline editable time inputs
+  document.querySelectorAll('.gp-time-input').forEach(input => {
+    input.addEventListener('focus', () => {
+      input.style.borderBottomColor = '#3d52c4'
+      input.style.background = '#f0f2fe'
+      input.style.borderRadius = '4px'
+    })
+    input.addEventListener('blur', () => {
+      input.style.borderBottomColor = 'transparent'
+      input.style.background = 'none'
+      input.style.borderRadius = '0'
+      const stepIdx = parseInt(input.dataset.gpStep)
+      const newTime = input.value.trim()
+      if (state.gamePlanModal && state.gamePlanModal.result && newTime) {
+        const result = [...state.gamePlanModal.result]
+        result[stepIdx] = { ...result[stepIdx], time: newTime }
+        state.gamePlanModal = { ...state.gamePlanModal, result }
+        state.gamePlanResult = result
+        // Save updated plan
+        const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+        if (key) state.savedGamePlans[key] = { ...state.gamePlanModal }
+      }
+    })
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur() }
+    })
+  })
+
+  // Game Plan notes save
+  document.getElementById('gp-notes-save')?.addEventListener('click', () => {
+    const notes = document.getElementById('gp-notes-edit')?.value || ''
+    state.gamePlanNotes = notes
+    if (state.gamePlanModal) {
+      state.gamePlanModal = { ...state.gamePlanModal, notes }
+      const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      if (key) state.savedGamePlans[key] = { ...state.gamePlanModal }
+    }
+    // Brief visual feedback
+    const btn = document.getElementById('gp-notes-save')
+    if (btn) { btn.textContent = 'Saved ✓'; setTimeout(() => { if (btn) btn.textContent = 'Save notes' }, 1500) }
+  })
 
   // Cook Mode
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
@@ -5482,17 +5613,17 @@ async function estimateCaloriesAI(description) {
         } else {
           state.gamePlanResult = null
           state.gamePlanLoading = false
-          state.gamePlanView = 'timeline'
+          state.gamePlanView = 'planning-chat'
           state._lastGamePlan = { slot, date }
-          state.gamePlanModal = { slot, targetTime, date, recipeId }
+          state.gamePlanModal = { slot, targetTime, date, recipeId, view: 'planning-chat' }
         }
         render()
       }
     })
   })
-  document.getElementById('gp-tweak')?.addEventListener('click', () => {
-    const { slot, targetTime } = state.gamePlanModal || {}
-    const result = state.gamePlanResult
+  document.querySelectorAll('#gp-tweak').forEach(btn => btn.addEventListener('click', () => {
+    const { slot, targetTime, result: modalResult } = state.gamePlanModal || {}
+    const result = modalResult || state.gamePlanResult
     if (!result) return
     const chatKey = gpChatKey()
     // If no prior chat, seed it with the timeline as the opening assistant message
@@ -5505,13 +5636,18 @@ async function estimateCaloriesAI(description) {
       }]
     }
     state.gamePlanView = 'chat'
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'chat' }
+    if (state.gamePlanModal?.date && state.gamePlanModal?.slot) {
+      const k = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      state.savedGamePlans[k] = { ...state.gamePlanModal }
+    }
     render()
     setTimeout(() => {
       const el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
-  })
+  }))
 
   document.getElementById('gp-start-over')?.addEventListener('click', () => {
     const { date, slot } = state.gamePlanModal || {}
@@ -5555,16 +5691,22 @@ async function estimateCaloriesAI(description) {
     }, 50)
   })
 
-  document.getElementById('gp-back-to-timeline')?.addEventListener('click', () => {
-    state.gamePlanView = 'timeline'
+  document.querySelectorAll('#gp-back-to-timeline').forEach(btn => btn.addEventListener('click', () => {
+    state.gamePlanView = 'result'
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'result' }
     render()
-  })
+  }))
 
   // Send message in game plan chat
   async function sendGpChatMessage(text) {
     if (!text.trim() || state.gamePlanChatLoading) return
     const chatKey = gpChatKey()
     if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
+
+    // Detect generate intent
+    const generatePhrases = ['generate it', 'generate the plan', 'looks good', 'go ahead', 'build it', 'make it', 'yes generate', 'do it', 'generate now', 'create the plan', 'build the plan']
+    const isGenerateIntent = generatePhrases.some(p => text.toLowerCase().includes(p))
+
     state.gamePlanChats[chatKey].push({ role: 'user', content: text })
     state.gamePlanChatLoading = true
     render()
@@ -5572,14 +5714,42 @@ async function estimateCaloriesAI(description) {
       const el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
     }, 50)
+
+    if (isGenerateIntent && !state.gamePlanModal?.result) {
+      // User wants to generate — extract time from conversation if mentioned
+      const timeMatch = text.match(/(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))/i)
+      const targetTime = timeMatch ? timeMatch[1] : (state.gamePlanModal?.targetTime || '7:00 PM')
+      // Summarize conversation as notes
+      const convoNotes = state.gamePlanChats[chatKey].filter(m => m.role === 'user').map(m => m.content).join('. ')
+      state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Got it! Building your timeline now...' })
+      state.gamePlanChatLoading = false
+      state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
+      render()
+      const { slot, date, recipeId } = state.gamePlanModal
+      const result = await generateGamePlan(slot, targetTime, date, recipeId, convoNotes)
+      const finalResult = result || [{ time: '?', step: 'Could not generate — check connection and try again.' }]
+      state.gamePlanResult = finalResult
+      state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false, targetTime }
+      const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      state.savedGamePlans[key] = { ...state.gamePlanModal }
+      state.gamePlanTab = 'ingredients'
+      state.gamePlanCheckedIngs = new Set()
+      saveGamePlanToDb()
+      render()
+      return
+    }
+
     try {
-      const { slot, targetTime } = state.gamePlanModal || {}
-      const system = 'You are a cooking timeline assistant. The user has a meal plan and you are helping them adjust their cooking timeline. Be specific and practical. Keep responses concise. Reference actual times and steps from the timeline.'
+      const { slot, targetTime, result } = state.gamePlanModal || {}
+      const hasResult = !!result
+      const system = hasResult
+        ? 'You are a cooking timeline assistant helping the user adjust their existing cooking plan. Be specific and practical. Keep responses concise. If they want to change a time or step, confirm and suggest how. Reference actual steps from the timeline.'
+        : 'You are a friendly meal planning assistant helping the user plan out their cooking session. Ask about: what time they want to eat, when they can start cooking, any prep already done, any constraints. Keep it conversational — one or two questions at a time. Once you understand their situation well, suggest "say \'generate it\' when ready and I\'ll build your timeline." Be warm and concise.'
       const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, system })
+        body: JSON.stringify({ messages, system, max_tokens: 300 })
       })
       const data = await resp.json()
       const reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
@@ -5593,22 +5763,21 @@ async function estimateCaloriesAI(description) {
       const el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
     }, 50)
-    // Auto-save to Supabase after each message
     saveGamePlanToDb()
   }
 
-  document.getElementById('gp-chat-send')?.addEventListener('click', () => {
+  document.querySelectorAll('#gp-chat-send').forEach(btn => btn.addEventListener('click', () => {
     const input = document.getElementById('gp-chat-input')
     const text = input?.value?.trim()
     if (text) { input.value = ''; sendGpChatMessage(text) }
-  })
-  document.getElementById('gp-chat-input')?.addEventListener('keydown', e => {
+  }))
+  document.querySelectorAll('#gp-chat-input').forEach(inp => inp.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       const text = e.target.value?.trim()
       if (text) { e.target.value = ''; sendGpChatMessage(text) }
     }
-  })
+  }))
   document.getElementById('gp-close')?.addEventListener('click', () => {
     // Save plan state before closing so it can be restored
     if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
