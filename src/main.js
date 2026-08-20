@@ -1279,52 +1279,6 @@ function renderSearchBar(id, value, placeholder) {
   '</div>'
 }
 
-function renderTonightCard() {
-  const today = new Date().toISOString().slice(0,10)
-  // Prefer Dinner, fall back to Lunch
-  let entries = getMealPlanEntries(today, 'Dinner')
-  let slotLabel = 'Dinner'
-  if (!entries.length) {
-    entries = getMealPlanEntries(today, 'Lunch')
-    slotLabel = 'Lunch'
-  }
-
-  if (!entries.length) {
-    // Empty state
-    return '<div style="border:1.5px dashed var(--border-strong);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">' +
-      '<div style="width:32px;height:32px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🍽</div>' +
-      '<div>' +
-        '<div style="font-size:13px;color:var(--text-2)">Nothing planned for tonight.</div>' +
-        '<div class="tonight-plan-nav" style="font-size:12px;font-weight:700;color:var(--black);margin-top:2px;cursor:pointer">Plan dinner →</div>' +
-      '</div>' +
-    '</div>'
-  }
-
-  // Get recipe names
-  const recipeNames = entries.map(e => {
-    const r = state.recipes.find(x => x.id === e.recipe_id)
-    return r ? r.name : e.recipe_name || 'Recipe'
-  })
-
-  const nameDisplay = recipeNames.length === 1
-    ? recipeNames[0]
-    : recipeNames.join(' · ')
-
-  // For cook now — if single recipe go to cook mode, if multiple open game plan
-  const isSingle = entries.length === 1
-  const singleId = isSingle ? entries[0].recipe_id : null
-
-  return '<div style="background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:14px">' +
-    '<div style="font-size:10px;font-weight:700;letter-spacing:0.7px;color:rgba(255,255,255,0.38);text-transform:uppercase;margin-bottom:6px">Tonight&#39;s plan · ' + slotLabel + '</div>' +
-    '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:3px;letter-spacing:-0.3px;line-height:1.3">' + esc(nameDisplay) + '</div>' +
-    '<div style="font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px">' + entries.length + ' recipe' + (entries.length>1?'s':'') + ' planned</div>' +
-    (isSingle
-      ? '<button class="ra-btn" data-cook-mode="' + singleId + '" style="background:var(--accent);color:white;border-color:var(--accent);font-size:12px;font-weight:600;padding:7px 16px;border-radius:8px">Cook now</button>'
-      : '<button class="tonight-plan-btn" data-tonight-slot="' + slotLabel + '" style="background:var(--accent);color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Game Plan →</button>') +
-  '</div>'
-}
-
-
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
   const activeTags = state.activeTagFilters['recipe']
@@ -1376,9 +1330,10 @@ function renderRecipes() {
     return `<div style="border-bottom:2px solid var(--accent)">${renderRecipeCard(r)}</div>`
   }
 
+  const _tonightHtml = renderTonightCard()
   return `
     <div class="tab-content">
-      ${renderTonightCard()}
+      ${_tonightHtml}
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <div style="display:flex;gap:6px">
@@ -2187,6 +2142,52 @@ function isDateToday(dateStr) {
 function getMealPlanEntries(date, slot) {
   return state.mealPlan.filter(e => e.date === date && e.meal_slot === slot)
 }
+
+function renderTonightCard() {
+  const today = new Date().toISOString().slice(0,10)
+  // Prefer Dinner, fall back to Lunch
+  let entries = getMealPlanEntries(today, 'Dinner')
+  let slotLabel = 'Dinner'
+  if (!entries.length) {
+    entries = getMealPlanEntries(today, 'Lunch')
+    slotLabel = 'Lunch'
+  }
+
+  if (!entries.length) {
+    // Empty state
+    return '<div style="border:1.5px dashed var(--border-strong);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🍽</div>' +
+      '<div>' +
+        '<div style="font-size:13px;color:var(--text-2)">Nothing planned for tonight.</div>' +
+        '<div class="tonight-plan-nav" style="font-size:12px;font-weight:700;color:var(--black);margin-top:2px;cursor:pointer">Plan dinner →</div>' +
+      '</div>' +
+    '</div>'
+  }
+
+  // Get recipe names
+  const recipeNames = entries.map(e => {
+    const r = state.recipes.find(x => x.id === e.recipe_id)
+    return r ? r.name : e.recipe_name || 'Recipe'
+  })
+
+  const nameDisplay = recipeNames.length === 1
+    ? recipeNames[0]
+    : recipeNames.join(' · ')
+
+  // For cook now — if single recipe go to cook mode, if multiple open game plan
+  const isSingle = entries.length === 1
+  const singleId = isSingle ? entries[0].recipe_id : null
+
+  return '<div style="background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:14px">' +
+    '<div style="font-size:10px;font-weight:700;letter-spacing:0.7px;color:rgba(255,255,255,0.38);text-transform:uppercase;margin-bottom:6px">Tonight&#39;s plan · ' + slotLabel + '</div>' +
+    '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:3px;letter-spacing:-0.3px;line-height:1.3">' + esc(nameDisplay) + '</div>' +
+    '<div style="font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px">' + entries.length + ' recipe' + (entries.length>1?'s':'') + ' planned</div>' +
+    (isSingle
+      ? '<button class="ra-btn" data-cook-mode="' + singleId + '" style="background:var(--accent);color:white;border-color:var(--accent);font-size:12px;font-weight:600;padding:7px 16px;border-radius:8px">Cook now</button>'
+      : '<button class="tonight-plan-btn" data-tonight-slot="' + slotLabel + '" style="background:var(--accent);color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Game Plan →</button>') +
+  '</div>'
+}
+
 
 const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
