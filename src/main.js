@@ -2808,7 +2808,8 @@ Rules:
   return gpBuildTimeline(gpSteps, targetTime, isWholeDay, slot, notes)
 }
 
-function gpParseConstraints(notes) {
+function gpParseConstraints(notes, dinnerMins) {
+  if (!dinnerMins) dinnerMins = 23 * 60 // default midnight
   var constraints = { startMins: null, gapStartMins: null, gapEndMins: null }
   if (!notes) return constraints
   var lower = notes.toLowerCase()
@@ -2857,23 +2858,40 @@ function gpParseConstraints(notes) {
     }
   }
 
-  // ── VALIDATE: gapStart must be after start, gapEnd must be before dinner ──
+  // ── VALIDATE ──
+  // Start time must be before dinner time
+  if (constraints.startMins !== null && constraints.startMins >= dinnerMins) {
+    constraints.startMins = null  // invalid — ignore it
+  }
+  // Gap end must be before dinner
+  if (constraints.gapEndMins && constraints.gapEndMins >= dinnerMins) {
+    constraints.gapEndMins = null
+    constraints.gapStartMins = null
+  }
+  // Gap start must be after start time
   if (constraints.gapStartMins && constraints.startMins && constraints.gapStartMins < constraints.startMins) {
     constraints.gapStartMins = constraints.startMins + 60
   }
 
-  console.log('gpParseConstraints:', JSON.stringify(constraints))
+  console.log('gpParseConstraints result:', JSON.stringify(constraints), 'dinnerMins:', dinnerMins)
   return constraints
 }
 
 function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
-  var dinnerMins = gpParseTime(targetTime)
-  var constraints = gpParseConstraints(notes || '')
+  var dinnerMins = gpParseTime(targetTime)  // This is the eat-at time — never override it
+  var constraints = gpParseConstraints(notes || '', dinnerMins)
   var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
 
-  // Start time: use constraint, or current time, whichever is later
+  // Is this plan for today or a future date?
+  var planDate = (arguments[4] ? '' : '') // notes is arg 4, date context from state
+  var mealDateStr = state.gamePlanModal ? state.gamePlanModal.date : null
+  var todayStr = new Date().toISOString().slice(0,10)
+  var isPlanningForToday = !mealDateStr || mealDateStr === todayStr
+
+  // Start time: use constraint, or current time (only enforce now-floor for today)
   var startMins = constraints.startMins !== null ? constraints.startMins : nowMins
-  if (startMins < nowMins) startMins = nowMins
+  if (isPlanningForToday && startMins < nowMins) startMins = nowMins
+  // For future dates, allow morning start times (e.g. 7 AM prep) even though it's now evening
 
   // Gap window: gapStartMins to gapEndMins — no steps scheduled during this window
   var gapStartMins = constraints.gapStartMins || null
@@ -5960,7 +5978,7 @@ async function estimateCaloriesAI(description) {
       var hasResult = !!result
       let system
       if (hasResult) {
-        system = 'You are a cooking timeline assistant helping the user adjust their existing cooking plan. Be specific and practical. Keep responses concise. Reference actual steps from the timeline.'
+        system = 'You are a cooking timeline assistant. The user has a generated cooking plan and may want to fix timing or adjust steps. If the timing looks wrong, acknowledge it and tell them to tap the ↺ Redo button (top right of the black header) to regenerate with corrected constraints. For tweaks to specific steps, suggest the change directly. Be brief and practical.'
       } else {
         var gpRecipes = buildGpRecipeContext(slot, gpDate)
         var recipeCtx = gpRecipes.map(r => {
