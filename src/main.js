@@ -1,4 +1,3 @@
-// v2 
 import * as db from './db.js'
 import { getUserId } from './supabase.js'
 
@@ -77,7 +76,7 @@ const state = {
   gamePlanLoading: false,
   gamePlanView: 'timeline',
   gamePlanChats: {},
-  timerSlider: null,  // { low, high, current, label }
+  timerSlider: null,  // { low, high, current, label, anchorTop, anchorLeft }
 }
 
 const GOAL_PRESETS = {
@@ -691,15 +690,15 @@ function renderTimerBar() {
     const timeStr = mins + ':' + String(secs).padStart(2, '0')
     const pct = timer.totalSeconds > 0 ? (timer.remaining / timer.totalSeconds) * 100 : 0
     const isDone = timer.remaining === 0
-    const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--accent)'
+    const barColor = isDone ? '#e05a2b' : pct < 20 ? '#e09b2b' : 'var(--forest)'
     return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
-        '<div style="font-size:11px;font-weight:600;color:var(--text-3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timer.label) + '</div>' +
-        '<button class="timer-stop-btn" data-timer-id="' + timer.id + '" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-3);padding:0;line-height:1">×</button>' +
+        '<div style="font-size:11px;font-weight:600;color:var(--ink3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(timer.label) + '</div>' +
+        '<button class="timer-stop-btn" data-timer-id="' + timer.id + '" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--ink3);padding:0;line-height:1">×</button>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:8px">' +
         '<div style="font-size:22px;font-weight:800;color:' + barColor + ';font-variant-numeric:tabular-nums;min-width:55px">' + (isDone ? '✓ Done!' : timeStr) + '</div>' +
-        '<div style="flex:1;height:4px;background:var(--gray-200);border-radius:2px">' +
+        '<div style="flex:1;height:4px;background:var(--cream3);border-radius:2px">' +
           '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width 1s linear"></div>' +
         '</div>' +
       '</div>' +
@@ -707,7 +706,7 @@ function renderTimerBar() {
   }).join('')
 
   const html = '<div id="timer-bar" style="position:fixed;bottom:70px;right:18px;z-index:1000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:4px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:200px;max-width:240px;font-family:inherit;touch-action:none;user-select:none">' +
-    '<div id="timer-drag-handle" style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;cursor:grab;display:flex;align-items:center;justify-content:space-between">⏱ Timers <span style="color:var(--text-4);letter-spacing:2px">⠿</span></div>' +
+    '<div id="timer-drag-handle" style="font-size:10px;font-weight:700;color:var(--forest);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;cursor:grab;display:flex;align-items:center;justify-content:space-between">⏱ Timers <span style="color:var(--ink4);letter-spacing:2px">⠿</span></div>' +
     rows +
   '</div>'
 
@@ -770,8 +769,8 @@ function parseTimerDuration(text) {
   // Range with "to" — return both bounds
   const toMatch = text.match(/(\d+)\s+to\s+(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?/)
   if (toMatch) return { low: toSecs(toMatch[1], toMatch[3]), high: toSecs(toMatch[2], toMatch[3]), isRange: true, label: text }
-  // Range with dash — REQUIRE a time unit so '100-120 ml' doesn't match
-  const dashMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)/)
+  // Range with dash
+  const dashMatch = text.match(/(\d+)\s*[-–]\s*(\d+)\s*(min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?/)
   if (dashMatch) return { low: toSecs(dashMatch[1], dashMatch[3]), high: toSecs(dashMatch[2], dashMatch[3]), isRange: true, label: text }
   // Hours + minutes
   const hourMin = text.match(/(\d+)\s*(?:hour|hr|h)\s*(?:(\d+)\s*(?:min|minute|minutes|mins))?/)
@@ -787,18 +786,18 @@ function parseTimerDuration(text) {
 
 // Linkify time references — ranges get a slider button, single times get a direct start button
 function linkifyTimers(html) {
-  return html.replace(/(\d+\s+to\s+\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*[-–]\s*\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)|\d+\s*(?:hour|hr|h)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:min|minute|minutes|mins|sec|second|seconds|secs))/gi, (match) => {
+  return html.replace(/(\d+\s+to\s+\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*[-–]\s*\d+\s*(?:min|minute|minutes|mins|hour|hr|h|sec|second|seconds|secs)?|\d+\s*(?:hour|hr|h)(?:\s+\d+\s*(?:min|minute|minutes|mins))?|\d+\s*(?:min|minute|minutes|mins|sec|second|seconds|secs))/gi, (match) => {
     const parsed = parseTimerDuration(match)
     if (!parsed) return match
     if (parsed.isRange) {
       // Range — show slider button
-      return '<button class="timer-link timer-range-link" data-timer-low="' + parsed.low + '" data-timer-high="' + parsed.high + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--accent-light);border:1px solid var(--accent-mid);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
+      return '<button class="timer-link timer-range-link" data-timer-low="' + parsed.low + '" data-timer-high="' + parsed.high + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
     }
-    return '<button class="timer-link" data-timer-seconds="' + parsed.seconds + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--accent-light);border:1px solid var(--accent-mid);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
+    return '<button class="timer-link" data-timer-seconds="' + parsed.seconds + '" data-timer-label="' + esc(match.trim()) + '" style="background:var(--sage4);border:1.5px solid var(--forest2);color:var(--forest);border-radius:6px;padding:1px 6px;font-size:inherit;font-family:inherit;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">⏱ ' + match.trim() + '</button>'
   })
 }
 
-// ── STEP AMOUNTS ──────────────────────────────────────────────────────────────
+// ── RENDER ────────────────────────────────────────────────────────────────────
 async function fetchStepAmounts(recipeId) {
   const r = state.recipes.find(x => x.id === recipeId)
   if (!r || !r.ingredients || !r.instructions) return
@@ -807,7 +806,7 @@ async function fetchStepAmounts(recipeId) {
   state.cookMode = { ...state.cookMode, stepAmountsLoading: true }
   render()
   try {
-    const prompt = 'Given this ingredient list and recipe instructions, for each numbered step list which ingredients (with exact amounts) are used in that step. Return ONLY valid JSON with no extra text: {"steps":[{"step":1,"amounts":["2 tbsp butter","1 cup cream"]},{"step":2,"amounts":["1 tsp salt"]}]}. Only include steps that use ingredients with measurable amounts. Do not include steps with no ingredients.\n\nIngredients:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
+    const prompt = 'Given this ingredient list and recipe instructions, for each numbered step list which ingredients (with exact amounts) are used in that step. Return ONLY valid JSON: {"steps":[{"step":1,"amounts":["2 tbsp butter"]},{"step":2,"amounts":["1 cup cream"]}]}. Only include steps that use ingredients with amounts.\n\nIngredients:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -835,7 +834,7 @@ async function fetchStepAmounts(recipeId) {
   }
 }
 
-// ── RENDER ────────────────────────────────────────────────────────────────────
+
 function render() {
   const app = document.getElementById('app')
   const cals = todayCalories()
@@ -849,7 +848,7 @@ function render() {
       ${clipBanner}
       <!-- HEADER -->
       <div class="header">
-        <div class="header-title">Mise En Place</div>
+        <div class="header-title"><em>Mise en Place</em></div>
         <div class="header-right">
           ${cals > 0 ? '<div class="header-cal">Today: ' + cals + ' cal</div>' : ''}
         </div>
@@ -903,7 +902,7 @@ function render() {
         <!-- Activity level -->
         <div class="goal-field" style="margin-top:8px">
           <label>Activity Level</label>
-          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:var(--black);color:white;font-size:13px">
+          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:var(--forest);color:white;font-size:13px">
             <option value="sedentary" ${state.goals.activity_level==='sedentary'?'selected':''}>Sedentary (desk job, little exercise)</option>
             <option value="light" ${state.goals.activity_level==='light'?'selected':''}>Lightly Active (1-3 days/week)</option>
             <option value="moderate" ${state.goals.activity_level==='moderate'?'selected':''}>Moderately Active (3-5 days/week)</option>
@@ -937,9 +936,11 @@ function render() {
           <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
         })()}
 
-        <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--accent);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
+        <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--forest);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
 
       </div>` : ''}
+
+
       <!-- TABS -->
       <div class="tabs">
         <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
@@ -965,7 +966,7 @@ function render() {
           </div>
           <div class="sync-id-box" style="flex-direction:column;align-items:flex-start;gap:8px">
             <div class="sync-id-label">Add to iPhone Home Screen</div>
-            <div style="font-size:11px;color:var(--text-3);line-height:1.5">Open this link in Safari, then Share → Add to Home Screen. Your Account ID saves automatically.</div>
+            <div style="font-size:11px;color:var(--text-3);line-height:1.5">Open in Safari → Share → Add to Home Screen.</div>
             <button class="sync-copy-btn" id="sync-bookmark-btn">Copy Bookmark Link</button>
           </div>
           <div class="sync-switch-box">
@@ -994,55 +995,57 @@ function render() {
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
-      
       ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
       ${state.gamePlanModal  ? renderGamePlanModal() : ''}
       ${state.calendarRecipePreview ? renderCalendarRecipePreviewModal() : ''}
 
       <!-- SCROLL TO TOP -->
-      <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--black);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
+      <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--forest);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
     </div>
   `
   bindEvents()
 
   // Timer slider popover
   if (state.timerSlider) {
-    const { low, high, current, label } = state.timerSlider
+    const { low, high, current, label, anchorTop, anchorLeft } = state.timerSlider
+    const pct = ((current - low) / (high - low)) * 100
     const mins = Math.round(current / 60)
-    // Centered modal overlay — works consistently inside cook mode and main app
-    const overlay = document.createElement('div')
-    overlay.id = 'timer-slider-popover'
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:24px'
-    overlay.innerHTML =
-      '<div style="background:white;border-radius:16px;padding:20px;width:100%;max-width:280px;font-family:inherit">' +
-        '<div style="font-size:11px;font-weight:600;color:#888;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px">⏱ ' + esc(label) + '</div>' +
-        '<div id="timer-mins-display" style="font-size:36px;font-weight:700;color:#1a1a1a;text-align:center;margin-bottom:12px;font-variant-numeric:tabular-nums">' + mins + ' min</div>' +
-        '<input id="timer-range-slider" type="range" min="' + low + '" max="' + high + '" step="60" value="' + current + '" style="width:100%;accent-color:#3d52c4;margin-bottom:16px" />' +
-        '<div style="display:flex;gap:8px">' +
-          '<button id="timer-slider-start" style="flex:1;background:#1a1a1a;color:white;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Start timer</button>' +
-          '<button id="timer-slider-cancel" style="background:none;border:1.5px solid #ddd;border-radius:10px;padding:12px 14px;font-size:14px;cursor:pointer;font-family:inherit;color:#888">✕</button>' +
-        '</div>' +
+    const popover = document.createElement('div')
+    popover.id = 'timer-slider-popover'
+    popover.style.cssText = 'position:fixed;z-index:2000;background:white;border:2px solid var(--forest2);border-radius:14px;padding:14px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.2);min-width:200px;font-family:inherit'
+    popover.style.top = Math.min(anchorTop + 30, window.innerHeight - 160) + 'px'
+    popover.style.left = Math.min(anchorLeft, window.innerWidth - 220) + 'px'
+    popover.innerHTML =
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:8px">⏱ ' + esc(label) + '</div>' +
+      '<div style="font-size:28px;font-weight:800;color:var(--forest);text-align:center;margin-bottom:8px;font-variant-numeric:tabular-nums">' + mins + ' min</div>' +
+      '<input id="timer-range-slider" type="range" min="' + low + '" max="' + high + '" step="60" value="' + current + '" style="width:100%;accent-color:var(--forest);margin-bottom:12px" />' +
+      '<div style="display:flex;gap:8px">' +
+        '<button id="timer-slider-start" style="flex:1;background:var(--forest);color:white;border:none;border-radius:10px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Start</button>' +
+        '<button id="timer-slider-cancel" style="background:none;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;cursor:pointer;font-family:inherit;color:var(--ink3)">✕</button>' +
       '</div>'
-    document.body.appendChild(overlay)
+    document.body.appendChild(popover)
 
     document.getElementById('timer-range-slider')?.addEventListener('input', e => {
       state.timerSlider.current = parseInt(e.target.value)
       const m = Math.round(state.timerSlider.current / 60)
-      document.getElementById('timer-mins-display').textContent = m + ' min'
+      popover.querySelector('div[style*="28px"]').textContent = m + ' min'
     })
     document.getElementById('timer-slider-start')?.addEventListener('click', () => {
       unlockAudio()
       startTimer(state.timerSlider.current, state.timerSlider.label)
       state.timerSlider = null
-      overlay.remove()
+      popover.remove()
     })
     document.getElementById('timer-slider-cancel')?.addEventListener('click', () => {
       state.timerSlider = null
-      overlay.remove()
+      popover.remove()
     })
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay) { state.timerSlider = null; overlay.remove() }
-    })
+    // Close on outside tap
+    setTimeout(() => {
+      document.addEventListener('click', e => {
+        if (!popover.contains(e.target)) { state.timerSlider = null; popover.remove() }
+      }, { once: true })
+    }, 0)
   }
 
   // Re-render timer bar if any timers active (survives render cycles)
@@ -1135,6 +1138,7 @@ function renderTagFilterChips(namespace) {
 
   if (!hasTwoTiers) {
     return '<div class="tag-filter-wrap">' +
+      '<div style="margin-bottom:5px">' + selectAllBtn + '</div>' +
       '<div class="tag-filter-row">' +
         allTags.map(chipBtn).join('') +
         '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
@@ -1143,9 +1147,10 @@ function renderTagFilterChips(namespace) {
   }
 
   return '<div class="tag-filter-wrap">' +
-    '<div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Category</div>' +
+    '<div style="margin-bottom:6px">' + selectAllBtn + '</div>' +
+    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Category</div>' +
     '<div class="tag-filter-row" style="margin-bottom:8px">' + categories.map(chipBtn).join('') + '</div>' +
-    '<div style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Style</div>' +
+    '<div style="font-size:10px;color:var(--ink3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Style</div>' +
     '<div class="tag-filter-row">' +
       styles.map(chipBtn).join('') +
       '<button class="tag-filter-chip ' + (!isDefault && active.has('__untagged__') ? 'active' : '') + '" data-filter-tag="__untagged__" data-filter-ns="' + namespace + '">Untagged</button>' +
@@ -1157,36 +1162,37 @@ function renderTagFilterChips(namespace) {
 function renderRecipeCard(r) {
   const isExpanded = state.expandedRecipe === r.id
   const pt = r.prepTime
-
-  // ── COLLAPSED: name + tags + prep time summary only ──
   const prepSummary = pt
-    ? '<div class="recipe-prep-summary">⏱ ' + pt.active_min + ' min' +
+    ? '<div class="recipe-prep-summary">' +
+        '⏱ ' + pt.active_min + ' min active' +
         (pt.passive_min > 0 ? ' + ' + pt.passive_min + ' min passive' : '') +
-        ' · ' + (pt.difficulty || '') +
+        ' · ' + (pt.difficulty || 'Unknown') +
         (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? ' · Make-ahead ✓' : '') +
       '</div>'
     : ''
-
   const header = '<div class="recipe-card" data-rid="' + r.id + '">' +
     '<div class="recipe-card-header">' +
-      '<div style="min-width:0;flex:1">' +
-        '<div class="recipe-name">' + esc(r.name) + (r.archived ? ' <span style="font-size:10px;color:var(--text-4);font-weight:400">(archived)</span>' : '') + '</div>' +
-        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview" style="margin-top:4px">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
+      '<div>' +
+        '<div class="recipe-name">' + esc(r.name) + '</div>' +
+        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         prepSummary +
-        (r.clippedFrom ? '<div class="recipe-meta" style="margin-top:2px"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:var(--accent);text-decoration:none;font-size:11px">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
+        (r.notes ? '<div class="recipe-meta">' + esc(r.notes) + '</div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:var(--forest2);text-decoration:none">&#128206; ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
       '</div>' +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
 
   if (!isExpanded) return header + '</div>'
 
-  // ── COOK MODE: swaps in place of the card body ──
+  // Cook mode swaps in place of card body
   if (state.cookMode && state.cookMode.recipeId === r.id) {
     return header + renderCookModeInline(r) + '</div>'
   }
 
-  // ── EXPANDED: action buttons + tag editor + prep time box ──
-  // No ingredients, no instructions — those live in Cook mode
+  const notesSection = state.editingNotes === r.id
+    ? '<textarea class="notes-textarea" id="notes-ta-' + r.id + '" placeholder="What worked, what to change, substitutions...">' + esc(r.cookingNotes||'') + '</textarea>' +
+      '<button class="notes-save-btn" data-notes-save="' + r.id + '">Save Notes</button>'
+    : '<div class="notes-display ' + (!r.cookingNotes ? 'notes-empty' : '') + '">' + (r.cookingNotes ? esc(r.cookingNotes) : 'No notes yet!') + '</div>'
 
   const tagChips = (r.tags||[]).map(t =>
     '<span class="tag-chip">' + esc(t) +
@@ -1200,14 +1206,14 @@ function renderRecipeCard(r) {
   const pickerStyles = mealTags.filter(t => t.tag_type === 'style')
   const hasTwoTiers = pickerStyles.length > 0
   const tagPicker = isPickerOpen ? (
-    '<div class="tag-picker-popover" id="tag-picker-popover">' +
+    '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
     (hasTwoTiers ? (
-      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
+      (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
       pickerCategories.map(t => {
         const checked = (r.tags||[]).includes(t.name)
         return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
       }).join('') +
-      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:4px">Style</div>' : '') +
+      (pickerStyles.length ? '<div style="font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0 2px;border-top:1px solid var(--cream3);margin-top:4px">Style</div>' : '') +
       pickerStyles.map(t => {
         const checked = (r.tags||[]).includes(t.name)
         return '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + r.id + '" data-tag-ns="recipe" ' + (checked?'checked':'') + ' />' + esc(t.name) + '</label>'
@@ -1223,56 +1229,92 @@ function renderRecipeCard(r) {
     '</div>'
   ) : ''
 
-  // Prep time box
-  const prepBox = pt ? (
-    '<div class="prep-time-box" style="margin-top:10px">' +
-      '<div class="prep-time-header">' +
-        '<span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">Prep time</span>' +
-        '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
-      '</div>' +
-      '<div class="prep-time-grid">' +
-        '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
-        (pt.passive_min > 0 ? '<div class="prep-time-stat"><div class="prep-time-val">' + pt.passive_min + ' min</div><div class="prep-time-label">Passive</div></div>' : '') +
-        '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
-        '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
-      '</div>' +
-      (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
-      (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">Multitask tip:</span> ' + esc(pt.multitask) + '</div>' : '') +
-    '</div>'
-  ) : (
-    '<div class="prep-time-box prep-time-empty" style="margin-top:10px">' +
-      '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
-        (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
-      '</button>' +
-    '</div>'
-  )
+  const isEditingRecipe = state.editingRecipeId === r.id
+  const isScaling = state.scaleModal?.recipeId === r.id
+  const scaleButtons = '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">' +
+    '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Scale:</span>' +
+    ['½x', '2x', '3x'].map(s => '<button class="scale-btn" data-scale="' + s + '" data-recipe-id="' + r.id + '">' + s + '</button>').join('') +
+  '</div>'
+  const scaleResult = isScaling ? ('<div class="scale-result-box">' +
+    (state.scaleModal.loading ? '<div style="color:var(--ink3);font-style:italic;font-size:12px">Scaling ingredients...</div>' :
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;margin-bottom:6px">Scaled ingredients (' + state.scaleModal.label + '):</div>' +
+      '<div class="recipe-text" style="background:var(--cream2);border-radius:8px;padding:8px">' + formatRecipeText(state.scaleModal.ingredients) + '</div>' +
+      '<div style="display:flex;gap:6px;margin-top:8px">' +
+        '<button class="add-btn" style="background:var(--forest);color:white;border-color:var(--forest)" data-cook-scaled="' + r.id + '">👨‍🍳 Cook</button>' +
+        '<button class="add-btn" data-save-scaled="' + r.id + '">Save as new</button>' +
+        '<button class="modal-cancel" data-close-scale="' + r.id + '">Close</button>' +
+      '</div>'
+    ) + '</div>') : ''
 
   const body = '<div class="recipe-body">' +
-    // Source link
-    (r.clippedFrom ? '<div class="recipe-link" style="margin-bottom:8px"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original ↗</a></div>' : '') +
-    // Tag picker popover only — chips shown in collapsed header, no duplication here
-    (tagPicker ? '<div style="position:relative">' + tagPicker + '</div>' : '') +
-    // Prep time
-    prepBox +
-    // Cook — full width, same height as other buttons
-    '<div class="recipe-actions" style="margin-top:12px">' +
-      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="flex:1;width:100%;background:var(--black);color:white;border-color:var(--black);font-size:11px;padding:7px 4px;font-weight:700">Cook</button>' +
+    (r.clippedFrom ? '<div class="recipe-link"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original</a></div>' : '') +
+    scaleButtons +
+    scaleResult +
+    '<div class="recipe-section-label cooking-notes-label">Ingredients' +
+      '<button class="notes-edit-btn" data-recipe-edit="' + r.id + '">' + (isEditingRecipe ? 'Done' : 'Edit') + '</button>' +
     '</div>' +
-    // Secondary actions — List, Week, Log, Tag, Archive, Del
-    '<div class="recipe-actions" style="margin-top:6px">' +
-      '<button class="ra-btn" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">+ List</button>' +
-      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">+ Week</button>' +
-      '<button class="ra-btn" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">Log</button>' +
-      '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe" style="flex:1;font-size:11px;padding:7px 4px;border-radius:8px;border:1.5px solid var(--border-strong);background:var(--white);cursor:pointer;font-family:inherit;color:var(--text-2)">+ Tag</button>' +
+    (isEditingRecipe ?
+      '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Recipe Title</label>' +
+      '<input class="notes-textarea" id="edit-recipe-name-' + r.id + '" value="' + esc(r.name) + '" style="margin-top:4px;font-weight:600" /></div>' +
+      '<textarea class="notes-textarea" id="edit-ingredients-' + r.id + '" style="min-height:120px">' + esc(r.ingredients || '') + '</textarea>' +
+      '<div class="recipe-section-label" style="margin-top:8px">Instructions</div>' +
+      '<textarea class="notes-textarea" id="edit-instructions-' + r.id + '" style="min-height:120px">' + esc(r.instructions || '') + '</textarea>' +
+      '<button class="notes-save-btn" data-recipe-save="' + r.id + '" style="margin-top:8px">Save Changes</button>'
+    :
+      (r.ingredients ? '<div class="recipe-text">' + formatRecipeText(r.ingredients) + '</div>' : '<div class="recipe-text" style="color:var(--ink4);font-style:italic">No ingredients yet -- tap Edit to add</div>')
+    ) +
+    (isEditingRecipe ? '' :
+      '<div class="recipe-section-label">Instructions</div>' +
+      (r.instructions ? '<div class="recipe-text">' + formatRecipeText(r.instructions) + '</div>' : (r.text ? '<div class="recipe-text">' + formatRecipeText(r.text) + '</div>' : ''))
+    ) +
+    '<div class="recipe-section-label cooking-notes-label">My Cooking Notes' +
+      '<button class="notes-edit-btn" data-notes-edit="' + r.id + '">' + (state.editingNotes===r.id?'Done':'Edit') + '</button>' +
+    '</div>' +
+    notesSection +
+    '<div class="tag-row">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
+    // Prep time at bottom
+    (pt ? (
+      '<div class="prep-time-box">' +
+        '<div class="prep-time-header">' +
+          '<span>⏱ Prep Time</span>' +
+          '<button class="prep-time-refresh" data-refresh-prep="' + r.id + '" title="Re-estimate">' + (state.refreshingPrepId === r.id ? '...' : '↻') + '</button>' +
+        '</div>' +
+        '<div class="prep-time-grid">' +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + pt.active_min + ' min</div><div class="prep-time-label">Active</div></div>' +
+          (pt.passive_min > 0 ? '<div class="prep-time-stat"><div class="prep-time-val">' + pt.passive_min + ' min</div><div class="prep-time-label">Passive</div></div>' : '') +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.difficulty||'?') + '</div><div class="prep-time-label">Difficulty</div></div>' +
+          '<div class="prep-time-stat"><div class="prep-time-val">' + (pt.active_min + (pt.passive_min||0)) + ' min</div><div class="prep-time-label">Total</div></div>' +
+        '</div>' +
+        (pt.equipment && pt.equipment.length ? '<div class="prep-time-row"><span class="prep-time-key">🍳 Equipment:</span> ' + pt.equipment.join(', ') + '</div>' : '') +
+        (pt.multitask ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Multitask:</span> ' + esc(pt.multitask) + '</div>' : '') +
+        (pt.make_ahead && pt.make_ahead !== 'none' && pt.make_ahead !== 'None' ? '<div class="prep-time-row"><span class="prep-time-key">🗓 Make-ahead:</span> ' + esc(pt.make_ahead) + '</div>' : '') +
+        (pt.quick_version ? '<div class="prep-time-row"><span class="prep-time-key">⚡ Quick version:</span> ' + esc(pt.quick_version) + '</div>' : '') +
+      '</div>'
+    ) : (
+      '<div class="prep-time-box prep-time-empty">' +
+        '<button class="prep-time-estimate-btn" data-estimate-prep="' + r.id + '">' +
+          (state.estimatingPrepId === r.id ? '⏳ Estimating...' : '⏱ Estimate prep time') +
+        '</button>' +
+      '</div>'
+    )) +
+    '<div class="recipe-actions" style="display:flex;flex-wrap:nowrap;gap:4px">' +
+      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--forest);color:white;border-color:var(--forest);flex:1.2;font-size:11px;padding:5px 4px;white-space:nowrap">👨‍🍳 Cook</button>' +
+      '<button class="ra-btn ra-shop" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">+ List</button>' +
+      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">Log</button>' +
+      '<button class="ra-btn ra-log" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:5px 4px">+ Week</button>' +
+      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">📋 Plan</button>' +
+      '<button class="ra-btn ra-ask" data-ask="' + r.id + '" style="flex:1;font-size:11px;padding:5px 4px">Ask AI</button>' +
       (r.archived
-        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">Restore</button>'
-        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">Archive</button>') +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.8;font-size:11px;padding:7px 4px">Del</button>' +
+        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="color:var(--forest);flex:1;font-size:11px;padding:5px 4px">Restore</button>'
+        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="color:var(--ink3);flex:1;font-size:11px;padding:5px 4px">Archive</button>') +
+      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.6;font-size:11px;padding:5px 4px">Del</button>' +
+      '<button class="ra-btn" data-share-recipe="' + r.id + '" style="flex:0.8;font-size:11px;padding:5px 4px">📤 Share</button>' +
     '</div>' +
   '</div>'
 
   return header + body + '</div>'
 }
+
 function renderSearchBar(id, value, placeholder) {
   return '<div class="tab-search-wrap">' +
     '<input class="tab-search-input" id="' + id + '" placeholder="' + placeholder + '" value="' + esc(value) + '" />' +
@@ -1317,32 +1359,31 @@ function renderRecipes() {
   // Compact list row renderer
   const renderListRow = (r) => {
     const isExpanded = state.expandedRecipe === r.id
-    const tags = (r.tags || []).slice(0, 3).map(t => `<span style="background:var(--accent-light);color:var(--accent);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;border:1px solid var(--accent-mid)">${esc(t)}</span>`).join('')
+    const tags = (r.tags || []).slice(0, 3).map(t => `<span style="background:var(--sage4);color:var(--forest);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600">${esc(t)}</span>`).join('')
     if (!isExpanded) {
-      return `<div class="recipe-list-row" data-expand-recipe="${r.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:0.5px solid var(--border);cursor:pointer;background:var(--white)">
+      return `<div class="recipe-list-row" data-expand-recipe="${r.id}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--cream3);cursor:pointer;background:white">
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
+          <div style="font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
           ${tags ? `<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">${tags}</div>` : ''}
         </div>
-        <div style="font-size:18px;color:var(--text-3);flex-shrink:0">›</div>
+        <div style="font-size:18px;color:var(--ink3);flex-shrink:0">›</div>
       </div>`
     }
     // Expanded — show full card inline
-    return `<div style="border-bottom:2px solid var(--accent)">${renderRecipeCard(r)}</div>`
+    return `<div style="border-bottom:2px solid var(--forest2)">${renderRecipeCard(r)}</div>`
   }
 
-  const _tonightHtml = renderTonightCard()
   return `
     <div class="tab-content">
-      ${_tonightHtml}
+      ${renderTonightCard()}
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <div style="display:flex;gap:6px">
-          <button class="add-btn" id="scan-recipe-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Scan</button>
-          <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Clip</button>
-          <button class="add-btn" id="paste-recipe-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Paste</button>
+          <button class="add-btn" id="scan-recipe-btn" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Scan</button>
+          <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Clip</button>
+          <button class="add-btn" id="paste-recipe-btn" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Paste</button>
           <button class="add-btn" id="add-recipe-btn">+ Add</button>
-          <button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Tags</button>
+          <button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Tags</button>
         </div>
       </div>
       <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
@@ -1352,19 +1393,19 @@ function renderRecipes() {
       <!-- Sort + View controls -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
         <div style="display:flex;gap:4px">
-          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--accent)':'var(--border)'};background:${sort==='newest'?'var(--accent)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
-          <button class="recipe-sort-btn ${sort==='az'?'active':''}" data-sort="az" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='az'?'var(--accent)':'var(--border)'};background:${sort==='az'?'var(--accent)':'white'};color:${sort==='az'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">A→Z</button>
-          <button class="recipe-sort-btn ${sort==='za'?'active':''}" data-sort="za" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='za'?'var(--accent)':'var(--border)'};background:${sort==='za'?'var(--accent)':'white'};color:${sort==='za'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Z→A</button>
+          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--forest)':'var(--border)'};background:${sort==='newest'?'var(--forest)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
+          <button class="recipe-sort-btn ${sort==='az'?'active':''}" data-sort="az" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='az'?'var(--forest)':'var(--border)'};background:${sort==='az'?'var(--forest)':'white'};color:${sort==='az'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">A→Z</button>
+          <button class="recipe-sort-btn ${sort==='za'?'active':''}" data-sort="za" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='za'?'var(--forest)':'var(--border)'};background:${sort==='za'?'var(--forest)':'white'};color:${sort==='za'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Z→A</button>
         </div>
         <div style="display:flex;gap:4px">
-          <button id="view-cards-btn" title="Card view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${!isListView?'var(--accent)':'var(--border)'};background:${!isListView?'var(--sage4)':'white'};cursor:pointer">⊟</button>
-          <button id="view-list-btn" title="List view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${isListView?'var(--accent)':'var(--border)'};background:${isListView?'var(--sage4)':'white'};cursor:pointer">☰</button>
+          <button id="view-cards-btn" title="Card view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${!isListView?'var(--forest)':'var(--border)'};background:${!isListView?'var(--sage4)':'white'};cursor:pointer">⊟</button>
+          <button id="view-list-btn" title="List view" style="font-size:16px;padding:4px 8px;border-radius:6px;border:1.5px solid ${isListView?'var(--forest)':'var(--border)'};background:${isListView?'var(--sage4)':'white'};cursor:pointer">☰</button>
         </div>
       </div>
 
       ${archivedCount > 0 ? `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <button id="toggle-archived-btn" style="font-size:12px;color:var(--text-3);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit">
+          <button id="toggle-archived-btn" style="font-size:12px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit">
             ${state.showArchived ? '← Back to recipes' : '📦 Archived (' + archivedCount + ')'}
           </button>
         </div>
@@ -1380,8 +1421,8 @@ function renderRecipes() {
           <div class="clip-field-label">Tags</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">
             ${getTagsForNamespace('recipe').map(t =>
-              `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--gray-100);border-radius:8px;padding:8px 10px;min-width:0">
-                <input type="checkbox" class="r-tag-check" data-tag="${esc(t.name)}" ${state.addRecipeModalDraft.tags.includes(t.name) ? 'checked' : ''} style="accent-color:var(--accent);flex-shrink:0;width:16px;height:16px" />
+              `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:8px 10px;min-width:0">
+                <input type="checkbox" class="r-tag-check" data-tag="${esc(t.name)}" ${state.addRecipeModalDraft.tags.includes(t.name) ? 'checked' : ''} style="accent-color:var(--forest);flex-shrink:0;width:16px;height:16px" />
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.name)}</span>
               </label>`
             ).join('')}
@@ -1422,10 +1463,10 @@ function renderPantry() {
     '</div>' +
     (getTagsForNamespace('location').length > 0 ?
       '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
+      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
       getTagsForNamespace('location').map(t =>
         '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
-        '<input type="checkbox" class="pantry-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--accent)" />' +
+        '<input type="checkbox" class="pantry-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
         esc(t.name) + '</label>'
       ).join('') +
       '</div>'
@@ -1438,7 +1479,7 @@ function renderPantry() {
         const pickerId = item.id + '-location'
         const isOpen = state.tagPickerOpen === pickerId
         const pantryTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
-        const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+        const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
         const isEditing = state.editingPantryId === String(item.id)
         return '<div class="pantry-row pantry-row-wrap">' +
           '<div class="pantry-row-main">' +
@@ -1470,7 +1511,7 @@ function renderShopItems(items) {
     const pickerId = i.id + '-location'
     const isOpen = state.tagPickerOpen === pickerId
     const storeTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
-    const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+    const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
     const isEditingS = state.editingShopId === String(i.id)
 
     const isChecked = !!i.have
@@ -1482,9 +1523,9 @@ function renderShopItems(items) {
         '<input class="shop-edit-name" data-edit-shop-name="' + i.id + '" value="' + esc(i.name) + '" style="width:100%;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
         '<button class="add-btn" data-save-shop="' + i.id + '" style="padding:4px 10px;font-size:11px">Save</button>'
       :
-        '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer;' + (isChecked ? 'text-decoration:line-through;color:var(--text-4)' : '') + '" title="Tap to edit">' + esc(i.name) + '</div>'
+        '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer;' + (isChecked ? 'text-decoration:line-through;color:var(--ink4)' : '') + '" title="Tap to edit">' + esc(i.name) + '</div>'
       ) +
-      '<div class="shop-item-tags" style="position:relative">' +
+      '<div class="shop-item-tags">' +
         (!isChecked ? chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' + picker : '') +
         // Pantry button always visible — moves to cart AND adds to pantry
         '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px' + (isChecked ? ';opacity:1' : '') + '">🧺 Pantry</button>' +
@@ -1512,12 +1553,12 @@ function renderShop() {
 
   return '<div class="tab-content">' +
     tonightCard +
-    '<button id="shop-view-pantry-btn" style="width:100%;margin-bottom:12px;padding:10px;background:var(--white);border:1.5px solid var(--border-strong);border-radius:10px;font-size:13px;font-weight:600;color:var(--text-2);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">🧺 View Pantry</button>' +
+    '<button id="shop-view-pantry-btn" style="width:100%;margin-bottom:12px;padding:10px;background:white;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-weight:600;color:#3a3a38;cursor:pointer;font-family:inherit">🧺 View Pantry</button>' +
     '<div class="shop-header">' +
       '<div class="section-title">Shopping List</div>' +
       '<div style="display:flex;gap:6px">' +
         (state.shopList.length > 0 ? '<button class="icon-btn" id="shop-copy-btn">📤 Share</button>' : '') +
-        (done.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear-checked" style="background:var(--gray-100);color:var(--text-2);border:1px solid var(--border)">Clear checked (' + done.length + ')</button>' : '') +
+        (done.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear-checked" style="background:var(--cream2);color:var(--ink2);border:1px solid var(--border)">Clear checked (' + done.length + ')</button>' : '') +
         (state.shopList.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear">Clear all</button>' : '') +
       '</div>' +
     '</div>' +
@@ -1527,7 +1568,7 @@ function renderShop() {
     '</div>' +
     (state._shopPantryWarning ? (
       '<div style="background:#fff8e6;border:1.5px solid var(--gold);border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:13px">' +
-        '<div style="font-weight:600;color:var(--text);margin-bottom:6px">🧺 Already in pantry: <em>' + esc(state._shopPantryWarning) + '</em></div>' +
+        '<div style="font-weight:600;color:var(--ink);margin-bottom:6px">🧺 Already in pantry: <em>' + esc(state._shopPantryWarning) + '</em></div>' +
         '<div style="display:flex;gap:8px">' +
           '<button class="add-btn" id="shop-add-anyway" style="font-size:12px;padding:5px 12px">Add anyway</button>' +
           '<button class="modal-cancel" id="shop-skip-item" style="font-size:12px;padding:5px 12px">Skip</button>' +
@@ -1536,10 +1577,10 @@ function renderShop() {
     ) : '') +
     (getTagsForNamespace('location').length > 0 ?
       '<div style="margin-top:6px;margin-bottom:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
+      '<span style="font-size:10px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Tag:</span>' +
       getTagsForNamespace('location').map(t =>
         '<label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer">' +
-        '<input type="checkbox" class="shop-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--accent)" />' +
+        '<input type="checkbox" class="shop-new-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest)" />' +
         esc(t.name) + '</label>'
       ).join('') +
       '</div>'
@@ -1553,12 +1594,12 @@ function renderShop() {
         '<button class="shop-got-it-btn" id="shop-got-it">Got it all!</button>' +
       '</div>' +
       renderShopItems(need)
-    : (state.shopList.length > 0 && need.length === 0 && done.length > 0 ? '<div style="font-size:13px;color:var(--text-3);padding:12px 0;text-align:center">✅ All done! Items will clear in 1 hour.</div>' : '')) +
+    : (state.shopList.length > 0 && need.length === 0 && done.length > 0 ? '<div style="font-size:13px;color:var(--ink3);padding:12px 0;text-align:center">✅ All done! Items will clear in 1 hour.</div>' : '')) +
     // Checked / crossed-off items
     (done.length > 0 ?
       '<div style="margin-top:14px;border-top:1px solid var(--cream3);padding-top:10px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-          '<div style="font-size:10px;color:var(--text-4);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">In cart (' + done.length + ')</div>' +
+          '<div style="font-size:10px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">In cart (' + done.length + ')</div>' +
           '<button class="clear-pantry-btn" id="shop-clear-cart" style="font-size:10px;padding:3px 8px">Remove all</button>' +
         '</div>' +
         renderShopItems(done) +
@@ -1660,10 +1701,10 @@ function renderLogInner() {
   const weeklyGoal = goal * 7
   const weeklyDiff = weeklyNet - weeklyGoal
   const deficitSurplus = weeklyDiff < 0
-    ? { label: Math.abs(weeklyDiff).toLocaleString() + ' cal deficit', color: 'var(--accent)', bg: 'var(--sage4)' }
+    ? { label: Math.abs(weeklyDiff).toLocaleString() + ' cal deficit', color: 'var(--forest)', bg: 'var(--sage4)' }
     : weeklyDiff > 0
     ? { label: weeklyDiff.toLocaleString() + ' cal surplus', color: 'var(--terra)', bg: '#fff5f2' }
-    : { label: 'On target', color: 'var(--accent)', bg: 'var(--sage4)' }
+    : { label: 'On target', color: 'var(--forest)', bg: 'var(--sage4)' }
 
   const search = state.logSearch || ''
   const logTagFilter = state.logTagFilter || null
@@ -1684,7 +1725,7 @@ function renderLogInner() {
             '<input id="edit-log-food-' + e.id + '" value="' + esc(e.food) + '" style="font-size:13px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit" />' +
             '<div style="display:flex;gap:6px;align-items:center">' +
               '<input id="edit-log-cals-' + e.id + '" type="number" value="' + (e.calories||0) + '" style="width:80px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit;font-size:13px" />' +
-              '<span style="font-size:11px;color:var(--text-3)">kcal</span>' +
+              '<span style="font-size:11px;color:var(--ink3)">kcal</span>' +
               '<button class="add-btn" data-save-log="' + e.id + '" style="flex:1">Save</button>' +
               '<button class="modal-cancel" data-cancel-log="' + e.id + '" style="padding:6px 10px">Cancel</button>' +
             '</div>' +
@@ -1721,25 +1762,25 @@ function renderLogInner() {
     const foods = entries.slice(0, 3).map(e => esc(e.food)).join(', ') + (entries.length > 3 ? ' +' + (entries.length - 3) + ' more' : '')
     const barPct = Math.min((dayCals / goal) * 100, 100)
     const barColor = diff > 200 ? 'var(--terra)' : diff > 0 ? 'var(--gold)' : 'var(--forest2)'
-    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--accent-light);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
-        '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--accent)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
-        '<span style="font-size:12px;font-weight:600;color:var(--text-2)">' + (dayCalsIn > 0 ? dayCals + ' net cal' + (dayBurned > 0 ? ' <span style="font-size:10px;color:var(--accent)">(-' + dayBurned + ' burned)</span>' : '') : '--') + '</span>' +
+        '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--forest)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCalsIn > 0 ? dayCals + ' net cal' + (dayBurned > 0 ? ' <span style="font-size:10px;color:var(--forest)">(-' + dayBurned + ' burned)</span>' : '') : '--') + '</span>' +
       '</div>' +
-      (dayCalsIn > 0 ? '<div style="height:3px;background:var(--gray-200);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
-      (foods ? '<div style="font-size:10px;color:var(--text-3)">' + foods + '</div>' : '') +
+      (dayCalsIn > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
+      (foods ? '<div style="font-size:10px;color:var(--ink3)">' + foods + '</div>' : '') +
     '</div>'
   }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
-    '<button id="log-goals-btn" style="width:100%;margin-bottom:12px;padding:10px 14px;background:var(--black);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">Calories · Weight · Activity →</span></button>' +
+    '<button id="log-goals-btn" style="width:100%;margin-bottom:12px;padding:10px 14px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">Calories · Weight · Activity →</span></button>' +
 
     // 1. Day navigation + today summary banner
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
       '<button class="cal-nav" id="log-prev-day">&#8249;</button>' +
       '<div style="text-align:center">' +
-        '<div style="font-size:15px;font-weight:700;color:var(--accent)">' + dayLabel + '</div>' +
-        (!isToday ? '<div style="font-size:11px;color:var(--text-3)">' + viewedDate.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</div>' : '') +
+        '<div style="font-size:15px;font-weight:700;color:var(--forest)">' + dayLabel + '</div>' +
+        (!isToday ? '<div style="font-size:11px;color:var(--ink3)">' + viewedDate.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</div>' : '') +
       '</div>' +
       '<button class="cal-nav" id="log-next-day" ' + (isToday ? 'disabled style="opacity:0.3"' : '') + '>&#8250;</button>' +
     '</div>' +
@@ -1752,7 +1793,7 @@ function renderLogInner() {
       '</div>' +
       '<div style="text-align:right">' +
         (burned > 0 ?
-          '<div style="font-size:11px;color:var(--text-3)">&#127869; ' + cals + ' in &nbsp;&#127939; ' + burned + ' out</div>' +
+          '<div style="font-size:11px;color:var(--ink3)">&#127869; ' + cals + ' in &nbsp;&#127939; ' + burned + ' out</div>' +
           '<div><span class="log-total-val">' + net + '</span><span class="log-total-goal"> net / ' + goal + '</span></div>'
         :
           '<div><span class="log-total-val">' + cals + '</span><span class="log-total-goal"> / ' + goal + '</span></div>'
@@ -1767,17 +1808,17 @@ function renderLogInner() {
           const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr)
           return existing ? existing.weight : ''
         })()) + '" />' +
-        '<button class="add-btn" id="log-weight-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">' + ((state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr) ? '&#9998; Update' : '&#9881; Log') + ' Weight</button>' +
+        '<button class="add-btn" id="log-weight-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">' + ((state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === viewedDateStr) ? '&#9998; Update' : '&#9881; Log') + ' Weight</button>' +
       '</div>'
     ) : '') +
 
     // 4. Today's Meals — what's already logged
-    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">&#127869; ' + (isToday ? "Today's" : dayLabel + "'s") + ' meals</div>' +
     logEntries +
 
     // 5. Log Meals — structured form
-    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Log Meals</div>' +
-    '<div style="background:var(--gray-100);border-radius:12px;padding:12px;margin-bottom:10px">' +
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Log Meals</div>' +
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px;margin-bottom:10px">' +
       '<div style="display:flex;gap:6px;margin-bottom:6px">' +
         '<input id="log-qty" placeholder="Qty" type="number" min="0" step="0.1" style="width:60px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
         '<select id="log-unit" style="width:90px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:white">' +
@@ -1799,14 +1840,14 @@ function renderLogInner() {
         '<button class="add-btn" id="log-add-btn" style="white-space:nowrap">+ Add</button>' +
       '</div>' +
     '</div>' +
-    (!isToday ? '<div style="font-size:10px;color:var(--text-3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
+    (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
         recipeResults.map(r =>
-          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--text-3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
+          '<button class="log-search-result" data-log-recipe="' + r.id + '" data-log-recipe-name="' + esc(r.name) + '">' + esc(r.name) + (r.tags&&r.tags.length ? ' <span style="font-size:10px;color:var(--ink3)">(' + r.tags.join(', ') + ')</span>' : '') + '</button>'
         ).join('') +
-        '<button class="log-search-result" id="log-search-clear" style="color:var(--text-3);font-style:italic">Clear search</button>' +
+        '<button class="log-search-result" id="log-search-clear" style="color:var(--ink3);font-style:italic">Clear search</button>' +
       '</div>' : '') +
     '</div>' +
     (recipeTags.length > 0 ?
@@ -1817,10 +1858,10 @@ function renderLogInner() {
     : '') +
 
     // 6. Exercise
-    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 6px">&#127939; Exercise</div>' +
     '<div class="log-add-row">' +
       '<input id="log-exercise" placeholder="e.g. swam 1 hour, walked 30 min" style="flex:1" />' +
-      '<button class="add-btn" id="log-exercise-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">+ Add</button>' +
+      '<button class="add-btn" id="log-exercise-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2)">+ Add</button>' +
     '</div>' +
     (viewedExercise && viewedExercise.length > 0 ?
       viewedExercise.map(e =>
@@ -1828,7 +1869,7 @@ function renderLogInner() {
           '<div style="flex:1">' +
             '<div class="log-food">' + esc(e.activity) + '</div>' +
             '<div class="log-cal-row-entry">' +
-              '<span class="log-cal" style="color:var(--accent)">-' + e.calories_burned + ' kcal burned</span>' +
+              '<span class="log-cal" style="color:var(--forest)">-' + e.calories_burned + ' kcal burned</span>' +
               (e.calories_burned > 0 ? '<button class="log-breakdown-btn" data-ex-breakdown-id="' + e.id + '">?</button>' : '') +
             '</div>' +
             (state.logBreakdownId === 'ex-' + e.id && e.breakdown ?
@@ -1837,32 +1878,32 @@ function renderLogInner() {
           '<button class="remove-btn" data-ex-del="' + e.id + '">x</button>' +
         '</div>'
       ).join('')
-    : '<div style="font-size:12px;color:var(--text-4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
+    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
 
     // 7. Weight progress chart
     renderWeightProgress() +
 
     // Today's calorie summary (compact, between chart and log weight)
-    '<div style="background:var(--gray-100);border-radius:10px;padding:8px 14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Today</div>' +
-      '<div style="font-size:13px;font-weight:700;color:var(--text)">' +
+    '<div style="background:var(--cream2);border-radius:10px;padding:8px 14px;margin-top:10px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Today</div>' +
+      '<div style="font-size:13px;font-weight:700;color:var(--ink)">' +
         (burned > 0
-          ? cals + ' in · ' + burned + ' burned · <span style="color:' + (rem >= 0 ? 'var(--accent)' : 'var(--terra)') + '">' + net + ' net</span>'
-          : '<span style="color:' + (rem >= 0 ? 'var(--accent)' : 'var(--terra)') + '">' + cals + '</span> cal'
+          ? cals + ' in · ' + burned + ' burned · <span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + net + ' net</span>'
+          : '<span style="color:' + (rem >= 0 ? 'var(--forest)' : 'var(--terra)') + '">' + cals + '</span> cal'
         ) +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text-3)">' + (rem >= 0 ? rem + ' left' : Math.abs(rem) + ' over') + ' · goal ' + goal + '</div>' +
+      '<div style="font-size:11px;color:var(--ink3)">' + (rem >= 0 ? rem + ' left' : Math.abs(rem) + ' over') + ' · goal ' + goal + '</div>' +
     '</div>' +
 
     // 8. Last 7 days summary bar
     '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
       '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
-      '<div style="font-size:11px;color:var(--text-3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
+      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
     '</div>' +
 
     // 9. Day-by-day breakdown of last 7 days
-    '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">Day by day</div>' +
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">Day by day</div>' +
     weekRows +
 
   '</div>'
@@ -1998,11 +2039,11 @@ function renderWeightProgress() {
     const adjEndDay = todayDay + daysToTargetFromNow
     const diffDays = origEndDay - adjEndDay
     const diffWeeks = Math.round(Math.abs(diffDays) / 7)
-    if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of plan!'; nudgeColor = 'var(--accent)' }
+    if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of plan!'; nudgeColor = 'var(--forest)' }
     else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead of plan!'; nudgeColor = 'var(--forest2)' }
     else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind plan — keep at it.'; nudgeColor = 'var(--terra)' }
     else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind plan — keep going!'; nudgeColor = 'var(--gold)' }
-    else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--accent)' }
+    else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
   }
 
   // Start dot (at startWeight on startDate)
@@ -2011,10 +2052,10 @@ function renderWeightProgress() {
 
   return '<div style="margin-top:16px">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
-      '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
       '<div style="display:flex;gap:3px">' +
         ['1W','2W','1M','3M','All'].map(w =>
-          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--accent)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--accent)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
+          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--forest)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--forest)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
         ).join('') +
       '</div>' +
     '</div>' +
@@ -2022,11 +2063,11 @@ function renderWeightProgress() {
 
       // Stats: Start · Current · Lost · To go · Target
       '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--text-3)">' + startWeight + '</div><div style="font-size:10px;color:var(--text-3)">Start</div></div>' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--accent)">' + latestWeight + '</div><div style="font-size:10px;color:var(--text-3)">Current</div></div>' +
-        (lostSoFar > 0.1 ? '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--accent)">-' + lostSoFar.toFixed(1) + '</div><div style="font-size:10px;color:var(--text-3)">Lost</div></div>' : '') +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--text-2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--text-3)">To go</div></div>' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--text-3)">Target</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink3)">' + startWeight + '</div><div style="font-size:10px;color:var(--ink3)">Start</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest)">' + latestWeight + '</div><div style="font-size:10px;color:var(--ink3)">Current</div></div>' +
+        (lostSoFar > 0.1 ? '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest2)">-' + lostSoFar.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">Lost</div></div>' : '') +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">To go</div></div>' +
+        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--ink3)">Target</div></div>' +
       '</div>' +
 
       // SVG Graph
@@ -2066,7 +2107,7 @@ function renderWeightProgress() {
         // Actual trajectory forward (colored dashed — extrapolated from your actual pace)
 
         // Actual logged weights (dotted green — your real journey connecting weigh-ins)
-        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
+        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
 
         // Actual dots with date labels
         actualPoints.map((p, i) => {
@@ -2077,27 +2118,27 @@ function renderWeightProgress() {
           const anchor = cx > W - 50 ? 'end' : 'start'
           const labelY = cy > H - padB - 20 ? cy - 10 : cy + 14
           const isLatest = i === actualPoints.length - 1
-          return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (isLatest ? 4.5 : 3.5) + '" fill="var(--accent)" stroke="white" stroke-width="1.5"/>' +
+          return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (isLatest ? 4.5 : 3.5) + '" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' +
             '<text x="' + labelX.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="' + anchor + '" font-size="7" fill="var(--ink3)">' + dateLabel + '</text>' +
-            (isLatest ? '<text x="' + (cx > W-60 ? cx-6 : cx+6).toFixed(1) + '" y="' + (cy-7).toFixed(1) + '" text-anchor="' + (cx>W-60?'end':'start') + '" font-size="8" font-weight="bold" fill="var(--accent)">' + p.weight + '</text>' : '')
+            (isLatest ? '<text x="' + (cx > W-60 ? cx-6 : cx+6).toFixed(1) + '" y="' + (cy-7).toFixed(1) + '" text-anchor="' + (cx>W-60?'end':'start') + '" font-size="8" font-weight="bold" fill="var(--forest)">' + p.weight + '</text>' : '')
         }).join('') +
 
       '</svg>' +
 
       // Dates line
-      (projection ? '<div style="font-size:11px;color:var(--text-3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
-        (adjProjPath && daysToTargetFromNow > 0 ? ' &nbsp;·&nbsp; Updated: <strong style="color:var(--accent)">' + new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</strong>' : '') +
+      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
+        (adjProjPath && daysToTargetFromNow > 0 ? ' &nbsp;·&nbsp; Updated: <strong style="color:var(--forest2)">' + new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</strong>' : '') +
       '</div>' : '') +
 
       // Nudge
-      (nudgeMsg ? '<div style="font-size:12px;font-weight:600;color:' + nudgeColor + ';margin-top:8px;text-align:center;padding:6px 10px;background:var(--gray-100);border-radius:8px">' + nudgeMsg + '</div>' : '') +
+      (nudgeMsg ? '<div style="font-size:12px;font-weight:600;color:' + nudgeColor + ';margin-top:8px;text-align:center;padding:6px 10px;background:var(--cream2);border-radius:8px">' + nudgeMsg + '</div>' : '') +
 
       // Legend
       '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
-        (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
+        (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
+        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
       '</div>' +
 
     '</div>' +
@@ -2108,12 +2149,12 @@ function renderWeightProgress() {
         weightLog.slice().reverse().slice(0, 5).map(e =>
           '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
             '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
-            '<span style="font-size:11px;color:var(--text-3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}) + '</span>' +
+            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}) + '</span>' +
             '<button class="remove-btn" data-weight-del="' + e.id + '">x</button>' +
           '</div>'
         ).join('') +
       '</div>'
-    : '<div style="font-size:12px;color:var(--text-4);padding:4px 0">Log your first weigh-in to start tracking!</div>') +
+    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0">Log your first weigh-in to start tracking!</div>') +
 
   '</div>'
 }
@@ -2146,49 +2187,37 @@ function getMealPlanEntries(date, slot) {
 
 function renderTonightCard() {
   const today = new Date().toISOString().slice(0,10)
-  // Prefer Dinner, fall back to Lunch
   let entries = getMealPlanEntries(today, 'Dinner')
   let slotLabel = 'Dinner'
   if (!entries.length) {
     entries = getMealPlanEntries(today, 'Lunch')
     slotLabel = 'Lunch'
   }
-
   if (!entries.length) {
-    // Empty state
-    return '<div style="border:1.5px dashed var(--border-strong);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">' +
-      '<div style="width:32px;height:32px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🍽</div>' +
+    return '<div style="border:1.5px dashed var(--border-strong,#d4d4d0);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:var(--gray-100,#f2f2f0);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🍽</div>' +
       '<div>' +
-        '<div style="font-size:13px;color:var(--text-2)">Nothing planned for tonight.</div>' +
-        '<div class="tonight-plan-nav" style="font-size:12px;font-weight:700;color:var(--black);margin-top:2px;cursor:pointer">Plan dinner →</div>' +
+        '<div style="font-size:13px;color:var(--text-2,#3a3a38)">Nothing planned for tonight.</div>' +
+        '<div class="tonight-plan-nav" style="font-size:12px;font-weight:700;color:var(--black,#1a1a1a);margin-top:2px;cursor:pointer">Plan dinner →</div>' +
       '</div>' +
     '</div>'
   }
-
-  // Get recipe names
   const recipeNames = entries.map(e => {
     const r = state.recipes.find(x => x.id === e.recipe_id)
     return r ? r.name : e.recipe_name || 'Recipe'
   })
-
-  const nameDisplay = recipeNames.length === 1
-    ? recipeNames[0]
-    : recipeNames.join(' · ')
-
-  // For cook now — if single recipe go to cook mode, if multiple open game plan
+  const nameDisplay = recipeNames.join(' · ')
   const isSingle = entries.length === 1
   const singleId = isSingle ? entries[0].recipe_id : null
-
   return '<div style="background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:14px">' +
     '<div style="font-size:10px;font-weight:700;letter-spacing:0.7px;color:rgba(255,255,255,0.38);text-transform:uppercase;margin-bottom:6px">Tonight&#39;s plan · ' + slotLabel + '</div>' +
     '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:3px;letter-spacing:-0.3px;line-height:1.3">' + esc(nameDisplay) + '</div>' +
     '<div style="font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px">' + entries.length + ' recipe' + (entries.length>1?'s':'') + ' planned</div>' +
     (isSingle
-      ? '<button class="ra-btn" data-cook-mode="' + singleId + '" style="background:var(--accent);color:white;border-color:var(--accent);font-size:12px;font-weight:600;padding:7px 16px;border-radius:8px">Cook now</button>'
-      : '<button class="tonight-plan-btn" data-tonight-slot="' + slotLabel + '" style="background:var(--accent);color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Game Plan →</button>') +
+      ? '<button style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" data-cook-mode="' + singleId + '">Cook now</button>'
+      : '<button class="tonight-plan-btn" data-tonight-slot="' + slotLabel + '" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Game Plan →</button>') +
   '</div>'
 }
-
 
 const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -2295,8 +2324,8 @@ function renderCalendarRecipePreviewModal() {
   return '<div class="modal-bg" id="cal-recipe-preview-bg" style="z-index:200;align-items:flex-end">' +
     '<div class="modal-sheet" style="max-height:88vh;overflow-y:auto;border-radius:20px 20px 0 0;padding:0">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:1">' +
-        '<div style="font-size:13px;font-weight:600;color:var(--text-2)">Recipe</div>' +
-        '<button id="cal-recipe-preview-close" style="background:none;border:none;font-size:20px;color:var(--text-3);cursor:pointer;line-height:1;padding:0">&times;</button>' +
+        '<div style="font-size:13px;font-weight:600;color:var(--ink2)">Recipe</div>' +
+        '<button id="cal-recipe-preview-close" style="background:none;border:none;font-size:20px;color:var(--ink3);cursor:pointer;line-height:1;padding:0">&times;</button>' +
       '</div>' +
       '<div style="padding:0 4px 20px">' + cardHtml + '</div>' +
     '</div>' +
@@ -2332,7 +2361,7 @@ function renderCalendar() {
     html += '<span class="cal-day-date">' + formatDate(date).split(', ')[1] + '</span>'
     if (dateMeals.length > 0) {
       const dinnerDefault = localStorage.getItem('mep_dinner_time') || '7:00 PM'
-      html += '<button class="cal-game-plan-btn" data-game-plan-slot="Day" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(dinnerDefault) + '" style="margin-left:auto;font-size:10px;padding:3px 9px;background:var(--black);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan Day</button>'
+      html += '<button class="cal-game-plan-btn" data-game-plan-slot="Day" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(dinnerDefault) + '" style="margin-left:auto;font-size:10px;padding:3px 9px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan Day</button>'
     }
     html += '</div>'
 
@@ -2344,18 +2373,18 @@ function renderCalendar() {
       html += '<span>' + slot + '</span>'
       if (slotHasRecipe) {
         const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
-        html += '<button class="cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(defaultTime) + '" style="font-size:10px;padding:2px 7px;background:var(--black);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan</button>'
+        html += '<button class="cal-game-plan-btn" data-game-plan-slot="' + slot + '" data-game-plan-date="' + date + '" data-game-plan-rid="" data-game-plan-time="' + esc(defaultTime) + '" style="font-size:10px;padding:2px 7px;background:var(--forest);color:white;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600">📋 Plan</button>'
       }
       html += '</div>'
 
       entries.forEach(entry => {
         html += '<div class="cal-entry">'
         html += (entry.recipe_id
-          ? '<button class="cal-entry-name" data-go-recipe="' + entry.recipe_id + '" style="background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:var(--accent);font-weight:600;font-size:13px;padding:0;text-decoration:underline dotted">' + esc(entry.recipe_name || 'Unnamed') + '</button>'
+          ? '<button class="cal-entry-name" data-go-recipe="' + entry.recipe_id + '" style="background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:var(--forest);font-weight:600;font-size:13px;padding:0;text-decoration:underline dotted">' + esc(entry.recipe_name || 'Unnamed') + '</button>'
           : '<span class="cal-entry-name">' + esc(entry.recipe_name || 'Unnamed') + '</span>')
         html += '<div class="cal-entry-actions">'
         html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
-        if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--accent-light);color:var(--accent)">+ List</button>'
+        if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--sage4);color:var(--forest)">+ List</button>'
         html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">&times;</button>'
         html += '</div>'
         html += '</div>'
@@ -2392,7 +2421,7 @@ function renderCalendar() {
     html += '</div>'
 
     // Then recipe search
-    html += '<div style="font-size:11px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Or search recipes</div>'
+    html += '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Or search recipes</div>'
     html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" />'
 
     // Tag filter chips
@@ -2526,15 +2555,15 @@ function renderTags() {
   const renderChip = (t, ns) =>
     '<span class="tag-library-chip" style="display:inline-flex;align-items:center;gap:4px;margin:3px">' +
       esc(t.name) +
-      '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns + '" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--text-3);padding:0;line-height:1">×</button>' +
+      '<button class="tag-lib-del" data-del-tag-id="' + t.id + '" data-del-tag-ns="' + ns + '" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--ink3);padding:0;line-height:1">×</button>' +
     '</span>'
 
   const renderSection = (title, hint, tags, ns, addId, tagType) =>
     '<div class="tags-section">' +
       '<div class="tags-section-title">' + title + '</div>' +
-      '<div class="tags-section-hint" style="font-size:11px;color:var(--text-3);margin-bottom:8px">' + hint + '</div>' +
+      '<div class="tags-section-hint" style="font-size:11px;color:var(--ink3);margin-bottom:8px">' + hint + '</div>' +
       '<div class="tags-section-chips" style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">' +
-        (tags.length ? tags.map(t => renderChip(t, ns)).join('') : '<span style="font-size:12px;color:var(--text-4);font-style:italic">None yet</span>') +
+        (tags.length ? tags.map(t => renderChip(t, ns)).join('') : '<span style="font-size:12px;color:var(--ink4);font-style:italic">None yet</span>') +
       '</div>' +
       '<div class="tag-add-row" style="display:flex;gap:6px">' +
         '<input class="tag-lib-input" id="' + addId + '" placeholder="Add tag..." style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
@@ -2545,27 +2574,27 @@ function renderTags() {
   return '<div class="tab-content">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
       '<div class="section-title">Tag Library</div>' +
-      '<button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2);font-size:12px">' +
+      '<button class="add-btn" id="organize-tags-btn" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2);font-size:12px">' +
         (hasTyped ? '✦ Re-organize' : '✦ Auto-organize') +
       '</button>' +
     '</div>' +
     renderSearchBar('tag-search', state.tagSearch || '', 'Search tags...') +
 
     // Recipe tags — split into Category and Style if typed, flat if not
-    '<div style="background:var(--gray-100);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
-      '<div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:2px">🥘 Recipe Tags</div>' +
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px;margin-bottom:14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🥘 Recipe Tags</div>' +
       (hasTyped ? (
         renderSection('Category', 'What the dish IS — protein, cuisine, main ingredient (Pork, Pasta, Salad)', categoryTags, 'recipe', 'new-lib-tag-recipe-category', 'category') +
         renderSection('Style', 'How it\'s made or when — method, occasion (Sous Vide, Weeknight, Party)', styleTags, 'recipe', 'new-lib-tag-recipe-style', 'style')
       ) : (
-        '<div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Tap <strong>✦ Auto-organize</strong> to split into Category and Style for better filtering.</div>' +
+        '<div style="font-size:12px;color:var(--ink3);margin-bottom:10px">Tap <strong>✦ Auto-organize</strong> to split into Category and Style for better filtering.</div>' +
         renderSection('All Recipe Tags', 'Meal type, occasion, cooking method, main ingredient', recipeTags, 'recipe', 'new-lib-tag-recipe', 'category')
       )) +
     '</div>' +
 
     // Location tags
-    '<div style="background:var(--gray-100);border-radius:12px;padding:12px 14px">' +
-      '<div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:2px">🛒 Pantry & Store Tags</div>' +
+    '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--forest);margin-bottom:2px">🛒 Pantry & Store Tags</div>' +
       renderSection('Location Tags', 'Store aisle, fridge section, pantry shelf', locationTags, 'location', 'new-lib-tag-location', 'category') +
     '</div>' +
   '</div>'
@@ -2581,7 +2610,7 @@ function linkifyRecipes(text) {
     const escapedName = esc(r.name)
     const re = new RegExp('(?<![\\w-])' + escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w-])', 'g')
     html = html.replace(re,
-      '<button class="chat-recipe-link" data-go-recipe="' + r.id + '" style="background:none;border:none;padding:0;color:var(--accent);font-weight:700;text-decoration:underline dotted;cursor:pointer;font-family:inherit;font-size:inherit">' + escapedName + '</button>'
+      '<button class="chat-recipe-link" data-go-recipe="' + r.id + '" style="background:none;border:none;padding:0;color:var(--forest);font-weight:700;text-decoration:underline dotted;cursor:pointer;font-family:inherit;font-size:inherit">' + escapedName + '</button>'
     )
   })
   // Linkify time references
@@ -2613,15 +2642,15 @@ function renderChat() {
   return '<div class="chat-fullpage">' +
     // Recipe context banner
     (ctx ? (
-      '<div style="background:var(--accent-light);border-bottom:1.5px solid var(--forest2);padding:8px 14px;display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="background:var(--sage4);border-bottom:1.5px solid var(--forest2);padding:8px 14px;display:flex;justify-content:space-between;align-items:center">' +
         '<div style="display:flex;align-items:center;gap:10px">' +
-          '<button id="chat-back-to-recipe" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--accent);padding:0;line-height:1;font-family:inherit" title="Back to recipe">←</button>' +
+          '<button id="chat-back-to-recipe" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--forest);padding:0;line-height:1;font-family:inherit" title="Back to recipe">←</button>' +
           '<div>' +
-            '<div style="font-size:10px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Asking about</div>' +
-            '<button id="chat-go-to-recipe" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;font-weight:700;color:var(--accent);text-decoration:underline dotted;font-family:inherit;text-align:left">' + esc(ctx.name) + '</button>' +
+            '<div style="font-size:10px;color:var(--forest);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Asking about</div>' +
+            '<button id="chat-go-to-recipe" style="background:none;border:none;padding:0;cursor:pointer;font-size:13px;font-weight:700;color:var(--forest);text-decoration:underline dotted;font-family:inherit;text-align:left">' + esc(ctx.name) + '</button>' +
           '</div>' +
         '</div>' +
-        '<button id="chat-clear-context" style="font-size:11px;color:var(--text-3);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✕ Clear</button>' +
+        '<button id="chat-clear-context" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;cursor:pointer">✕ Clear</button>' +
       '</div>'
     ) : '') +
     '<div class="chat-messages" id="chat-messages">' + chatHtml + '</div>' +
@@ -2817,7 +2846,7 @@ function renderTagOrganizerModal() {
     return '<div class="modal-bg" id="tag-organizer-bg">' +
       '<div class="modal-sheet">' +
         '<div class="modal-title">🏷 Organize Tags</div>' +
-        '<div style="text-align:center;padding:30px 0;color:var(--text-3)">Asking AI to sort your tags...</div>' +
+        '<div style="text-align:center;padding:30px 0;color:var(--ink3)">Asking AI to sort your tags...</div>' +
       '</div>' +
     '</div>'
   }
@@ -2825,10 +2854,10 @@ function renderTagOrganizerModal() {
   const renderTagRow = (t) => {
     const type = t.tag_type || 'category'
     return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--cream3)">' +
-      '<div style="flex:1;font-size:13px;font-weight:600;color:var(--text)">' + esc(t.name) + '</div>' +
+      '<div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">' + esc(t.name) + '</div>' +
       '<div style="display:flex;gap:4px">' +
-        '<button class="tag-type-btn ' + (type === 'category' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="category" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='category'?'var(--accent)':'var(--border)') + ';background:' + (type==='category'?'var(--accent)':'white') + ';color:' + (type==='category'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Category</button>' +
-        '<button class="tag-type-btn ' + (type === 'style' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="style" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='style'?'var(--accent)':'var(--border)') + ';background:' + (type==='style'?'var(--accent)':'white') + ';color:' + (type==='style'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Style</button>' +
+        '<button class="tag-type-btn ' + (type === 'category' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="category" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='category'?'var(--forest)':'var(--border)') + ';background:' + (type==='category'?'var(--forest)':'white') + ';color:' + (type==='category'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Category</button>' +
+        '<button class="tag-type-btn ' + (type === 'style' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="style" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='style'?'var(--forest)':'var(--border)') + ';background:' + (type==='style'?'var(--forest)':'white') + ';color:' + (type==='style'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Style</button>' +
       '</div>' +
     '</div>'
   }
@@ -2836,9 +2865,9 @@ function renderTagOrganizerModal() {
     '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
         '<div class="modal-title" style="margin:0">🏷 Organize Tags</div>' +
-        '<button id="tag-organizer-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--text-3);padding:0;line-height:1">×</button>' +
+        '<button id="tag-organizer-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
       '</div>' +
-      '<div style="font-size:12px;color:var(--text-3);margin-bottom:14px">Category = what the dish is (Pork, Pasta). Style = how it\'s made (Sous Vide, Weeknight). Filtering uses Category as OR, then Style to narrow.</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-bottom:14px">Category = what the dish is (Pork, Pasta). Style = how it\'s made (Sous Vide, Weeknight). Filtering uses Category as OR, then Style to narrow.</div>' +
       tags.sort((a, b) => a.name.localeCompare(b.name)).map(renderTagRow).join('') +
       '<div style="margin-top:16px">' +
         '<button class="modal-save" id="tag-organizer-save" style="width:100%">Save</button>' +
@@ -2851,17 +2880,11 @@ function renderCookModeInline(r) {
   const { tab, scaledIngredients, scaleLabel, checkedIngredients, stepAmounts, stepAmountsLoading, editing } = state.cookMode || {}
   const activeTab = tab || 'ingredients'
   const isEditing = editing || false
-
   const ingredientSource = scaledIngredients || r.ingredients || ''
   const ingredients = ingredientSource.split('\n').map(l => l.trim()).filter(Boolean)
   const rawInstructions = r.instructions || r.text || ''
-
-  const steps = rawInstructions
-    .split(/\n+/)
-    .map(l => l.trim())
-    .filter(Boolean)
-    .map(l => l.replace(/^(step\s*\d+[.:]?\s*|\d+\.\s*)/i, ''))
-    .filter(l => l.length > 4)
+  const steps = rawInstructions.split(/\n+/).map(l => l.trim()).filter(Boolean)
+    .map(l => l.replace(/^(step\s*\d+[.:]?\s*|\d+\.\s*)/i, '')).filter(l => l.length > 4)
 
   const getChipsForStep = (stepIdx) => {
     if (!stepAmounts) return []
@@ -2870,87 +2893,73 @@ function renderCookModeInline(r) {
 
   const tabBtn = (tabId, label) =>
     '<button id="cook-tab-' + tabId + '" style="flex:1;padding:10px;font-size:13px;font-weight:' +
-    (activeTab===tabId?'700':'500') + ';color:' + (activeTab===tabId?'var(--accent)':'var(--text-3)') +
-    ';background:none;border:none;border-bottom:2px solid ' + (activeTab===tabId?'var(--accent)':'transparent') +
+    (activeTab===tabId?'700':'500') + ';color:' + (activeTab===tabId?'#3d52c4':'#6e6e69') +
+    ';background:none;border:none;border-bottom:2px solid ' + (activeTab===tabId?'#3d52c4':'transparent') +
     ';cursor:pointer;font-family:inherit">' + label + '</button>'
 
   const checkedSet = checkedIngredients || new Set()
 
-  // ── INGREDIENTS TAB ──
-  const scaleRow = '<div style="display:flex;gap:6px;padding:8px 0 6px;align-items:center">' +
-    '<span style="font-size:10px;color:var(--text-3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0">Scale</span>' +
-    ['½x','1x','2x','3x'].map(s => {
-      const isActive = (s === '1x' && !scaledIngredients) || scaleLabel === s
-      return '<button class="scale-btn" data-scale="' + s + '" data-recipe-id="' + r.id + '" style="' + (isActive?'background:var(--black);color:white;border-color:var(--black);':'') + '">' + s + '</button>'
-    }).join('') +
-  '</div>'
-
   const ingredientsView = isEditing
     ? '<div style="padding-top:8px">' +
-        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Recipe name</div>' +
-        '<input id="cook-edit-name" value="' + esc(r.name) + '" style="width:100%;padding:9px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;font-weight:600;background:var(--gray-50);color:var(--text);outline:none;margin-bottom:12px" />' +
-        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Ingredients</div>' +
-        '<textarea id="cook-edit-ingredients" style="width:100%;min-height:180px;padding:10px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:var(--gray-50);color:var(--text);outline:none;resize:vertical">' + esc(r.ingredients || '') + '</textarea>' +
-        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:var(--black);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save changes</button>' +
+        '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Recipe name</div>' +
+        '<input id="cook-edit-name" value="' + esc(r.name) + '" style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;font-weight:600;background:#f9f9f8;color:#1a1a1a;outline:none;margin-bottom:12px" />' +
+        '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Ingredients</div>' +
+        '<textarea id="cook-edit-ingredients" style="width:100%;min-height:180px;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical">' + esc(r.ingredients || '') + '</textarea>' +
+        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save changes</button>' +
       '</div>'
-    : scaleRow + (ingredients.length > 0
+    : ('<div style="display:flex;gap:6px;padding:8px 0 6px;align-items:center">' +
+        '<span style="font-size:10px;color:#6e6e69;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0">Scale</span>' +
+        ['½x','1x','2x','3x'].map(s => {
+          const isActive = (s === '1x' && !scaledIngredients) || scaleLabel === s
+          return '<button class="scale-btn" data-scale="' + s + '" data-recipe-id="' + r.id + '" style="' + (isActive?'background:#1a1a1a;color:white;border-color:#1a1a1a;':'') + '">' + s + '</button>'
+        }).join('') +
+      '</div>' +
+      (ingredients.length > 0
         ? ingredients.map((line, i) => {
             const isChecked = checkedSet.has(i)
-            return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);cursor:pointer" class="cook-ing-row" data-ing-idx="' + i + '">' +
-              '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'var(--border-strong)':'var(--accent)') + ';margin-top:8px;flex-shrink:0"></div>' +
-              '<div style="font-size:15px;line-height:1.4;color:' + (isChecked?'var(--text-4)':'var(--text)') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + linkifyTimers(esc(line)) + '</div>' +
+            return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid #e8e8e5;cursor:pointer" class="cook-ing-row" data-ing-idx="' + i + '">' +
+              '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'#d4d4d0':'#3d52c4') + ';margin-top:8px;flex-shrink:0"></div>' +
+              '<div style="font-size:15px;line-height:1.4;color:' + (isChecked?'#a8a8a3':'#1a1a1a') + ';' + (isChecked?'text-decoration:line-through;':'') + '">' + linkifyTimers(esc(line)) + '</div>' +
             '</div>'
           }).join('')
-        : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No ingredients yet — tap Edit to add</div>')
+        : '<div style="color:#a8a8a3;font-style:italic;padding:16px 0">No ingredients yet — tap Edit to add</div>'))
 
-  // ── INSTRUCTIONS TAB ──
-  const amountsLoading = stepAmountsLoading
-    ? '<div style="font-size:12px;color:var(--text-3);padding:6px 0 2px;font-style:italic">Loading ingredient amounts...</div>'
-    : ''
+  const amountsLoading = stepAmountsLoading ? '<div style="font-size:12px;color:#6e6e69;padding:6px 0 2px;font-style:italic">Loading ingredient amounts...</div>' : ''
 
   const instructionsView = isEditing
     ? '<div style="padding-top:8px">' +
-        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Instructions</div>' +
-        '<textarea id="cook-edit-instructions" style="width:100%;min-height:220px;padding:10px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:var(--gray-50);color:var(--text);outline:none;resize:vertical">' + esc(rawInstructions) + '</textarea>' +
-        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:var(--black);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save changes</button>' +
+        '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Instructions</div>' +
+        '<textarea id="cook-edit-instructions" style="width:100%;min-height:220px;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical">' + esc(rawInstructions) + '</textarea>' +
+        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save changes</button>' +
       '</div>'
     : (steps.length > 0
         ? amountsLoading + steps.map((step, i) => {
             const chips = getChipsForStep(i)
             const chipsHtml = chips.length > 0
               ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">' +
-                  chips.map(c => '<span style="font-size:11px;font-weight:500;color:var(--text-2);background:var(--gray-100);border:0.5px solid var(--border-strong);border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
-                '</div>'
-              : ''
-            return '<div style="padding:12px 0;border-bottom:0.5px solid var(--border)">' +
-              '<div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Step ' + (i+1) + '</div>' +
-              '<div style="font-size:15px;line-height:1.7;color:var(--text)">' + linkifyTimers(esc(step)) + '</div>' +
+                  chips.map(c => '<span style="font-size:11px;font-weight:500;color:#3a3a38;background:#f2f2f0;border:0.5px solid #d4d4d0;border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
+                '</div>' : ''
+            return '<div style="padding:12px 0;border-bottom:0.5px solid #e8e8e5">' +
+              '<div style="font-size:10px;font-weight:700;color:#3d52c4;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">Step ' + (i+1) + '</div>' +
+              '<div style="font-size:15px;line-height:1.7;color:#1a1a1a">' + linkifyTimers(esc(step)) + '</div>' +
               chipsHtml +
             '</div>'
           }).join('')
-        : (rawInstructions
-            ? amountsLoading + '<div style="font-size:15px;line-height:1.8;color:var(--text);padding:12px 0">' + linkifyTimers(esc(rawInstructions)) + '</div>'
-            : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No instructions yet — tap Edit to add</div>'))
+        : '<div style="color:#a8a8a3;font-style:italic;padding:16px 0">No instructions yet — tap Edit to add</div>')
 
-  // ── NOTES TAB ──
   const notesView = isEditing
     ? '<div style="padding-top:8px">' +
-        '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">My cooking notes</div>' +
-        '<textarea id="cook-edit-notes" placeholder="What worked, substitutions, tips..." style="width:100%;min-height:160px;padding:10px 12px;border:1.5px solid var(--border-strong);border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:var(--gray-50);color:var(--text);outline:none;resize:vertical">' + esc(r.cookingNotes || '') + '</textarea>' +
-        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:var(--black);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save notes</button>' +
+        '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">My cooking notes</div>' +
+        '<textarea id="cook-edit-notes" placeholder="What worked, substitutions, tips..." style="width:100%;min-height:160px;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical">' + esc(r.cookingNotes || '') + '</textarea>' +
+        '<button id="cook-edit-save" style="margin-top:10px;width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Save notes</button>' +
       '</div>'
     : (r.cookingNotes
-        ? '<div style="padding:12px 0;font-size:15px;line-height:1.7;color:var(--text-2);white-space:pre-wrap">' + esc(r.cookingNotes) + '</div>'
-        : '<div style="color:var(--text-4);font-style:italic;padding:16px 0">No notes yet — tap Edit to add</div>')
+        ? '<div style="padding:12px 0;font-size:15px;line-height:1.7;color:#3a3a38;white-space:pre-wrap">' + esc(r.cookingNotes) + '</div>'
+        : '<div style="color:#a8a8a3;font-style:italic;padding:16px 0">No notes yet — tap Edit to add</div>')
 
-  const content =
-    activeTab === 'ingredients' ? ingredientsView :
-    activeTab === 'instructions' ? instructionsView :
-    notesView
+  const bodyContent = activeTab === 'ingredients' ? ingredientsView : activeTab === 'instructions' ? instructionsView : notesView
 
-  return '<div style="border-top:0.5px solid var(--border)">' +
-
-    // Black header
+  return '<div style="border-top:0.5px solid #e8e8e5">' +
     '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
       '<button id="cook-mode-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)">Cooking</div>' +
@@ -2958,17 +2967,12 @@ function renderCookModeInline(r) {
       '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px;margin-left:2px">📋 Plan</button>' +
       '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:2px">Ask AI</button>' +
     '</div>' +
-
-    // Three tabs
-    '<div style="display:flex;border-bottom:0.5px solid var(--border);background:var(--white)">' +
+    '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
       tabBtn('ingredients', 'Ingredients') +
       tabBtn('instructions', 'Instructions') +
       tabBtn('notes', 'Notes') +
     '</div>' +
-
-    // Content
-    '<div style="padding:0 14px 16px">' + content + '</div>' +
-
+    '<div style="padding:0 14px 16px">' + bodyContent + '</div>' +
   '</div>'
 }
 function gpChatKey() {
@@ -3002,131 +3006,2599 @@ function renderGamePlanModal() {
   const dateLabel = date
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
     : new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
-  const hasPriorChat = chatMessages.length > 0
-
-  const blackHeader = (title, subtitle, extra) =>
-    '<div style="background:#1a1a1a;padding:14px 16px;display:flex;align-items:center;gap:10px;border-radius:20px 20px 0 0;flex-shrink:0">' +
-      '<button id="gp-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:14px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + title + '</div>' +
-        '<div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px">' + subtitle + '</div>' +
-      '</div>' +
-      (extra || '') +
-    '</div>'
-
-  const sheet = (headerHtml, bodyHtml) =>
-    '<div class="modal-bg" id="game-plan-bg" style="align-items:flex-end">' +
-      '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:20px 20px 0 0">' +
-        headerHtml +
-        bodyHtml +
-      '</div>' +
-    '</div>'
 
   // ── CHAT VIEW ──
   if (view === 'chat') {
     const bubbles = chatMessages.map(m =>
       '<div style="display:flex;flex-direction:column;align-items:' + (m.role === 'user' ? 'flex-end' : 'flex-start') + ';margin-bottom:10px">' +
-        '<div style="max-width:85%;background:' + (m.role === 'user' ? 'var(--black)' : 'var(--gray-100)') + ';color:' + (m.role === 'user' ? 'white' : 'var(--text)') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
+        '<div style="max-width:85%;background:' + (m.role === 'user' ? 'var(--forest)' : 'var(--cream2)') + ';color:' + (m.role === 'user' ? 'white' : 'var(--ink)') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
           (m.role === 'assistant' ? linkifyTimers(esc(m.content).replace(/\n/g, '<br>')) : esc(m.content).replace(/\n/g, '<br>')) +
         '</div>' +
       '</div>'
     ).join('')
 
-    const header = blackHeader(
-      '✦ Tweak Game Plan',
-      slotLabel + ' · ' + dateLabel,
-      '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
-      '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>'
-    )
-    const body =
-      '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
-        (chatMessages.length === 0
-          ? '<div style="color:var(--text-4);font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>'
-          : bubbles) +
-        (chatLoading ? '<div style="text-align:center;padding:10px;color:var(--text-3);font-size:13px">thinking...</div>' : '') +
+    return '<div class="modal-bg" id="game-plan-bg">' +
+      '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden">' +
+        '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--cream3);flex-shrink:0">' +
+          '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--forest);padding:0;line-height:1;font-family:inherit">←</button>' +
+          '<div style="flex:1;display:flex;align-items:center;gap:8px">' +
+            '<div>' +
+              '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Game Plan</div>' +
+              '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
+            '</div>' +
+            '<button id="gp-start-over" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">↺ Redo</button>' +
+          '</div>' +
+          '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+        '</div>' +
+        '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
+          (chatMessages.length === 0
+            ? '<div style="color:var(--ink4);font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>'
+            : bubbles) +
+          (chatLoading ? '<div style="text-align:center;padding:10px;color:var(--ink3);font-size:13px">thinking...</div>' : '') +
+        '</div>' +
+        '<div style="padding:10px 12px;border-top:1px solid var(--cream3);display:flex;gap:8px;flex-shrink:0">' +
+          '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />' +
+          '<button id="gp-chat-send" style="background:var(--forest);color:white;border:none;border-radius:12px;padding:9px 14px;font-size:16px;cursor:pointer" ' + (chatLoading ? 'disabled' : '') + '>▶</button>' +
+        '</div>' +
       '</div>' +
-      '<div style="padding:10px 14px;border-top:0.5px solid var(--border);display:flex;gap:8px;flex-shrink:0">' +
-        '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border-strong);border-radius:20px;font-size:13px;font-family:inherit" />' +
-        '<button id="gp-chat-send" style="background:var(--black);color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit" ' + (chatLoading ? 'disabled' : '') + '>Send</button>' +
-      '</div>'
-    return sheet(header, body)
+    '</div>'
   }
 
   // ── FULLSCREEN COOK VIEW ──
   if (view === 'fullscreen' && result) {
-    return '<div style="position:fixed;inset:0;z-index:2000;background:var(--white);display:flex;flex-direction:column;font-family:inherit">' +
-      '<div style="background:#1a1a1a;padding:env(safe-area-inset-top,14px) 16px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0">' +
-        '<button id="gp-exit-fullscreen" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+    return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
+      '<div style="background:var(--forest);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
+        '<button id="gp-exit-fullscreen" style="background:rgba(255,255,255,0.2);border:none;cursor:pointer;font-size:20px;color:white;padding:6px 10px;line-height:1;border-radius:8px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">×</button>' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:15px;font-weight:700;color:white">' + slotLabel + ' Game Plan</div>' +
-          '<div style="font-size:11px;color:rgba(255,255,255,0.45)">' + dateLabel + ' · eat at ' + esc(timeVal) + '</div>' +
+          '<div style="font-size:11px;color:rgba(255,255,255,0.7)">' + dateLabel + ' · ' + esc(timeVal) + '</div>' +
         '</div>' +
-        '<button id="gp-tweak-from-fullscreen" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✦ Tweak</button>' +
+        '<button id="gp-tweak-from-fullscreen" style="background:rgba(255,255,255,0.15);color:white;border:1.5px solid rgba(255,255,255,0.3);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">✦ Tweak</button>' +
       '</div>' +
-      '<div style="flex:1;overflow-y:auto;padding:0 16px 20px">' +
+      '<div style="flex:1;overflow-y:auto;padding:16px">' +
         result.map((item, i) => {
           const isLast = i === result.length - 1
-          return '<div style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:0.5px solid var(--border)">' +
-            '<div style="min-width:58px;font-size:12px;font-weight:700;color:var(--accent);padding-top:2px;flex-shrink:0">' + esc(item.time) + '</div>' +
-            '<div style="font-size:15px;line-height:1.6;color:var(--text);' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+          return '<div style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--cream3)">' +
+            '<div style="min-width:65px;font-size:13px;font-weight:700;color:var(--forest);padding-top:3px">' + esc(item.time) + '</div>' +
+            '<div style="font-size:17px;line-height:1.5;color:var(--ink);' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
           '</div>'
         }).join('') +
       '</div>' +
     '</div>'
   }
-
-  // ── FORM VIEW (no result yet) ──
-  if (!result && !loading) {
-    const savedNotes = state.gamePlanModal?.notes || ''
-    const header = blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '')
-    const body =
-      '<div style="padding:16px;overflow-y:auto">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">' +
-          '<span style="font-size:13px;font-weight:600;color:var(--text-2);white-space:nowrap">Eat at</span>' +
-          '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:9px 12px;border:1.5px solid var(--accent);border-radius:10px;font-size:15px;font-family:inherit;text-align:center;font-weight:700;color:var(--accent)" />' +
-        '</div>' +
-        '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, already made the sauce, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border-strong);border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:80px;box-sizing:border-box;margin-bottom:14px;line-height:1.5">' + esc(savedNotes) + '</textarea>' +
-        '<button id="gp-generate" style="width:100%;padding:12px;background:var(--black);color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Generate Game Plan</button>' +
-      '</div>'
-    return sheet(header, body)
-  }
-
-  // ── LOADING ──
+  let content = ''
   if (loading) {
-    const header = blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '')
-    const body =
-      '<div style="padding:40px 20px;text-align:center">' +
-        '<div style="font-size:24px;margin-bottom:12px">📋</div>' +
-        '<div style="font-size:14px;font-weight:600;color:var(--text)">Building your timeline...</div>' +
-        '<div style="font-size:12px;color:var(--text-3);margin-top:6px">Reading recipes and working backwards from ' + esc(timeVal) + '</div>' +
+    content = '<div style="text-align:center;padding:30px 0">' +
+      '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
+      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your ' + slotLabel.toLowerCase() + '...</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-top:6px">Reading your recipes and building a timeline</div>' +
       '</div>'
-    return sheet(header, body)
+  } else if (result) {
+    content =
+      '<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<span style="font-size:12px;color:var(--ink3)">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at</span>' +
+        '<input id="gp-dinner-time" value="' + esc(timeVal) + '" style="width:90px;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
+        '<button class="add-btn" id="gp-regenerate" style="font-size:12px;padding:5px 12px">↺ Redo</button>' +
+      '</div>' +
+      '<div style="position:relative;padding-left:18px">' +
+        '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--forest2);opacity:0.3;border-radius:2px"></div>' +
+        result.map((item, i) => {
+          const isLast = i === result.length - 1
+          return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
+            '<div style="position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--forest)' : 'var(--forest2)') + ';border:2px solid white;box-shadow:0 0 0 1.5px var(--forest2)"></div>' +
+            '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--forest);padding-top:2px">' + esc(item.time) + '</div>' +
+            '<div style="font-size:13px;color:var(--ink);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+          '</div>'
+        }).join('') +
+      '</div>'
+  } else {
+    const savedNotes = state.gamePlanModal?.notes || ''
+    content =
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+        '<span style="font-size:13px;font-weight:600">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at:</span>' +
+        '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;display:flex;align-items:center;gap:5px">' +
+        '📅 ' + dateLabel +
+      '</div>' +
+      '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, skipping the potatoes tonight, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px">' + esc(savedNotes) + '</textarea>' +
+      '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
   }
 
-  // ── RESULT VIEW ──
-  const redoExtra =
-    '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>'
-  const header = blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal), redoExtra)
+  const hasPriorChat = chatMessages.length > 0
 
-  const timeline =
-    '<div style="position:relative;padding-left:18px">' +
-      '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--accent);opacity:0.2;border-radius:2px"></div>' +
-      result.map((item, i) => {
-        const isLast = i === result.length - 1
-        return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px;position:relative">' +
-          '<div style="position:absolute;left:-14px;top:5px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--black)' : 'var(--accent)') + ';border:2px solid white;box-shadow:0 0 0 1.5px ' + (isLast ? 'var(--black)' : 'var(--accent)') + '"></div>' +
-          '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--accent);padding-top:3px;flex-shrink:0">' + esc(item.time) + '</div>' +
-          '<div style="font-size:14px;color:var(--text);line-height:1.5;' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-        '</div>'
-      }).join('') +
-    '</div>'
-
-  const actions =
-    '<div style="display:flex;flex-direction:column;gap:8px;padding-top:16px;border-top:0.5px solid var(--border);margin-top:4px">' +
-      '<button id="gp-start-cooking" style="width:100%;padding:12px;background:var(--black);color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
-      '<button id="gp-tweak" style="width:100%;padding:12px;background:var(--white);color:var(--accent);border:1.5px solid var(--accent);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
-    '</div>'
-
-  const body = '<div style="padding:16px;overflow-y:auto">' + timeline + actions + '</div>'
-  return sheet(header, body)
+  return '<div class="modal-bg" id="game-plan-bg">' +
+    '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
+        '<div class="modal-title" style="margin:0">📋 ' + slotLabel + ' Game Plan</div>' +
+        '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1;flex-shrink:0">×</button>' +
+      '</div>' +
+      '<div class="modal-sub" style="margin-bottom:14px">' + dateLabel + '</div>' +
+      content +
+      (result ? '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
+        '<button id="gp-start-cooking" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
+        '<button class="modal-save" id="gp-tweak" style="background:white;color:var(--forest);border:2px solid var(--forest);width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
+      '</div>' : '') +
+    '</div>' +
+  '</div>'
 }
+
+
+function renderScanPicker() {
+  return '<div class="modal-bg" id="scan-picker-bg">' +
+    '<div class="modal-sheet" style="text-align:center">' +
+      '<div class="modal-title">Scan Recipe</div>' +
+      '<div class="modal-sub">Choose how to get your recipe photo</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px;margin:16px 0">' +
+        '<button class="modal-save" id="scan-use-camera" style="font-size:15px;padding:14px">Take Photo</button>' +
+        '<button class="modal-save" id="scan-use-library" style="background:var(--sage4);color:var(--forest);border:1.5px solid var(--forest2);font-size:15px;padding:14px">Choose from Library</button>' +
+      '</div>' +
+      '<button class="modal-cancel" id="scan-picker-cancel">Cancel</button>' +
+    '</div>' +
+  '</div>'
+}
+
+function renderAddToWeekModal() {
+  const m = state.addToWeekModal
+  const slots = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
+  // Generate next 7 days
+  const days = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i)
+    const iso = d.toISOString().slice(0, 10)
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    days.push({ iso, label })
+  }
+  const selectedDay = m.selectedDay || days[0].iso
+  return '<div class="modal-bg" id="add-week-bg">' +
+    '<div class="modal-sheet">' +
+      '<div class="modal-title">+ Week</div>' +
+      '<div class="modal-sub">' + esc(m.recipeName) + '</div>' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Day</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">' +
+        days.map(d =>
+          '<button class="tag-filter-chip ' + (selectedDay === d.iso ? 'active' : '') + '" data-week-day="' + d.iso + '">' + d.label + '</button>'
+        ).join('') +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Meal</div>' +
+      '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px">' +
+        slots.map(s =>
+          '<button class="tag-filter-chip ' + (m.selectedSlot === s ? 'active' : '') + '" data-week-slot="' + s + '">' + s + '</button>'
+        ).join('') +
+      '</div>' +
+      '<div class="modal-btns">' +
+        '<button class="modal-cancel" id="add-week-cancel">Cancel</button>' +
+        '<button class="modal-save" id="add-week-save" ' + (!m.selectedSlot ? 'disabled style="opacity:0.5"' : '') + '>Add to ' + (m.selectedSlot || 'Week') + '</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
+}
+
+function renderClipUrlModal() {
+  return '<div class="modal-bg" id="clip-url-modal-bg">' +
+    '<div class="modal-sheet">' +
+      '<div class="modal-title">Clip from URL</div>' +
+      '<div class="modal-sub">Paste a recipe link and we will fetch it automatically</div>' +
+      '<input id="clip-url-input" placeholder="https://..." style="font-family:monospace;font-size:13px" />' +
+      '<div class="modal-btns">' +
+        '<button class="modal-cancel" id="clip-url-cancel">Cancel</button>' +
+        '<button class="modal-save" id="clip-url-go">Fetch Recipe</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
+}
+
+
+function renderPasteModal() {
+  if (state.shareLoading) {
+    return '<div class="modal-bg" id="paste-modal-bg"><div class="modal-sheet" style="text-align:center;padding:40px 20px">' +
+      '<div style="font-size:32px;margin-bottom:12px">&#x1F372;</div>' +
+      '<div style="font-size:16px;font-weight:600;margin-bottom:8px">Reading recipe...</div>' +
+      '<div style="color:var(--muted);font-size:13px">Fetching from the page you shared</div>' +
+      '</div></div>'
+  }
+  const r = state.sharedRecipe
+  const title = r ? 'Save Clipped Recipe' : 'Paste a Recipe'
+  const sub = r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'
+  const warning = r && r.warning ? '<div class="modal-note" style="color:var(--terra);background:#fff5f2;border-radius:8px;padding:8px 10px;margin-bottom:8px">[!] ' + esc(r.warning) + '</div>' : ''
+  const nameVal = r ? esc(r.name || '') : ''
+  const bodyFields = r ?
+    '<div class="clip-field-label">Ingredients</div><textarea id="paste-ingredients" style="min-height:100px" placeholder="One ingredient per line...">' + esc(state.pasteModalDraft.ingredients || r.ingredients || '') + '</textarea>' +
+    '<div class="clip-field-label">Instructions</div><textarea id="paste-instructions" style="min-height:80px" placeholder="Step by step...">' + esc(state.pasteModalDraft.instructions || r.instructions || '') + '</textarea>'
+  :
+    '<textarea id="paste-text" style="min-height:160px" placeholder="Paste the recipe text - ingredients, instructions, however messy. Edit before saving.">' + esc(state.pasteModalDraft.text || '') + '</textarea>'
+  const recipeTags = getTagsForNamespace('recipe')
+  const tagSection = recipeTags.length > 0 ?
+    '<div class="clip-field-label">Tags</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px">' +
+      recipeTags.map(t =>
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:var(--cream2);border-radius:8px;padding:8px 10px;min-width:0">' +
+        '<input type="checkbox" class="paste-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:var(--forest);flex-shrink:0;width:16px;height:16px" />' +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.name) + '</span></label>'
+      ).join('') +
+    '</div>'
+  : ''
+  return '<div class="modal-bg" id="paste-modal-bg"><div class="modal-sheet">' +
+    '<div class="modal-title">' + title + '</div>' +
+    '<div class="modal-sub">' + sub + '</div>' +
+    warning +
+    '<input id="paste-name" placeholder="Recipe name" value="' + (state.pasteModalDraft.name || nameVal) + '" />' +
+    bodyFields +
+    tagSection +
+    '<div class="modal-btns"><button class="modal-cancel" id="paste-cancel">Cancel</button><button class="modal-save" id="paste-save">Save to Recipe Box</button></div>' +
+    '</div></div>'
+}
+
+function renderShopReview() {
+  const s = state.shopReview
+  const locationTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
+  const itemsHtml = s.items.map(function(item, idx) {
+    const pantryInfo = item.pantryQty
+      ? '<div class="shop-review-have">You have: ' + esc(item.pantryQty) + '</div>'
+      : ''
+    const inPantry = item.inPantry
+    const itemTags = item.tags || []
+    return '<div class="shop-review-row' + (inPantry ? ' shop-review-row-pantry' : '') + '">' +
+      '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (!inPantry && item.checked ? 'checked' : '') + (inPantry ? 'disabled' : '') + ' />' +
+      '<div class="shop-review-info" style="flex:1;min-width:0">' +
+        (inPantry
+          ? '<div class="shop-review-name">' + esc(item.name) + '</div><div class="shop-review-have">Added to pantry</div>'
+          : '<input class="shop-review-name-input" data-review-idx="' + idx + '" value="' + esc(item.name) + '" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:4px" />' +
+            (pantryInfo ? pantryInfo : '') +
+            (locationTags.length > 0 ?
+              '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
+                locationTags.map(t =>
+                  '<button class="shop-review-tag-btn ' + (itemTags.includes(t.name) ? 'active' : '') + '" data-review-tag-idx="' + idx + '" data-review-tag="' + esc(t.name) + '" style="font-size:10px;padding:2px 7px;border-radius:5px;border:1.5px solid ' + (itemTags.includes(t.name) ? 'var(--forest)' : 'var(--border)') + ';background:' + (itemTags.includes(t.name) ? 'var(--forest)' : 'white') + ';color:' + (itemTags.includes(t.name) ? 'white' : 'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + esc(t.name) + '</button>'
+                ).join('') +
+              '</div>'
+            : '')
+        ) +
+      '</div>' +
+      (!inPantry ?
+        '<button class="shop-review-pantry-btn" data-pantry-idx="' + idx + '" title="I already have this" style="flex-shrink:0">Got it</button>'
+      : '') +
+    '</div>'
+  }).join('')
+  return '<div class="modal-bg" id="shop-review-bg"><div class="modal-sheet">' +
+    '<div class="modal-title">What do you need?</div>' +
+    '<div class="modal-sub">' + esc(s.recipeName) + '</div>' +
+    '<div class="shop-review-hint">Check items to add. Edit name or tag before adding.</div>' +
+    '<div class="shop-review-list">' + itemsHtml + '</div>' +
+    '<div class="modal-btns"><button class="modal-cancel" id="shop-review-cancel">Cancel</button><button class="modal-save" id="shop-review-add">Add to Shopping List</button></div>' +
+    '</div></div>'
+}
+
+function renderLogModal() {
+  const m = state.logModal
+  const recipe = m.recipeId ? state.recipes.find(r => String(r.id) === String(m.recipeId)) : null
+  const estimating = m.estimating || false
+  return '<div class="modal-bg" id="log-modal-bg">' +
+    '<div class="modal-sheet">' +
+      '<div class="modal-title">Log a serving</div>' +
+      '<div class="modal-sub">' + esc(m.recipeName) + '</div>' +
+      '<input id="lm-portion" placeholder="How much? (e.g. 1 serving, half portion, 2 cups)" value="' + esc(m.portion || '') + '" />' +
+      (recipe ?
+        '<input id="lm-notes" placeholder="Any changes? (e.g. no cheese, extra chicken)" value="' + esc(m.notes || '') + '" style="margin-top:6px" />'
+      : '') +
+      '<div class="lm-cal-row">' +
+        (estimating ?
+          '<div style="flex:1;font-size:13px;color:var(--ink3);font-style:italic;padding:8px">Estimating calories...</div>'
+        :
+          '<input id="lm-cals" type="number" placeholder="Calories (auto-filled)" style="flex:1" value="' + (m.calories || '') + '" />' +
+          '<button class="lm-estimate-btn" id="lm-estimate">Estimate</button>'
+        ) +
+      '</div>' +
+      (m.estimateMsg ? '<div class="modal-note">' + esc(m.estimateMsg) + '</div>' : '') +
+      (m.breakdown ? '<div class="log-breakdown-text" style="margin:8px 0">' + esc(m.breakdown) + '</div>' : '') +
+      '<div class="modal-btns">' +
+        '<button class="modal-cancel" id="lm-cancel">Cancel</button>' +
+        '<button class="modal-save" id="lm-save">Add to Log</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>'
+}
+
+// ── EVENTS ────────────────────────────────────────────────────────────────────
+function bindEvents() {
+  // ── TIMER HANDLERS ──
+  document.querySelectorAll('.timer-link[data-timer-seconds]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      unlockAudio()
+      const seconds = parseInt(el.dataset.timerSeconds)
+      const label = el.dataset.timerLabel
+      startTimer(seconds, label)
+    })
+  })
+
+  // Range timer — opens slider popover
+  document.querySelectorAll('.timer-range-link[data-timer-low]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      unlockAudio()
+      const rect = el.getBoundingClientRect()
+      state.timerSlider = {
+        low: parseInt(el.dataset.timerLow),
+        high: parseInt(el.dataset.timerHigh),
+        current: parseInt(el.dataset.timerLow), // start at low end
+        label: el.dataset.timerLabel,
+        anchorTop: rect.bottom,
+        anchorLeft: rect.left
+      }
+      render()
+    })
+  })
+
+  // Tabs
+  document.querySelectorAll('.tab[data-tab]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.tab = el.dataset.tab
+      localStorage.setItem('mep_tab', state.tab)
+      render()
+      // Auto-scroll to today when switching to calendar tab
+      if (el.dataset.tab === 'calendar') {
+        setTimeout(() => {
+          const todayCard = document.querySelector('.cal-day-today')
+          if (todayCard) todayCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 80)
+      }
+    })
+  })
+
+  // Header menu
+  document.getElementById('goals-toggle')?.addEventListener('click', () => {
+    state.showGoals = !state.showGoals
+    state.showSync = false
+    render()
+  })
+
+  document.getElementById('save-goals-btn')?.addEventListener('click', async () => {
+    document.querySelectorAll('input[data-goal]').forEach(el => {
+      const f = el.dataset.goal
+      state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+        ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
+    })
+    const btn = document.getElementById('save-goals-btn')
+    if (btn) { btn.textContent = '✓ Saved!'; btn.style.background = 'var(--sage4)' }
+    await db.saveGoals(state.goals)
+    setTimeout(() => render(), 1200)
+  })
+
+  // ── TAG EVENTS ──
+
+  // Filter toggle button (open/close the dropdown)
+  document.querySelectorAll('.tag-filter-toggle[data-filter-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ns = el.dataset.filterToggle
+      if (state.showTagFilter && state.activeTagFilterNs === ns) {
+        state.showTagFilter = false
+      } else {
+        state.showTagFilter = true
+        state.activeTagFilterNs = ns
+      }
+      render()
+    })
+  })
+
+  // Filter chips — All lights up everything, individual tags toggle off
+  document.querySelectorAll('.tag-filter-chip[data-filter-all]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ns = el.dataset.filterAll
+      const tags = getTagsForNamespace(ns)
+      const active = state.activeTagFilters[ns]
+      const allSelected = active && tags.every(t => active.has(t.name))
+      if (allSelected) {
+        // All were selected — clicking again clears back to default (show all, nothing lit)
+        state.activeTagFilters[ns] = null
+      } else {
+        // Select all tags
+        state.activeTagFilters[ns] = new Set(tags.map(t => t.name))
+      }
+      render()
+    })
+  })
+  document.querySelectorAll('.tag-filter-chip[data-filter-tag]').forEach(el => {
+    el.addEventListener('click', () => {
+      const ns = el.dataset.filterNs
+      const tag = el.dataset.filterTag
+      if (tag === '__untagged__') {
+        // Untagged is exclusive — toggle it on/off alone
+        const active = state.activeTagFilters[ns]
+        if (active && active.has('__untagged__')) {
+          state.activeTagFilters[ns] = null
+        } else {
+          state.activeTagFilters[ns] = new Set(['__untagged__'])
+        }
+        render()
+        return
+      }
+      if (!state.activeTagFilters[ns]) {
+        state.activeTagFilters[ns] = new Set([tag])
+      } else {
+        const active = state.activeTagFilters[ns]
+        // Clear untagged if switching to a real tag
+        active.delete('__untagged__')
+        if (active.has(tag)) {
+          active.delete(tag)
+          if (active.size === 0) state.activeTagFilters[ns] = null
+        } else {
+          active.add(tag)
+        }
+      }
+      render()
+    })
+  })
+
+  // Tag input - show/hide suggestions on focus
+  document.querySelectorAll('.tag-input[data-tag-item]').forEach(el => {
+    el.addEventListener('focus', () => {
+      const sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
+      if (sugg) sugg.style.display = 'flex'
+    })
+    el.addEventListener('keydown', async e => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const name = el.value.trim()
+        if (!name) return
+        const ns = el.dataset.tagNs
+        const itemId = el.dataset.tagItem
+        await addTagToItem(name, ns, itemId)
+      }
+    })
+    el.addEventListener('input', () => {
+      const val = el.value.toLowerCase()
+      const sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
+      if (!sugg) return
+      sugg.querySelectorAll('.tag-suggestion').forEach(btn => {
+        btn.style.display = btn.dataset.suggTag.toLowerCase().includes(val) ? 'block' : 'none'
+      })
+      sugg.style.display = 'flex'
+    })
+  })
+
+  // Click suggestion
+  document.querySelectorAll('.tag-suggestion[data-sugg-tag]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.preventDefault()
+      await addTagToItem(el.dataset.suggTag, el.dataset.tagNs, el.dataset.tagItem)
+    })
+  })
+
+  // Remove tag
+  document.querySelectorAll('.tag-chip-remove[data-remove-tag]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      await removeTagFromItem(el.dataset.removeTag, el.dataset.tagNs, el.dataset.tagItem)
+    })
+  })
+  document.getElementById('force-update-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('force-update-btn')
+    if (btn) { btn.textContent = '↻ Updating...'; btn.disabled = true }
+    try {
+      // Unregister all service workers
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map(r => r.unregister()))
+      }
+      // Clear all caches
+      if ('caches' in window) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map(k => caches.delete(k)))
+      }
+    } catch(e) {}
+    // Hard reload
+    window.location.reload(true)
+  })
+
+  document.getElementById('sync-toggle')?.addEventListener('click', () => {
+    state.showSync = !state.showSync
+    state.showGoals = false
+    render()
+  })
+  document.getElementById('sync-copy-btn')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(getUserId()).then(() => {
+      document.getElementById('sync-id-display').textContent = "Copied!";
+      setTimeout(() => render(), 1500);
+    });
+  })
+  document.getElementById('sync-bookmark-btn')?.addEventListener('click', () => {
+    const bookmarkUrl = window.location.origin + '/?uid=' + getUserId()
+    navigator.clipboard.writeText(bookmarkUrl).then(() => {
+      const btn = document.getElementById('sync-bookmark-btn')
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => render(), 1500) }
+    })
+  })
+  document.getElementById('sync-switch-btn')?.addEventListener('click', async () => {
+    const newId = document.getElementById('sync-input')?.value?.trim();
+    if (!newId || newId.length < 3) { alert('Please enter an Account ID (at least 3 characters)'); return; }
+    if (!confirm("Switch to this account? Your current local data will be replaced with that accounts data.")) return;
+    localStorage.setItem('nourish_uid', newId);
+    state.showSync = false;
+    state.loading = true;
+    render();
+    const [recipes, pantry, shopList, log, goals] = await Promise.all([
+      db.fetchRecipes(), db.fetchPantry(), db.fetchShopList(), db.fetchLog(), db.fetchGoals()
+    ]);
+    state.recipes  = recipes.map(r => ({ ...r, cookingNotes: r.cooking_notes||'', clippedFrom: r.clipped_from||'', text: [r.ingredients,r.instructions].filter(Boolean).join('\n\n') }));
+    state.pantry   = pantry;
+    state.shopList = shopList.map(i => ({ ...i, fromRecipe: i.from_recipe }));
+    state.log      = log;
+    if (goals) state.goals = { calories: goals.calories, goal: goals.goal_type };
+    state.loading  = false;
+    render();
+  })
+  document.querySelectorAll('.preset-btn[data-preset]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const p = GOAL_PRESETS[el.dataset.preset]
+      state.goals = { calories: p.calories, goal: el.dataset.preset }
+      render(); await db.saveGoals(state.goals)
+    })
+  })
+  document.querySelectorAll('input[data-goal]').forEach(el => {
+    const saveGoalField = async () => {
+      const f = el.dataset.goal
+      const newVal = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+        ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
+      // Only save if value actually changed
+      if (state.goals[f] === newVal) return
+      state.goals[f] = newVal
+      if (f === 'target_weight' && el.value && !state.goals.goal_start_date) {
+        state.goals.goal_start_date = new Date().toISOString().slice(0, 10)
+      }
+      await db.saveGoals(state.goals)
+      render()
+    }
+    el.addEventListener('change', saveGoalField)
+    el.addEventListener('blur', saveGoalField)
+  })
+  document.querySelector('select[data-goal="activity_level"]')?.addEventListener('change', async e => {
+    state.goals.activity_level = e.target.value
+    await db.saveGoals(state.goals)
+    render()
+  })
+  document.getElementById('goal-start-date-input')?.addEventListener('change', async e => {
+    const val = e.target.value
+    if (!val) return
+    state.goals.goal_start_date = val
+    await db.saveGoals(state.goals)
+    render()
+  })
+  document.querySelectorAll('[data-pace]').forEach(el => {
+    el.addEventListener('click', async () => {
+      state.goals.loss_pace = el.dataset.pace
+      state.goals.calories = parseInt(el.dataset.calories)
+      await db.saveGoals(state.goals)
+      render()
+    })
+  })
+
+  // Recipes
+  // Category filter chips
+  document.querySelectorAll('.category-chip[data-category]').forEach(el => {
+    el.addEventListener('click', () => { state.activeCategory = el.dataset.category; state.expandedRecipe = null; render() })
+  })
+
+  // Inline category change
+  document.querySelectorAll('[data-cat-recipe]').forEach(el => {
+    el.addEventListener('change', async e => {
+      e.stopPropagation()
+      const r = state.recipes.find(x => String(x.id) === String(el.dataset.catRecipe))
+      if (r) { r.category = el.value; await db.updateRecipe(r.id, { category: el.value }); render() }
+    })
+  })
+
+  // Tab search handlers
+  function refocusSearch(id) {
+    const el = document.getElementById(id)
+    if (el) { const pos = el.value.length; el.focus(); el.setSelectionRange(pos, pos) }
+  }
+  function addSearchHandlers(id, stateKey) {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.addEventListener('input', e => { state[stateKey] = e.target.value; render(); refocusSearch(id) })
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); render() } })
+  }
+  addSearchHandlers('recipe-search', 'recipeSearch')
+  addSearchHandlers('pantry-search', 'pantrySearch')
+  addSearchHandlers('shop-search', 'shopSearch')
+  addSearchHandlers('tag-search', 'tagSearch')
+  document.querySelectorAll('[data-clear-search]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.clearSearch
+      if (id === 'recipe-search') state.recipeSearch = ''
+      else if (id === 'pantry-search') state.pantrySearch = ''
+      else if (id === 'shop-search') state.shopSearch = ''
+      else if (id === 'tag-search') state.tagSearch = ''
+      render()
+    })
+  })
+
+  document.getElementById('scan-recipe-btn')?.addEventListener('click', () => {
+    state.scanPickerOpen = true; render()
+  })
+  document.getElementById('scan-picker-cancel')?.addEventListener('click', () => { state.scanPickerOpen = false; render() })
+  document.getElementById('scan-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'scan-picker-bg') { state.scanPickerOpen = false; render() } })
+  document.getElementById('scan-use-camera')?.addEventListener('click', () => {
+    state.scanPickerOpen = false; render()
+    const input = document.getElementById('scan-file-input')
+    if (input) { input.removeAttribute('capture'); input.setAttribute('capture', 'environment'); input.click() }
+  })
+  document.getElementById('scan-use-library')?.addEventListener('click', () => {
+    state.scanPickerOpen = false; render()
+    const input = document.getElementById('scan-file-input')
+    if (input) { input.removeAttribute('capture'); input.click() }
+  })
+  document.getElementById('scan-file-input')?.addEventListener('change', async e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    state.pasteModal = true
+    state.shareLoading = true
+    render()
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const resp = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, mediaType: file.type })
+      })
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false
+      state.sharedRecipe = { ...recipe, source: 'Scanned from photo' }
+      render()
+    } catch (err) {
+      state.shareLoading = false
+      state.sharedRecipe = null
+      render()
+      setTimeout(() => {
+        const nameEl = document.getElementById('paste-name')
+        if (nameEl) nameEl.placeholder = "Could not read photo -- paste recipe manually"
+      }, 50)
+    }
+    e.target.value = ''
+  })
+  document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
+  document.getElementById('clip-url-btn-recipes')?.addEventListener('click', async () => {
+    state.clipUrlModal = true; render()
+    setTimeout(async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const input = document.getElementById('clip-url-input')
+        if (input && text && text.startsWith('http')) input.value = text
+      } catch(e) {}
+      document.getElementById('clip-url-input')?.focus()
+    }, 100)
+  })
+  document.getElementById('r-cancel-btn')?.addEventListener('click', () => {
+    state.addRecipeModal = false
+    state.addRecipeModalDraft = { name: '', ingredients: '', instructions: '', notes: '', tags: [] }
+    render()
+  })
+  // Persist add recipe modal draft on every keystroke
+  document.getElementById('r-name')?.addEventListener('input', e => { state.addRecipeModalDraft.name = e.target.value })
+  document.getElementById('r-ingredients')?.addEventListener('input', e => { state.addRecipeModalDraft.ingredients = e.target.value })
+  document.getElementById('r-instructions')?.addEventListener('input', e => { state.addRecipeModalDraft.instructions = e.target.value })
+  document.getElementById('r-notes')?.addEventListener('input', e => { state.addRecipeModalDraft.notes = e.target.value })
+  document.querySelectorAll('.r-tag-check').forEach(el => {
+    el.addEventListener('change', () => {
+      const checked = [...document.querySelectorAll('.r-tag-check:checked')].map(c => c.dataset.tag)
+      state.addRecipeModalDraft.tags = checked
+    })
+  })
+
+  document.getElementById('r-save-btn')?.addEventListener('click', async () => {
+    const name = document.getElementById('r-name')?.value?.trim()
+    const ingredients = document.getElementById('r-ingredients')?.value?.trim()
+    const instructions = document.getElementById('r-instructions')?.value?.trim()
+    const notes = document.getElementById('r-notes')?.value?.trim()
+    const tags = state.addRecipeModalDraft.tags || []
+    if (!name) return
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, clippedFrom: '', tags })
+    if (saved) {
+      const normalized = normalizeRecipe(saved)
+      if (tags.length) { normalized.tags = tags; await db.updateRecipeTags(saved.id, tags) }
+      state.recipes.unshift(normalized)
+    }
+    state.addRecipeModal = false
+    state.addRecipeModalDraft = { name: '', ingredients: '', instructions: '', notes: '', tags: [] }
+    render()
+  })
+
+  document.querySelectorAll('.recipe-card-header').forEach(el => {
+    el.addEventListener('click', () => {
+      const rid = el.closest('.recipe-card').dataset.rid
+      state.expandedRecipe = state.expandedRecipe === rid ? null : rid
+      render()
+    })
+  })
+
+  // Recipe ingredients/instructions editing
+  document.querySelectorAll('[data-recipe-edit]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.recipeEdit
+      state.editingRecipeId = state.editingRecipeId === rid ? null : rid
+      render()
+      setTimeout(() => document.getElementById('edit-ingredients-' + rid)?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-recipe-save]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const rid = el.dataset.recipeSave
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      const name = document.getElementById('edit-recipe-name-' + rid)?.value?.trim()
+      const ingredients = document.getElementById('edit-ingredients-' + rid)?.value?.trim()
+      const instructions = document.getElementById('edit-instructions-' + rid)?.value?.trim()
+      if (recipe) {
+        if (name) recipe.name = name
+        recipe.ingredients = ingredients
+        recipe.instructions = instructions
+        await db.updateRecipe(rid, { name: name || recipe.name, ingredients, instructions })
+      }
+      state.editingRecipeId = null
+      render()
+    })
+  })
+
+  document.querySelectorAll('[data-notes-edit]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.notesEdit
+      state.editingNotes = state.editingNotes === rid ? null : rid
+      render(); setTimeout(() => document.getElementById('notes-ta-' + rid)?.focus(), 50)
+    })
+  })
+
+  document.querySelectorAll('[data-notes-save]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const rid = el.dataset.notesSave
+      const val = document.getElementById('notes-ta-' + rid)?.value?.trim()
+      const recipe = state.recipes.find(r => r.id === rid)
+      if (recipe) { recipe.cookingNotes = val; await db.updateRecipe(rid, { cookingNotes: val }) }
+      state.editingNotes = null; render()
+    })
+  })
+
+  document.querySelectorAll('[data-shop]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const r = state.recipes.find(x => x.id === el.dataset.shop)
+      if (!r) return
+      const ingLines = (r.ingredients || r.text || '').split('\n')
+        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^[\d]+\.\s*/, '').trim())
+        .filter(l => {
+          if (l.length < 3 || l.length > 150) return false
+          // Skip section headers (ends with colon, or is all caps, or starts with **)
+          if (l.endsWith(':') || l === l.toUpperCase() || l.startsWith('**')) return false
+          // Skip lines that are just numbers or just units
+          if (/^\d+$/.test(l)) return false
+          // Skip lines that look like instructions not ingredients (start with verbs)
+          if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
+          return true
+        })
+      const items = ingLines.map(raw => {
+        const name = parseIngredientLine(raw)
+        const stripped = stripMeasurements(raw)
+        const match = state.pantry.find(p => {
+          const pl = p.name.toLowerCase()
+          return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
+        })
+        return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
+      })
+      state.shopReview = { recipeId: r.id, recipeName: r.name, items }; render()
+    })
+  })
+
+  document.querySelectorAll('.shop-review-check').forEach(el => {
+    el.addEventListener('change', () => { if (state.shopReview) state.shopReview.items[+el.dataset.idx].checked = el.checked })
+  })
+  document.querySelectorAll('.shop-review-pantry-btn').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const idx = +el.dataset.pantryIdx
+      if (!state.shopReview) return
+      const item = state.shopReview.items[idx]
+      item.inPantry = true
+      item.checked = false
+      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
+      if (!exists) {
+        const saved = await db.addPantryItem(item.name, '')
+        if (saved) state.pantry.push(saved)
+      }
+      render()
+    })
+  })
+  document.querySelectorAll('.shop-review-tag-btn').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const idx = parseInt(el.dataset.reviewTagIdx)
+      const tag = el.dataset.reviewTag
+      if (!state.shopReview?.items[idx]) return
+      const item = state.shopReview.items[idx]
+      if (!item.tags) item.tags = []
+      if (item.tags.includes(tag)) {
+        item.tags = item.tags.filter(t => t !== tag)
+      } else {
+        item.tags.push(tag)
+      }
+      // Snapshot name inputs before re-render
+      document.querySelectorAll('.shop-review-name-input').forEach(inp => {
+        const i = parseInt(inp.dataset.reviewIdx)
+        if (state.shopReview?.items[i]) state.shopReview.items[i].name = inp.value.trim() || state.shopReview.items[i].name
+      })
+      render()
+    })
+  })
+  document.querySelectorAll('.shop-review-name-input').forEach(el => {
+    el.addEventListener('change', () => {
+      const idx = parseInt(el.dataset.reviewIdx)
+      if (state.shopReview && state.shopReview.items[idx]) {
+        state.shopReview.items[idx].name = el.value.trim() || state.shopReview.items[idx].name
+      }
+    })
+  })
+  document.getElementById('shop-review-cancel')?.addEventListener('click', () => { state.shopReview = null; render() })
+  document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
+  document.getElementById('shop-review-add')?.addEventListener('click', async () => {
+    if (!state.shopReview) return
+    document.querySelectorAll('.shop-review-name-input').forEach(el => {
+      const idx = parseInt(el.dataset.reviewIdx)
+      if (state.shopReview.items[idx]) {
+        state.shopReview.items[idx].name = el.value.trim() || state.shopReview.items[idx].name
+      }
+    })
+    const toAdd = state.shopReview.items.filter(i => i.checked && !i.inPantry)
+    for (const item of toAdd) {
+      const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
+      if (!already) {
+        const saved = await db.addShopItem(item.name, state.shopReview.recipeName, item.tags || [])
+        if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe, tags: item.tags || [] })
+      }
+    }
+    state.shopReview = null; state.tab = 'shop'; render()
+  })
+
+  document.querySelectorAll('[data-plan-recipe]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.planRecipe
+      const today = new Date().toISOString().slice(0, 10)
+      const plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))
+      const slot = plannedEntry?.meal_slot || 'Dinner'
+      const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+      const chatKey = today + '-' + slot
+      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
+      if (hasPriorChat) {
+        state.gamePlanView = 'chat'
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid }
+        render()
+        setTimeout(() => {
+          const el = document.getElementById('gp-chat-messages')
+          if (el) el.scrollTop = el.scrollHeight
+        }, 50)
+      } else {
+        state.gamePlanResult = null
+        state.gamePlanLoading = false
+        state.gamePlanView = 'timeline'
+        state._lastGamePlan = { slot, date: today }
+        state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
+        render()
+      }
+    })
+  })
+
+  // Organize tags button
+  document.querySelectorAll('[data-cook-scaled]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.cookScaled
+      state.cookMode = {
+        recipeId: rid,
+        tab: 'ingredients',
+        scaledIngredients: state.scaleModal?.ingredients || null,
+        scaleLabel: state.scaleModal?.label || null
+      }
+      render()
+    })
+  })
+
+  // Cook Mode
+  document.querySelectorAll('[data-cook-mode]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const recipeId = el.dataset.cookMode
+      state.expandedRecipe = recipeId
+      state.cookMode = { recipeId, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
+      render()
+      fetchStepAmounts(recipeId)
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + recipeId + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 80)
+    })
+  })
+  document.querySelectorAll('.tonight-plan-nav').forEach(el => {
+    el.addEventListener('click', () => { state.tab = 'calendar'; render() })
+  })
+  document.querySelectorAll('[data-tonight-slot]').forEach(el => {
+    el.addEventListener('click', () => {
+      const today = new Date().toISOString().slice(0,10)
+      state.gamePlanModal = { date: today, slot: el.dataset.tonightSlot, result: null, notes: '', generating: false, view: 'form', fullscreen: false }
+      render()
+    })
+  })
+  document.getElementById('cook-mode-close')?.addEventListener('click', () => {
+    state.cookMode = null; render()
+  })
+  document.getElementById('cook-mode-edit-toggle')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, editing: !state.cookMode.editing }; render()
+  })
+  document.getElementById('cook-edit-save')?.addEventListener('click', async () => {
+    const rid = state.cookMode?.recipeId
+    const r = state.recipes.find(x => x.id === rid)
+    if (!r) return
+    const name = document.getElementById('cook-edit-name')?.value?.trim() || r.name
+    const ingredients = document.getElementById('cook-edit-ingredients')?.value?.trim() || r.ingredients
+    const instructions = document.getElementById('cook-edit-instructions')?.value?.trim() || r.instructions
+    const notes = document.getElementById('cook-edit-notes')?.value?.trim() ?? r.cookingNotes
+    if (document.getElementById('cook-edit-name')) r.name = name
+    if (document.getElementById('cook-edit-ingredients')) r.ingredients = ingredients
+    if (document.getElementById('cook-edit-instructions')) {
+      r.instructions = instructions
+      state.cookMode = { ...state.cookMode, stepAmounts: null, stepAmountsLoading: false }
+    }
+    if (document.getElementById('cook-edit-notes')) r.cookingNotes = notes
+    await db.updateRecipe(rid, { name, ingredients, instructions, cooking_notes: notes })
+    state.cookMode = { ...state.cookMode, editing: false }; render()
+  })
+  document.getElementById('cook-tab-notes')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, tab: 'notes' }; render()
+  })
+  document.getElementById('cook-tab-ingredients')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, tab: 'ingredients' }; render()
+  })
+  document.querySelectorAll('.cook-ing-row').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.ingIdx)
+      if (!state.cookMode) return
+      const checked = state.cookMode.checkedIngredients || new Set()
+      if (checked.has(idx)) checked.delete(idx); else checked.add(idx)
+      state.cookMode = { ...state.cookMode, checkedIngredients: checked }; render()
+    })
+  })
+  document.getElementById('cook-tab-instructions')?.addEventListener('click', () => {
+    state.cookMode = { ...state.cookMode, tab: 'instructions' }
+    render()
+    fetchStepAmounts(state.cookMode.recipeId)
+  })
+
+  document.getElementById('organize-tags-btn')?.addEventListener('click', async () => {
+    const recipeTags = state.allTags.filter(t => t.namespace === 'recipe')
+    if (!recipeTags.length) return
+    // Open modal in loading state, ask AI to classify
+    state.tagOrganizerModal = { loading: true, tags: recipeTags }
+    render()
+    try {
+      const tagNames = recipeTags.map(t => t.name).join(', ')
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: `Classify these recipe tags as either "category" (what the dish IS — ingredient, protein, cuisine type like Chicken, Pork, Pasta, Salad, Soup, Italian) or "style" (how it's made or when it's served — like Sous Vide, Weeknight, Party Ideas, Meal Prep, Quick, Slow Cooker, Grilled). Return ONLY a JSON object like: {"Pork":"category","Sous Vide":"style"}. Tags: ${tagNames}` }]
+        })
+      })
+      const data = await resp.json()
+      const text = data.content?.[0]?.text || '{}'
+      const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+      const classified = JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0] || '{}')
+      // Apply AI suggestions to tags
+      const updatedTags = recipeTags.map(t => ({
+        ...t,
+        tag_type: classified[t.name] || t.tag_type || 'category'
+      }))
+      state.tagOrganizerModal = { loading: false, tags: updatedTags }
+    } catch(e) {
+      // If AI fails just show tags with current types for manual editing
+      state.tagOrganizerModal = { loading: false, tags: recipeTags }
+    }
+    render()
+  })
+
+  // Tag type toggle buttons in organizer
+  document.querySelectorAll('.tag-type-btn[data-tag-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      if (!state.tagOrganizerModal?.tags) return
+      const id = el.dataset.tagId
+      const type = el.dataset.tagType
+      const tag = state.tagOrganizerModal.tags.find(t => String(t.id) === String(id))
+      if (tag) { tag.tag_type = type; render() }
+    })
+  })
+
+  // Save tag organizer
+  document.getElementById('tag-organizer-save')?.addEventListener('click', async () => {
+    if (!state.tagOrganizerModal?.tags) return
+    for (const t of state.tagOrganizerModal.tags) {
+      await db.updateTagType(t.id, t.tag_type || 'category')
+      const existing = state.allTags.find(x => x.id === t.id)
+      if (existing) existing.tag_type = t.tag_type
+    }
+    state.tagOrganizerModal = false
+    render()
+  })
+
+  document.getElementById('tag-organizer-close')?.addEventListener('click', () => {
+    state.tagOrganizerModal = false; render()
+  })
+  document.getElementById('tag-organizer-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'tag-organizer-bg') { state.tagOrganizerModal = false; render() }
+  })
+  document.querySelectorAll('.chart-window-btn[data-window]').forEach(el => {
+    el.addEventListener('click', () => { state.chartWindow = el.dataset.window; render() })
+  })
+
+  document.querySelectorAll('.recipe-sort-btn[data-sort]').forEach(el => {
+    el.addEventListener('click', () => { state.recipeSort = el.dataset.sort; render() })
+  })
+
+  // View toggle
+  document.getElementById('view-cards-btn')?.addEventListener('click', () => { state.recipeView = 'cards'; render() })
+  document.getElementById('view-list-btn')?.addEventListener('click', () => { state.recipeView = 'list'; render() })
+
+  // List row expand/collapse
+  document.querySelectorAll('[data-expand-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.expandRecipe
+      state.expandedRecipe = state.expandedRecipe === id ? null : id
+      render()
+    })
+  })
+
+  document.getElementById('toggle-archived-btn')?.addEventListener('click', () => {
+    state.showArchived = !state.showArchived; render()
+  })
+
+  document.querySelectorAll('[data-archive-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.archiveRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (r) { r.archived = true; await db.archiveRecipe(id, true); render() }
+    })
+  })
+
+  document.querySelectorAll('[data-restore-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.restoreRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (r) { r.archived = false; await db.archiveRecipe(id, false); render() }
+    })
+  })
+
+  // Share recipe
+  document.querySelectorAll('[data-share-recipe]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.shareRecipe
+      const r = state.recipes.find(r => r.id === id)
+      if (!r) return
+      const lines = [r.name]
+      if (r.clippedFrom) lines.push('Source: ' + r.clippedFrom)
+      lines.push('')
+      if (r.ingredients) lines.push('Ingredients\n' + r.ingredients)
+      if (r.instructions) lines.push('\nInstructions\n' + r.instructions)
+      const text = lines.join('\n')
+      if (navigator.share) {
+        navigator.share({ title: r.name, text }).catch(() => {})
+      } else {
+        navigator.clipboard.writeText(text).then(() => alert('Recipe copied to clipboard!'))
+      }
+    })
+  })
+
+  document.querySelectorAll('[data-del]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.del
+      state.recipes = state.recipes.filter(r => r.id !== id)
+      state.expandedRecipe = null
+      await db.deleteRecipe(id); render()
+    })
+  })
+
+  document.querySelectorAll('[data-ask]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const r = state.recipes.find(x => x.id === el.dataset.ask)
+      if (!r) return
+      state.chatRecipeContext = r
+      state.tab = 'chat'
+      localStorage.setItem('mep_tab', 'chat')
+      // Load persisted chat from Supabase if not already in memory
+      if (!state.recipeChatMessages[r.id] || state.recipeChatMessages[r.id].length === 0) {
+        const saved = await db.fetchRecipeChat(r.id)
+        if (saved && saved.length > 0) state.recipeChatMessages[r.id] = saved
+      }
+      render()
+      setTimeout(() => document.getElementById('chat-input')?.focus(), 100)
+    })
+  })
+
+  // Pantry
+  document.getElementById('pantry-add-btn')?.addEventListener('click', async () => {
+    const name = document.getElementById('pantry-name')?.value?.trim()
+    const qty  = document.getElementById('pantry-qty')?.value?.trim()
+    if (!name) return
+    const tags = Array.from(document.querySelectorAll('.pantry-new-tag-check:checked')).map(el => el.dataset.tag)
+    const saved = await db.addPantryItem(name, qty)
+    if (saved) {
+      if (tags.length) { saved.tags = tags; await db.updatePantryTags(saved.id, tags) }
+      state.pantry.push(saved)
+    }
+    document.getElementById('pantry-name').value = ''
+    if (document.getElementById('pantry-qty')) document.getElementById('pantry-qty').value = ''
+    document.querySelectorAll('.pantry-new-tag-check').forEach(el => el.checked = false)
+    render()
+  })
+  ;['pantry-name','pantry-qty'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('pantry-add-btn')?.click() })
+  })
+  document.querySelectorAll('[data-qty-id]').forEach(el => {
+    el.addEventListener('change', async () => {
+      const item = state.pantry.find(p => p.id === el.dataset.qtyId)
+      if (item) { item.qty = el.value.trim(); await db.updatePantryItem(item.id, item.qty) }
+    })
+  })
+  document.querySelectorAll('[data-pantry-del]').forEach(el => {
+    el.addEventListener('click', async () => {
+      state.pantry = state.pantry.filter(p => p.id !== el.dataset.pantryDel)
+      await db.deletePantryItem(el.dataset.pantryDel); render()
+    })
+  })
+  document.getElementById('clear-pantry')?.addEventListener('click', async () => {
+    if (confirm('Clear entire pantry?')) { state.pantry = []; await db.clearPantry(); render() }
+  })
+
+  // ── SHOPPING LIST EVENTS ──
+
+  // Check off item (strike-through, don't delete)
+  document.querySelectorAll('[data-check]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const item = state.shopList.find(x => x.id === el.dataset.check)
+      if (!item) return
+      if (item.have) {
+        // Tap again to uncheck
+        item.have = false
+        item.checked_at = null
+        await db.updateShopItem(item.id, false)
+      } else {
+        item.have = true
+        item.checked_at = Date.now()
+        await db.updateShopItem(item.id, true)
+      }
+      render()
+    })
+  })
+
+  document.querySelectorAll('[data-uncheck]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const item = state.shopList.find(x => x.id === el.dataset.uncheck)
+      if (item) { item.have = false; item.checked_at = null; await db.updateShopItem(item.id, false); render() }
+    })
+  })
+
+  document.querySelectorAll('[data-shop-del]').forEach(el => {
+    el.addEventListener('click', async () => {
+      state.shopList = state.shopList.filter(x => x.id !== el.dataset.shopDel)
+      await db.deleteShopItem(el.dataset.shopDel); render()
+    })
+  })
+
+  document.getElementById('shop-got-it')?.addEventListener('click', async () => {
+    const now = Date.now()
+    state.shopList.forEach(i => {
+      if (!i.have) { i.have = true; i.checked_at = now }
+    })
+    await db.markAllGotIt(state.shopList, state.pantry)
+    const newPantry = await db.fetchPantry()
+    state.pantry = newPantry
+    render()
+  })
+
+  // Clear only checked items
+  document.getElementById('shop-clear-checked')?.addEventListener('click', async () => {
+    const checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
+    state.shopList = state.shopList.filter(i => !i.have)
+    for (const id of checkedIds) await db.deleteShopItem(id)
+    render()
+  })
+
+  // Remove all items in cart (same as clear checked)
+  document.getElementById('shop-clear-cart')?.addEventListener('click', async () => {
+    const checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
+    state.shopList = state.shopList.filter(i => !i.have)
+    for (const id of checkedIds) await db.deleteShopItem(id)
+    render()
+  })
+
+  document.getElementById('shop-clear')?.addEventListener('click', async () => {
+    if (confirm('Clear shopping list?')) { state.shopList = []; await db.clearShopList(); render() }
+  })
+  document.getElementById('shop-view-pantry-btn')?.addEventListener('click', () => {
+    state.tab = 'pantry'; render()
+  })
+  document.getElementById('log-goals-btn')?.addEventListener('click', () => {
+    state.showGoals = !state.showGoals; state.showSync = false; render()
+  })
+  document.getElementById('shop-copy-btn')?.addEventListener('click', () => {
+    const need = state.shopList.filter(i => !i.have)
+    // Group by tag if tags exist
+    const tagged = {}
+    const untagged = []
+    need.forEach(i => {
+      if (i.tags && i.tags.length) {
+        i.tags.forEach(t => { if (!tagged[t]) tagged[t] = []; tagged[t].push(i.name) })
+      } else {
+        untagged.push(i.name)
+      }
+    })
+    let text = 'Shopping List\n'
+    Object.entries(tagged).forEach(([tag, items]) => {
+      text += '\n' + tag + '\n' + items.map(n => '• ' + n).join('\n')
+    })
+    if (untagged.length) text += '\n' + untagged.map(n => '• ' + n).join('\n')
+    if (navigator.share) {
+      navigator.share({ title: 'Shopping List', text: text.trim() }).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(text.trim()).then(() => alert('Shopping list copied!'))
+    }
+  })
+  document.getElementById('shop-add-anyway')?.addEventListener('click', async () => {
+    const { val, tags } = state._shopPendingItem || {}
+    if (!val) return
+    const saved = await db.addShopItem(val, 'Manual')
+    if (saved) {
+      if (tags?.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
+      state.shopList.push({ ...saved, fromRecipe: 'Manual', tags: tags || [] })
+    }
+    state._shopPendingItem = null
+    state._shopPantryWarning = null
+    render()
+  })
+
+  document.getElementById('shop-skip-item')?.addEventListener('click', () => {
+    state._shopPendingItem = null
+    state._shopPantryWarning = null
+    render()
+  })
+
+  document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
+    const val = document.getElementById('shop-manual-input')?.value?.trim()
+    if (!val) return
+    const tags = Array.from(document.querySelectorAll('.shop-new-tag-check:checked')).map(el => el.dataset.tag)
+
+    // Fuzzy pantry check — does the pantry have something that contains or is contained by this item name?
+    const valWords = val.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+    const pantryMatch = state.pantry.find(p => {
+      const pl = p.name.toLowerCase()
+      const pWords = pl.split(/\s+/).filter(w => w.length > 2)
+      return pl.includes(val.toLowerCase()) || val.toLowerCase().includes(pl) ||
+        valWords.some(w => pWords.includes(w))
+    })
+
+    if (pantryMatch) {
+      // Show inline warning instead of adding immediately
+      state._shopPendingItem = { val, tags }
+      state._shopPantryWarning = pantryMatch.name
+      render()
+      return
+    }
+
+    const saved = await db.addShopItem(val, 'Manual')
+    if (saved) {
+      if (tags.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
+      state.shopList.push({ ...saved, fromRecipe: 'Manual', tags })
+    }
+    document.getElementById('shop-manual-input').value = ''
+    document.querySelectorAll('.shop-new-tag-check').forEach(el => el.checked = false)
+    render()
+  })
+  document.getElementById('shop-manual-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('shop-manual-add')?.click() })
+
+  // Log
+  // Weight log
+  document.getElementById('log-weight-btn')?.addEventListener('click', async () => {
+    const val = parseFloat(document.getElementById('log-weight-input')?.value)
+    if (!val || isNaN(val)) return
+    const isViewingToday = (state.logDayOffset || 0) === 0
+    const dateStr = isViewingToday ? new Date().toLocaleDateString('sv') : state._viewedDateStr
+
+    // Check if there's already an entry for this day
+    const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === dateStr)
+
+    if (existing) {
+      // Update existing entry
+      const saved = await db.updateWeightEntry(existing.id, val)
+      if (saved) {
+        existing.weight = val
+        state.weightLog.sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
+      }
+    } else {
+      // Add new entry
+      const entryDateStr = isViewingToday ? null : state._viewedDateStr
+      const saved = await db.addWeightEntry(val, '', entryDateStr)
+      if (saved) {
+        state.weightLog = state.weightLog || []
+        state.weightLog.push(saved)
+        state.weightLog.sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
+      }
+    }
+    render()
+  })
+  document.getElementById('log-weight-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-weight-btn')?.click() } })
+  document.querySelectorAll('[data-weight-del]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const id = el.dataset.weightDel
+      state.weightLog = (state.weightLog || []).filter(x => String(x.id) !== String(id))
+      await db.deleteWeightEntry(id)
+      render()
+    })
+  })
+  document.getElementById('log-exercise-btn')?.addEventListener('click', async () => {
+    const activity = document.getElementById('log-exercise')?.value?.trim()
+    if (!activity) return
+    const btn = document.getElementById('log-exercise-btn')
+    if (btn) { btn.textContent = '...'; btn.disabled = true }
+    const weight = state.goals.weight || 155
+    const age = state.goals.age || 35
+    const { calories, breakdown } = await estimateCaloriesAI(
+      'Calories BURNED (not consumed) during: "' + activity + '" for a person weighing ' + weight + ' lbs, age ' + age + '. ' +
+      'Reply with ONLY:\nCALORIES: [number]\nBREAKDOWN: [brief explanation]\nNo other text.'
+    )
+    const isExToday = (state.logDayOffset || 0) === 0
+    const exDateStr = isExToday ? null : state._viewedDateStr
+    const saved = await db.addExerciseEntry(activity, calories, breakdown, exDateStr)
+    if (saved) {
+      saved.breakdown = breakdown
+      if (isExToday) {
+        state.exerciseLog = state.exerciseLog || []
+        state.exerciseLog.push(saved)
+      } else {
+        state.viewedDayExercise = state.viewedDayExercise || []
+        state.viewedDayExercise.push(saved)
+      }
+    }
+    const input = document.getElementById('log-exercise')
+    if (input) input.value = ''
+    if (btn) { btn.textContent = '+ Add'; btn.disabled = false }
+    render()
+  })
+  document.getElementById('log-exercise')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-exercise-btn')?.click() } })
+
+  // Exercise ? breakdown
+  document.querySelectorAll('[data-ex-breakdown-id]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const id = 'ex-' + el.dataset.exBreakdownId
+      state.logBreakdownId = state.logBreakdownId === id ? null : id
+      render()
+    })
+  })
+
+  // Exercise delete
+  document.querySelectorAll('[data-ex-del]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const id = el.dataset.exDel
+      state.exerciseLog = (state.exerciseLog || []).filter(x => String(x.id) !== String(id))
+      await db.deleteExerciseEntry(id)
+      render()
+    })
+  })
+  async function estimatePrepTime(recipe) {
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        messages: [{ role: 'user', content:
+          'Analyze this recipe and return ONLY a JSON object with prep time details. No other text, no markdown, no backticks.\n\n' +
+          'Recipe: ' + recipe.name + '\n\nIngredients:\n' + (recipe.ingredients||'') + '\n\nInstructions:\n' + (recipe.instructions||'') +
+          '\n\nReturn this exact JSON structure:\n{"active_min":25,"passive_min":0,"difficulty":"Medium","equipment":["skillet","tongs"],"multitask":"what you can do while something cooks","make_ahead":"what can be prepped ahead and how far","quick_version":"fastest shortcut to reduce time"}'
+        }]
+      })
+    })
+    const data = await resp.json()
+    const text = data.content?.[0]?.text?.trim() || ''
+    return JSON.parse(text)
+  } catch(e) { return null }
+}
+
+async function saveRecipePrepTime(recipeId, prepTime) {
+  await db.updateRecipe(recipeId, { prep_time: prepTime })
+}
+
+async function estimateCaloriesAI(description) {
+    try {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          messages: [{ role: 'user', content:
+            'You are a precise nutrition calculator using USDA database values. Estimate calories for: "' + description + '"\n\n' +
+            'Rules:\n' +
+            '- Use accurate USDA/nutrition database values, not rounded estimates\n' +
+            '- For single items (1 shrimp, 1 egg, 1 slice), use the actual per-item calorie count\n' +
+            '- Do NOT round up aggressively — a single large shrimp is ~7 kcal, not 30\n' +
+            '- If quantity is ambiguous, assume a typical single serving\n\n' +
+            'Reply with ONLY this format:\nCALORIES: [number]\nBREAKDOWN: [brief per-item breakdown with actual values]\n\nNo other text.'
+          }]
+        })
+      })
+      const data = await resp.json()
+      const text = data.content?.[0]?.text || ''
+      const calMatch = text.match(/CALORIES:\s*(\d+)/i)
+      const breakdownMatch = text.match(/BREAKDOWN:\s*(.+)/i)
+      return {
+        calories: calMatch ? parseInt(calMatch[1]) : 0,
+        breakdown: breakdownMatch ? breakdownMatch[1].trim() : ''
+      }
+    } catch(e) { return { calories: 0, breakdown: '' } }
+  }
+
+  document.getElementById('log-add-btn')?.addEventListener('click', async () => {
+    const foodEl = document.getElementById('log-food')
+    const qtyEl = document.getElementById('log-qty')
+    const unitEl = document.getElementById('log-unit')
+    const notesEl = document.getElementById('log-notes')
+    const food = foodEl?.value?.trim()
+    const qty = qtyEl?.value?.trim()
+    const unit = unitEl?.value || ''
+    const notes = notesEl?.value?.trim() || ''
+    if (!food) return
+
+    let foodStr = food
+    if (qty && unit) foodStr = qty + ' ' + unit + ' ' + food
+    else if (qty) foodStr = qty + ' ' + food
+
+    const aiQuery = notes ? foodStr + ' — ' + notes : foodStr
+
+    const btn = document.getElementById('log-add-btn')
+    if (btn) { btn.textContent = '...'; btn.disabled = true }
+    try {
+      const { calories, breakdown } = await estimateCaloriesAI(aiQuery)
+      const isToday = (state.logDayOffset || 0) === 0
+      const dateStr = isToday ? null : state._viewedDateStr
+      const saved = await db.addLogEntry(foodStr + (notes ? ' (' + notes + ')' : ''), calories, null, dateStr)
+      if (saved) {
+        saved.breakdown = breakdown
+        if (isToday) {
+          state.log.push(saved)
+        } else {
+          state.viewedDayLog = state.viewedDayLog || []
+          state.viewedDayLog.push(saved)
+        }
+      }
+      if (foodEl) foodEl.value = ''
+      if (qtyEl) qtyEl.value = ''
+      if (unitEl) unitEl.value = ''
+      if (notesEl) notesEl.value = ''
+    } catch(e) {
+      console.error('Log add error:', e)
+    }
+    if (btn) { btn.textContent = '+ Add'; btn.disabled = false }
+    render()
+  })
+  document.getElementById('log-food')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-add-btn')?.click() } })
+  document.getElementById('log-notes')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-add-btn')?.click() } })
+
+  // Log day navigation
+  document.getElementById('log-prev-day')?.addEventListener('click', async () => {
+    state.logDayOffset = (state.logDayOffset || 0) - 1
+    const now = new Date()
+    const d = new Date(now)
+    d.setDate(now.getDate() + state.logDayOffset)
+    const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+    state._viewedDateStr = dateStr
+    state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
+    state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
+    render()
+  })
+  document.getElementById('log-next-day')?.addEventListener('click', async () => {
+    if ((state.logDayOffset || 0) >= 0) return
+    state.logDayOffset = (state.logDayOffset || 0) + 1
+    if (state.logDayOffset === 0) {
+      state.viewedDayLog = null
+      state.viewedDayExercise = null
+      state._viewedDateStr = null
+    } else {
+      const now = new Date()
+      const d = new Date(now)
+      d.setDate(now.getDate() + state.logDayOffset)
+      const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+      state._viewedDateStr = dateStr
+      state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
+      state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
+    }
+    render()
+  })
+
+  // Prep time — estimate button
+  document.querySelectorAll('[data-estimate-prep]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const rid = el.dataset.estimatePrep
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe) return
+      state.estimatingPrepId = rid; render()
+      const pt = await estimatePrepTime(recipe)
+      if (pt) {
+        recipe.prepTime = pt
+        await saveRecipePrepTime(rid, pt)
+      }
+      state.estimatingPrepId = null; render()
+    })
+  })
+
+  // Prep time — refresh button
+  document.querySelectorAll('[data-refresh-prep]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const rid = el.dataset.refreshPrep
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe) return
+      state.refreshingPrepId = rid; render()
+      const pt = await estimatePrepTime(recipe)
+      if (pt) {
+        recipe.prepTime = pt
+        await saveRecipePrepTime(rid, pt)
+      }
+      state.refreshingPrepId = null; render()
+    })
+  })
+  document.querySelectorAll('.scale-btn[data-scale]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const rid = el.dataset.recipeId
+      const scale = el.dataset.scale
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe || !recipe.ingredients) return
+      state.scaleModal = { recipeId: rid, label: scale, loading: true, ingredients: '' }
+      render()
+      try {
+        const multiplier = scale === '½x' ? '0.5' : scale === '2x' ? '2' : '3'
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 800,
+            messages: [{ role: 'user', content:
+              'Scale these recipe ingredients by ' + multiplier + 'x. Return ONLY the scaled ingredient list, one per line, with updated amounts. No extra text, no explanation.\n\nIngredients:\n' + recipe.ingredients
+            }]
+          })
+        })
+        const data = await resp.json()
+        const scaled = data.content?.[0]?.text?.trim() || ''
+        state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: scaled }
+      } catch(e) {
+        state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: 'Error scaling — try again.' }
+      }
+      render()
+    })
+  })
+  document.querySelectorAll('[data-close-scale]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); state.scaleModal = null; render() })
+  })
+  document.querySelectorAll('[data-save-scaled]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      if (!state.scaleModal) return
+      const rid = el.dataset.saveScaled
+      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      if (!recipe) return
+      const name = recipe.name + ' (' + state.scaleModal.label + ')'
+      const saved = await db.saveRecipe({ name, ingredients: state.scaleModal.ingredients, instructions: recipe.instructions || '', notes: '', clippedFrom: '', tags: recipe.tags || [] })
+      if (saved) state.recipes.unshift(normalizeRecipe(saved))
+      state.scaleModal = null
+      render()
+    })
+  })
+  document.querySelectorAll('[data-edit-log]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingLogId = el.dataset.editLog
+      render()
+      setTimeout(() => document.getElementById('edit-log-food-' + el.dataset.editLog)?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-save-log]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.saveLog
+      const entry = state.log.find(x => x.id === id)
+      if (!entry) return
+      const food = document.getElementById('edit-log-food-' + id)?.value?.trim()
+      const cals = parseInt(document.getElementById('edit-log-cals-' + id)?.value) || 0
+      if (!food) return
+      entry.food = food
+      entry.calories = cals
+      await db.updateLogEntry(id, { food, calories: cals })
+      state.editingLogId = null
+      render()
+    })
+  })
+  document.querySelectorAll('[data-cancel-log]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingLogId = null
+      render()
+    })
+  })
+  document.querySelectorAll('[data-breakdown-id]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const id = el.dataset.breakdownId
+      state.logBreakdownId = state.logBreakdownId === id ? null : id
+      render()
+    })
+  })
+
+  document.querySelectorAll('[data-log-del]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.logDel
+      state.log = state.log.filter(x => String(x.id) !== String(id))
+      if (state.viewedDayLog) state.viewedDayLog = state.viewedDayLog.filter(x => String(x.id) !== String(id))
+      await db.deleteLogEntry(id)
+      render()
+    })
+  })
+  document.querySelectorAll('.ra-log[data-log-recipe]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const r = state.recipes.find(x => String(x.id) === String(el.dataset.logRecipe))
+      if (r) { state.logModal = { recipeId: r.id, recipeName: r.name }; render() }
+    })
+  })
+  document.getElementById('lm-cancel')?.addEventListener('click', () => { state.logModal = null; render() })
+
+  // Estimate button in log modal
+  document.getElementById('lm-estimate')?.addEventListener('click', async () => {
+    if (!state.logModal) return
+    const portion = document.getElementById('lm-portion')?.value?.trim()
+    const notes = document.getElementById('lm-notes')?.value?.trim()
+    const recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
+    state.logModal = { ...state.logModal, portion, notes, estimating: true }
+    render()
+    let description = ''
+    if (recipe) {
+      description = (portion || '1 serving') + ' of ' + recipe.name
+      if (notes) description += ', modifications: ' + notes
+      description += '\nIngredients: ' + (recipe.ingredients || '')
+    } else {
+      description = portion || state.logModal.recipeName
+    }
+    const { calories, breakdown } = await estimateCaloriesAI(description)
+    state.logModal = { ...state.logModal, estimating: false, calories, breakdown,
+      estimateMsg: 'Estimated ' + calories + ' kcal. You can adjust before saving.' }
+    render()
+    document.getElementById('lm-cals')?.focus()
+  })
+
+  document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
+
+  // Dismiss recipe search on outside tap
+  document.getElementById('log-tab-content')?.addEventListener('click', e => {
+    if (!e.target.closest('.log-search-wrap') && state.logSearch) {
+      state.logSearch = ''; render()
+    }
+  })
+
+  document.getElementById('lm-save')?.addEventListener('click', async () => {
+    const portionEl = document.getElementById('lm-portion')
+    const calsEl = document.getElementById('lm-cals')
+    const notesEl = document.getElementById('lm-notes')
+    const portion = portionEl?.value?.trim()
+    const cals = parseInt(calsEl?.value) || state.logModal?.calories || 0
+    const notes = notesEl?.value?.trim()
+    if (!portion) {
+      if (portionEl) portionEl.placeholder = 'Please enter portion!'
+      portionEl?.focus()
+      return
+    }
+    let food = (state.logModal?.recipeName || 'Food') + ' (' + portion + ')'
+    if (notes) food += ' — ' + notes
+    const saved = await db.addLogEntry(food, cals)
+    if (saved) {
+      if (state.logModal?.recipeId) saved.recipe_id = state.logModal.recipeId
+      saved.breakdown = state.logModal?.breakdown || ''
+      state.log.push(saved)
+    }
+    state.logModal = null; state.tab = 'log'; render()
+  })
+
+  // Paste modal
+  document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('paste-recipe-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('nav-update-btn')?.addEventListener('click', async () => {
+    const el = document.getElementById('nav-update-btn')
+    if (el) el.textContent = 'Updating...'
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map(r => r.unregister()))
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map(k => caches.delete(k)))
+      }
+    } catch(e) {}
+    window.location.reload(true)
+  })
+  document.getElementById('nav-sync-btn')?.addEventListener('click', () => {
+    state.showSync = !state.showSync; state.showGoals = false; render()
+  })
+
+  // Clip URL modal
+  document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
+    state.clipUrlModal = true;  render()
+    setTimeout(async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const input = document.getElementById('clip-url-input')
+        if (input && text && text.startsWith('http')) input.value = text
+      } catch(e) {}
+      document.getElementById('clip-url-input')?.focus()
+    }, 100)
+  })
+  document.getElementById('clip-url-cancel')?.addEventListener('click', () => { state.clipUrlModal = false; render() })
+  document.getElementById('clip-url-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'clip-url-modal-bg') { state.clipUrlModal = false; render() } })
+  document.getElementById('clip-url-go')?.addEventListener('click', async () => {
+    const url = document.getElementById('clip-url-input')?.value?.trim()
+    if (!url || !url.startsWith('http')) return
+    state.clipUrlModal = false; state.pasteModal = true; state.shareLoading = true; render()
+    try {
+      const resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false; state.sharedRecipe = recipe; render()
+    } catch(e) {
+      state.shareLoading = false; state.sharedRecipe = null; render()
+    }
+  })
+  document.getElementById('clip-url-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('clip-url-go')?.click() })
+
+  // Clipboard banner
+  document.getElementById('clipboard-yes')?.addEventListener('click', async () => {
+    const url = state.clipboardBanner
+    state.clipboardBanner = null; state.pasteModal = true; state.shareLoading = true; render()
+    try {
+      const resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
+      const recipe = await resp.json()
+      if (recipe.error) throw new Error(recipe.error)
+      state.shareLoading = false; state.sharedRecipe = recipe; render()
+    } catch(e) { state.shareLoading = false; state.sharedRecipe = null; render() }
+  })
+  document.getElementById('clipboard-no')?.addEventListener('click', () => { state.clipboardBanner = null; render() })
+
+  // Pantry inline edit
+  document.querySelectorAll('[data-edit-pantry]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingPantryId = String(el.dataset.editPantry); render()
+      setTimeout(() => document.querySelector('[data-edit-pantry-name]')?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-save-pantry]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.savePantry
+      const name = document.querySelector('[data-edit-pantry-name="' + id + '"]')?.value?.trim()
+      const qty = document.querySelector('[data-qty-id="' + id + '"]')?.value?.trim()
+      if (!name) return
+      const item = state.pantry.find(p => String(p.id) === String(id))
+      if (item) { item.name = name; item.qty = qty; await db.updatePantryItem(id, { name, qty }) }
+      state.editingPantryId = null; render()
+    })
+  })
+  document.querySelectorAll('[data-edit-pantry-name]').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') document.querySelector('[data-save-pantry="' + el.dataset.editPantryName + '"]')?.click() })
+  })
+  // Move pantry -> list
+  document.querySelectorAll('[data-move-to-list]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.moveToList
+      const item = state.pantry.find(p => String(p.id) === String(id))
+      if (!item) return
+      const tags = item.tags || []
+      const saved = await db.addShopItem(item.name, 'Pantry', tags)
+      if (saved) state.shopList.push({ ...saved, fromRecipe: 'Pantry', tags })
+      await db.deletePantryItem(id)
+      state.pantry = state.pantry.filter(p => String(p.id) !== String(id))
+      render()
+    })
+  })
+
+  // Shop list inline edit
+  document.querySelectorAll('[data-edit-shop]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingShopId = String(el.dataset.editShop); render()
+      setTimeout(() => document.querySelector('[data-edit-shop-name]')?.focus(), 50)
+    })
+  })
+  document.querySelectorAll('[data-save-shop]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.saveShop
+      const name = document.querySelector('[data-edit-shop-name="' + id + '"]')?.value?.trim()
+      if (!name) return
+      const item = state.shopList.find(i => String(i.id) === String(id))
+      if (item) { item.name = name; await db.updateShopItem(id, { name }) }
+      state.editingShopId = null; render()
+    })
+  })
+  document.querySelectorAll('[data-edit-shop-name]').forEach(el => {
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') document.querySelector('[data-save-shop="' + el.dataset.editShopName + '"]')?.click() })
+  })
+  // Move list -> pantry (also moves to cart/crossed out)
+  document.querySelectorAll('[data-move-to-pantry]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const id = el.dataset.moveToPantry
+      const item = state.shopList.find(i => String(i.id) === String(id))
+      if (!item) return
+      const tags = item.tags || []
+      // Add to pantry
+      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
+      if (!exists) {
+        const saved = await db.addPantryItem(item.name, '', tags)
+        if (saved) state.pantry.push({ ...saved, tags })
+      }
+      // Move to cart (check it off) rather than deleting
+      item.have = true
+      item.checked_at = Date.now()
+      await db.updateShopItem(id, true)
+      render()
+    })
+  })
+  // Save paste modal draft on every keystroke so switching tabs doesn't wipe input
+  document.getElementById('paste-name')?.addEventListener('input', e => { state.pasteModalDraft.name = e.target.value })
+  document.getElementById('paste-text')?.addEventListener('input', e => { state.pasteModalDraft.text = e.target.value })
+  document.getElementById('paste-ingredients')?.addEventListener('input', e => { state.pasteModalDraft.ingredients = e.target.value })
+  document.getElementById('paste-instructions')?.addEventListener('input', e => { state.pasteModalDraft.instructions = e.target.value })
+
+  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; render() })
+  document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
+  document.getElementById('paste-save')?.addEventListener('click', async () => {
+    const name = document.getElementById('paste-name')?.value?.trim()
+    if (!name) return
+    let ingredients = '', instructions = ''
+    if (state.sharedRecipe) {
+      ingredients = document.getElementById('paste-ingredients')?.value?.trim() || ''
+      instructions = document.getElementById('paste-instructions')?.value?.trim() || ''
+    } else {
+      const text = document.getElementById('paste-text')?.value?.trim() || ''
+      if (!text) return
+      ingredients = text; instructions = ''
+      const splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
+      if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
+    }
+    const tags = Array.from(document.querySelectorAll('.paste-tag-check:checked')).map(el => el.dataset.tag)
+    const clippedFrom = state.sharedRecipe?.url || ''
+    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom, tags })
+    if (saved) {
+      const recipe = normalizeRecipe(saved)
+      if (tags.length) await db.updateRecipeTags(recipe.id, tags)
+      state.recipes.unshift(recipe)
+      // Auto-estimate prep time in background
+      estimatePrepTime(recipe).then(pt => {
+        if (pt) {
+          recipe.prepTime = pt
+          saveRecipePrepTime(recipe.id, pt).then(() => render())
+        }
+      })
+    }
+    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; state.tab = 'recipes'; render()
+  })
+
+  // Chat handled by chat handlers below
+
+
+
+  // ── TAG LIBRARY HANDLERS ──
+
+  // Add tag from library tab
+  document.querySelectorAll('[data-add-lib-tag]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const ns = el.dataset.addLibTag
+      const tagType = el.dataset.tagType || 'category'
+      const inputId = el.dataset.inputId || ('new-lib-tag-' + ns)
+      const input = document.getElementById(inputId)
+      const name = input?.value?.trim()
+      if (!name) return
+      const saved = await db.saveTag(name, ns, tagType)
+      if (saved) {
+        saved.tag_type = tagType
+        if (!state.allTags.find(t => t.name === name && t.namespace === ns)) state.allTags.push(saved)
+      }
+      if (input) input.value = ''
+      render()
+    })
+  })
+  document.querySelectorAll('.tag-lib-input').forEach(el => {
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const ns = el.id.replace('new-lib-tag-', '')
+        document.querySelector('[data-add-lib-tag="' + ns + '"]')?.click()
+      }
+    })
+  })
+  document.querySelectorAll('.tag-lib-del[data-del-tag-id]').forEach(el => {
+    el.addEventListener('click', async () => {
+      await db.deleteTag(el.dataset.delTagId)
+      state.allTags = state.allTags.filter(t => t.id !== el.dataset.delTagId)
+      render()
+    })
+  })
+
+  // Tag picker open/close
+  document.querySelectorAll('.tag-picker-btn[data-picker-id]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const key = el.dataset.pickerId + '-' + el.dataset.pickerNs
+      if (state.tagPickerOpen === key) {
+        state.tagPickerOpen = null
+        state.tagPickerPos = null
+      } else {
+        state.tagPickerOpen = key
+        const rect = el.getBoundingClientRect()
+        const pickerHeight = 220 // estimated picker height
+        const spaceBelow = window.innerHeight - rect.bottom
+        const flipUp = spaceBelow < pickerHeight && rect.top > pickerHeight
+        state.tagPickerPos = {
+          top: flipUp ? rect.top - pickerHeight - 4 : rect.bottom + 6,
+          left: Math.min(rect.left, window.innerWidth - 220),
+          flipUp
+        }
+      }
+      render()
+    })
+  })
+
+  // Tag picker checkbox toggle - close after selecting
+  document.querySelectorAll('.tag-picker-check[data-pick-tag]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      setTimeout(async () => {
+        state.tagPickerOpen = null
+        if (el.checked) await addTagToItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
+        else await removeTagFromItem(el.dataset.pickTag, el.dataset.tagNs, el.dataset.tagItem)
+      }, 0)
+    })
+  })
+
+  // Tag picker new inline tag - close after adding
+  document.querySelectorAll('.tag-picker-add[data-new-tag-item]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      const input = el.closest('.tag-picker-new')?.querySelector('.tag-picker-input')
+      const name = input?.value?.trim()
+      if (!name) return
+      state.tagPickerOpen = null
+      await addTagToItem(name, el.dataset.newTagNs, el.dataset.newTagItem)
+      if (input) input.value = ''
+    })
+  })
+  document.querySelectorAll('.tag-picker-input').forEach(el => {
+    el.addEventListener('click', e => e.stopPropagation())
+    el.addEventListener('keydown', async e => {
+      if (e.key === 'Enter') { e.preventDefault(); el.closest('.tag-picker-new')?.querySelector('.tag-picker-add')?.click() }
+    })
+  })
+  // Close picker on outside click - setTimeout prevents immediate firing
+  setTimeout(() => {
+    document.addEventListener('click', () => {
+      if (state.tagPickerOpen) { state.tagPickerOpen = null; render() }
+    }, { once: true })
+  }, 0)
+
+
+  // ── CALENDAR HANDLERS ──
+
+  // Week navigation
+  document.querySelectorAll('.cal-nav[data-week-nav]').forEach(el => {
+    el.addEventListener('click', async () => {
+      state.weekOffset += parseInt(el.dataset.weekNav)
+      const dates = getWeekDates(state.weekOffset)
+      state.mealPlan = await db.fetchMealPlan(dates[0], dates[6])
+      render()
+    })
+  })
+
+  // Open recipe picker for a slot
+  document.querySelectorAll('[data-cal-date]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.calendarSlot = { date: el.dataset.calDate, slot: el.dataset.calSlot }
+      state.calendarSearch = ''
+      state.calendarTagFilter = null
+      render()
+      setTimeout(() => document.getElementById('cal-manual-input')?.focus(), 50)
+    })
+  })
+
+  // Tag filter chips in calendar picker
+  document.querySelectorAll('[data-cal-tag]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.calendarTagFilter = el.dataset.calTag || null
+      render()
+      setTimeout(() => document.getElementById('cal-manual-input')?.focus(), 50)
+    })
+  })
+
+  // Calendar search
+  document.getElementById('cal-search-input')?.addEventListener('input', e => {
+    state.calendarSearch = e.target.value
+    render()
+    const el = document.getElementById('cal-search-input')
+    if (el) { const p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
+  })
+
+  // Pick recipe for calendar slot
+  document.querySelectorAll('.cal-recipe-option[data-pick-recipe]').forEach(el => {
+    el.addEventListener('click', async () => {
+      if (!state.calendarSlot) return
+      const { date, slot } = state.calendarSlot
+      const saved = await db.saveMealPlanEntry(date, slot, el.dataset.pickRecipe, el.dataset.pickName, '')
+      if (saved) state.mealPlan.push(saved)
+      state.calendarSlot = null
+      state.calendarSearch = ''
+      render()
+    })
+  })
+
+  // Close calendar picker
+  document.getElementById('cal-picker-cancel')?.addEventListener('click', () => { state.calendarSlot = null; state.calendarTagFilter = null; render() })
+  document.getElementById('cal-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'cal-picker-bg') { state.calendarSlot = null; state.calendarTagFilter = null; render() } })
+
+  // Delete meal plan entry
+  document.querySelectorAll('[data-del-plan]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      await db.deleteMealPlanEntry(el.dataset.delPlan)
+      state.mealPlan = state.mealPlan.filter(m => m.id !== el.dataset.delPlan)
+      render()
+    })
+  })
+
+  // Log a planned meal from calendar
+  document.querySelectorAll('[data-log-plan]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.logModal = { recipeId: el.dataset.planRid || null, recipeName: el.dataset.planName }
+      render()
+    })
+  })
+
+  // Add planned meal's ingredients to shopping list from calendar
+  document.querySelectorAll('[data-shop-plan]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const rid = el.dataset.shopPlan
+      if (!rid) return
+      const r = state.recipes.find(x => String(x.id) === String(rid))
+      if (!r) return
+      const ingLines = (r.ingredients || r.text || '').split('\n')
+        .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim())
+        .filter(l => {
+          if (l.length < 3 || l.length > 150) return false
+          if (l.endsWith(':') || l === l.toUpperCase() || l.startsWith('**')) return false
+          if (/^\d+$/.test(l)) return false
+          if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
+          return true
+        })
+      const items = ingLines.map(raw => {
+        const name = parseIngredientLine(raw)
+        const stripped = stripMeasurements(raw)
+        const match = state.pantry.find(p => {
+          const pl = p.name.toLowerCase()
+          return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
+        })
+        return { name, pantryQty: match ? (match.qty || 'v in pantry') : null, checked: !match }
+      })
+      state.shopReview = { recipeId: r.id, recipeName: r.name, items }
+      render()
+    })
+  })
+
+  // Log today's meals button
+  document.getElementById('log-today-btn')?.addEventListener('click', async () => {
+    const today = new Date().toISOString().slice(0,10)
+    const todayEntries = state.mealPlan.filter(e => e.date === today)
+    for (const entry of todayEntries) {
+      const already = state.log.some(l => l.food.includes(entry.recipe_name))
+      if (!already) {
+        const saved = await db.addLogEntry(entry.recipe_name, 0)
+        if (saved) state.log.push(saved)
+      }
+    }
+    state.tab = 'log'
+    render()
+  })
+
+  // ── LOG SEARCH HANDLERS ──
+
+  document.getElementById('log-search')?.addEventListener('input', e => {
+    state.logSearch = e.target.value
+    render()
+    const el = document.getElementById('log-search')
+    if (el) { const p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
+  })
+  document.getElementById('log-search-clear')?.addEventListener('click', () => {
+    state.logSearch = ''
+    state.logTagFilter = null
+    state.logSearchFocused = false
+    render()
+  })
+  document.querySelectorAll('[data-log-tag]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.logTagFilter = el.dataset.logTag || null
+      render()
+    })
+  })
+
+  // Log from recipe search result
+  document.querySelectorAll('[data-log-recipe][data-log-recipe-name]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.logModal = { recipeId: el.dataset.logRecipe, recipeName: el.dataset.logRecipeName }
+      state.logSearch = ''
+      state.logSearchFocused = false
+      render()
+    })
+  })
+
+  // Add calories to a zero-calorie log entry
+  document.querySelectorAll('.log-add-cals-btn[data-add-cals-id]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const cals = prompt('How many calories?')
+      if (!cals || isNaN(parseInt(cals))) return
+      const id = el.dataset.addCalsId
+      const calories = parseInt(cals)
+      // Update in both today's log and viewed day log
+      const entry = [...(state.log || []), ...(state.viewedDayLog || [])].find(l => String(l.id) === String(id))
+      if (entry) {
+        entry.calories = calories
+        db.updateLogEntry(id, { calories })
+        render()
+      }
+    })
+  })
+
+  // Go to recipe from log entry
+  document.querySelectorAll('.log-recipe-link[data-go-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.tab = 'recipes'
+      state.expandedRecipe = el.dataset.goRecipe
+      render()
+    })
+  })
+
+  // Click recipe name in calendar to view it
+  document.querySelectorAll('[data-go-recipe]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      if (state.tab === 'calendar') {
+        state.calendarRecipePreview = String(el.dataset.goRecipe)
+        state.expandedRecipe = String(el.dataset.goRecipe)
+        render()
+      } else {
+        state.tab = 'recipes'
+        state.expandedRecipe = String(el.dataset.goRecipe)
+        render()
+        setTimeout(() => {
+          const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 100)
+      }
+    })
+  })
+
+  // Close calendar recipe preview modal
+  document.getElementById('cal-recipe-preview-close')?.addEventListener('click', () => {
+    state.calendarRecipePreview = null
+    state.expandedRecipe = null
+    render()
+  })
+  document.getElementById('cal-recipe-preview-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'cal-recipe-preview-bg') {
+      state.calendarRecipePreview = null
+      state.expandedRecipe = null
+      render()
+    }
+  })
+
+  // Add to Week from recipe card
+  document.querySelectorAll('[data-add-to-week]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.addToWeekModal = { recipeId: el.dataset.addToWeek, recipeName: el.dataset.addName, selectedDay: null, selectedSlot: null }
+      const d = new Date(); state.addToWeekModal.selectedDay = d.toISOString().slice(0, 10)
+      render()
+    })
+  })
+  document.querySelectorAll('[data-week-day]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      if (state.addToWeekModal) { state.addToWeekModal.selectedDay = el.dataset.weekDay; render() }
+    })
+  })
+  document.querySelectorAll('[data-week-slot]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      if (state.addToWeekModal) { state.addToWeekModal.selectedSlot = el.dataset.weekSlot; render() }
+    })
+  })
+  document.getElementById('add-week-cancel')?.addEventListener('click', () => { state.addToWeekModal = null; render() })
+  document.getElementById('add-week-bg')?.addEventListener('click', e => { if (e.target.id === 'add-week-bg') { state.addToWeekModal = null; render() } })
+  document.getElementById('add-week-save')?.addEventListener('click', async () => {
+    const m = state.addToWeekModal
+    if (!m || !m.selectedSlot) return
+    const saved = await db.saveMealPlanEntry(m.selectedDay, m.selectedSlot, m.recipeId, m.recipeName)
+    if (saved) {
+      if (!state.mealPlan) state.mealPlan = []
+      state.mealPlan.push(saved)
+    }
+    state.addToWeekModal = null
+    render()
+  })
+
+  // Manual text entry in calendar picker
+  document.getElementById('cal-manual-add')?.addEventListener('click', async () => {
+    const val = document.getElementById('cal-manual-input')?.value?.trim()
+    if (!val || !state.calendarSlot) return
+    const { date, slot } = state.calendarSlot
+    const saved = await db.saveMealPlanEntry(date, slot, null, val)
+    if (saved) state.mealPlan.push(saved)
+    state.calendarSlot = null; state.calendarTagFilter = null; render()
+  })
+  document.getElementById('cal-manual-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('cal-manual-add')?.click()
+  })
+
+
+  // History tab navigation
+  document.querySelectorAll('.cal-nav[data-history-nav]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.historyOffset += parseInt(el.dataset.historyNav)
+      if (state.historyOffset > 0) state.historyOffset = 0
+      render()
+    })
+  })
+
+
+  // ── GAME PLAN HANDLERS ──
+  document.querySelectorAll('.cal-game-plan-btn[data-game-plan-slot]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      const slot = el.dataset.gamePlanSlot
+      const targetTime = el.dataset.gamePlanTime
+      const date = el.dataset.gamePlanDate
+      const recipeId = el.dataset.gamePlanRid
+      const chatKey = date + '-' + slot
+      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
+      const hasPriorResult = state._lastGamePlan?.slot === slot && state._lastGamePlan?.date === date && state.gamePlanResult
+
+      if (hasPriorChat) {
+        // Has a saved chat — go straight to it
+        state.gamePlanView = 'chat'
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || targetTime, date, recipeId }
+        render()
+        setTimeout(() => {
+          const el = document.getElementById('gp-chat-messages')
+          if (el) el.scrollTop = el.scrollHeight
+        }, 50)
+      } else {
+        // No prior chat — show the generate screen
+        state.gamePlanResult = null
+        state.gamePlanLoading = false
+        state.gamePlanView = 'timeline'
+        state._lastGamePlan = { slot, date }
+        state.gamePlanModal = { slot, targetTime, date, recipeId }
+        render()
+      }
+    })
+  })
+  document.getElementById('gp-tweak')?.addEventListener('click', () => {
+    const { slot, targetTime } = state.gamePlanModal || {}
+    const result = state.gamePlanResult
+    if (!result) return
+    const chatKey = gpChatKey()
+    // If no prior chat, seed it with the timeline as the opening assistant message
+    if (!state.gamePlanChats[chatKey] || state.gamePlanChats[chatKey].length === 0) {
+      const slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
+      const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
+      state.gamePlanChats[chatKey] = [{
+        role: 'assistant',
+        content: 'Here\'s your ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+      }]
+    }
+    state.gamePlanView = 'chat'
+    render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
+  })
+
+  document.getElementById('gp-start-over')?.addEventListener('click', () => {
+    const { date, slot } = state.gamePlanModal || {}
+    const chatKey = (date || 'today') + '-' + (slot || 'Dinner')
+    state.gamePlanChats[chatKey] = []
+    state.gamePlanResult = null
+    state.gamePlanView = 'timeline'
+    state._lastGamePlan = null
+    render()
+  })
+
+  document.getElementById('gp-start-cooking')?.addEventListener('click', () => {
+    state.gamePlanView = 'fullscreen'; render()
+  })
+
+  document.getElementById('gp-exit-fullscreen')?.addEventListener('click', () => {
+    state.gamePlanView = 'timeline'; render()
+  })
+
+  document.getElementById('gp-tweak-from-fullscreen')?.addEventListener('click', () => {
+    const { slot, targetTime } = state.gamePlanModal || {}
+    const result = state.gamePlanResult
+    if (!result) return
+    const chatKey = gpChatKey()
+    if (!state.gamePlanChats[chatKey] || state.gamePlanChats[chatKey].length === 0) {
+      const slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
+      const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
+      state.gamePlanChats[chatKey] = [{
+        role: 'assistant',
+        content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+      }]
+    }
+    state.gamePlanView = 'chat'; render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
+  })
+
+  document.getElementById('gp-back-to-timeline')?.addEventListener('click', () => {
+    state.gamePlanView = 'timeline'
+    render()
+  })
+
+  // Send message in game plan chat
+  async function sendGpChatMessage(text) {
+    if (!text.trim() || state.gamePlanChatLoading) return
+    const chatKey = gpChatKey()
+    if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
+    state.gamePlanChats[chatKey].push({ role: 'user', content: text })
+    state.gamePlanChatLoading = true
+    render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
+    try {
+      const { slot, targetTime } = state.gamePlanModal || {}
+      const system = 'You are a cooking timeline assistant. The user has a meal plan and you are helping them adjust their cooking timeline. Be specific and practical. Keep responses concise. Reference actual times and steps from the timeline.'
+      const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, system })
+      })
+      const data = await resp.json()
+      const reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
+      state.gamePlanChats[chatKey].push({ role: 'assistant', content: reply })
+    } catch(e) {
+      state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Something went wrong — try again.' })
+    }
+    state.gamePlanChatLoading = false
+    render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
+    // Auto-save to Supabase after each message
+    saveGamePlanToDb()
+  }
+
+  document.getElementById('gp-chat-send')?.addEventListener('click', () => {
+    const input = document.getElementById('gp-chat-input')
+    const text = input?.value?.trim()
+    if (text) { input.value = ''; sendGpChatMessage(text) }
+  })
+  document.getElementById('gp-chat-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      const text = e.target.value?.trim()
+      if (text) { e.target.value = ''; sendGpChatMessage(text) }
+    }
+  })
+  document.getElementById('gp-close')?.addEventListener('click', () => {
+    state.gamePlanModal = { ...state.gamePlanModal, _open: false }
+    state.gamePlanModal = false
+    render()
+  })
+  document.getElementById('game-plan-bg')?.addEventListener('click', e => {
+    if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; render() }
+  })
+  document.getElementById('gp-generate')?.addEventListener('click', async () => {
+    const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
+    const notes = document.getElementById('gp-notes')?.value?.trim() || ''
+    const { slot, date, recipeId } = state.gamePlanModal
+    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes }
+    state._lastGamePlan = { slot, date, targetTime: timeVal }
+    state.gamePlanLoading = true
+    state.gamePlanResult = null
+    render()
+    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
+    state.gamePlanLoading = false
+    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    // Seed the chat thread and go straight to it
+    const chatKey = date + '-' + slot
+    const slotLabel = slot === 'Day' ? 'whole day' : slot
+    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    const seedMessages = []
+    if (notes) seedMessages.push({ role: 'user', content: notes })
+    seedMessages.push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
+    state.gamePlanChats[chatKey] = seedMessages
+    state.gamePlanView = 'chat'
+    saveGamePlanToDb()
+    render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
+  })
+  document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
+    const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
+    const { slot, date, recipeId, notes } = state.gamePlanModal
+    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
+    state._lastGamePlan = { slot, date, targetTime: timeVal }
+    state.gamePlanLoading = true
+    state.gamePlanResult = null
+    render()
+    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
+    state.gamePlanLoading = false
+    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    // Re-seed chat thread with new timeline
+    const chatKey = date + '-' + slot
+    const slotLabel = slot === 'Day' ? 'whole day' : slot
+    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    const seedMessages = []
+    if (notes) seedMessages.push({ role: 'user', content: notes })
+    seedMessages.push({ role: 'assistant', content: 'Here\'s your updated ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
+    state.gamePlanChats[chatKey] = seedMessages
+    state.gamePlanView = 'chat'
+    saveGamePlanToDb()
+    render()
+    setTimeout(() => {
+      const el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+    }, 50)
+  })
+
+  // ── CHAT HANDLERS ──
+  document.getElementById('chat-send')?.addEventListener('click', () => {
+    const input = document.getElementById('chat-input')
+    const msg = input?.value?.trim()
+    if (msg) { input.value = ''; sendChatMessage(msg) }
+  })
+  document.getElementById('chat-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      const msg = e.target.value?.trim()
+      if (msg) { e.target.value = ''; sendChatMessage(msg) }
+    }
+  })
+  document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
+    el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
+  })
+  document.getElementById('chat-clear-context')?.addEventListener('click', () => {
+    state.chatRecipeContext = null; render()
+  })
+
+  // Back arrow and recipe name link — both jump back to the recipe card
+  const goToRecipeFromChat = () => {
+    if (!state.chatRecipeContext) return
+    const rid = String(state.chatRecipeContext.id)
+    state.tab = 'recipes'
+    state.expandedRecipe = rid
+    localStorage.setItem('mep_tab', 'recipes')
+    render()
+    setTimeout(() => {
+      const card = document.querySelector('[data-rid="' + rid + '"]')
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }
+  document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
+  document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
+  document.getElementById('chat-clear')?.addEventListener('click', () => {
+    const rid = state.chatRecipeContext?.id
+    if (rid) {
+      state.recipeChatMessages[rid] = []
+      db.saveRecipeChat(rid, [])
+    } else {
+      state.chatMessages = []
+    }
+    render()
+  })
+
+  // Tappable recipe links inside AI chat bubbles
+  document.querySelectorAll('.chat-recipe-link[data-go-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.tab = 'recipes'
+      state.expandedRecipe = String(el.dataset.goRecipe)
+      localStorage.setItem('mep_tab', 'recipes')
+      render()
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    })
+  })
+}
+
+// ── START ─────────────────────────────────────────────────────────────────────
+init()
+
+// Re-fetch from Supabase when user switches back to this tab
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
+    state.recipes = recipes.map(normalizeRecipe)
+    state.allTags = allTags || []
+
+    // Purge checked items older than 1 hour on tab focus too
+    purgeStaleCheckedItems()
+
+    // Don't re-render if a text-entry modal is open — would wipe typed text
+    // (drafts are saved per-keystroke in state.*ModalDraft instead)
+    if (!state.pasteModal && !state.addRecipeModal) render()
+
+    // Check clipboard for a recipe URL
+    try {
+      const text = await navigator.clipboard.readText()
+      const trimmed = (text || '').trim()
+      const isUrl = trimmed.startsWith('http') && trimmed.length < 500
+      const alreadyShown = state._lastClipboardUrl === trimmed
+      if (isUrl && !alreadyShown && !state.pasteModal && !state.shareLoading) {
+        state._lastClipboardUrl = trimmed
+        state.clipboardBanner = trimmed
+        render()
+      }
+    } catch (e) {
+      // Clipboard permission denied - that is fine
+    }
+  }
+})
