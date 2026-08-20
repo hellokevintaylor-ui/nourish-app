@@ -2766,10 +2766,10 @@ Rules:
 - ALL recipes must be ready by ${targetTime}
 - No markdown, no backticks, ONLY the JSON array\``
 
-  try {
-    let resp, attempts = 0
-    while (attempts < 3) {
-      resp = await fetch('/api/chat', {
+  let gpResp, gpAttempts = 0
+  while (gpAttempts < 3) {
+    try {
+      gpResp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2778,60 +2778,48 @@ Rules:
           messages: [{ role: 'user', content: prompt }]
         })
       })
-      if (resp.ok) break
-      if (resp.status === 429 || resp.status === 529) {
-        await new Promise(r => setTimeout(r, 2000 * (attempts + 1)))
-        attempts++
+      if (gpResp.ok) break
+      if (gpResp.status === 429 || gpResp.status === 529) {
+        await new Promise(r => setTimeout(r, 2000 * (gpAttempts + 1)))
+        gpAttempts++
         continue
       }
       break
-    }
-    const data = await resp.json()
-    if (!resp.ok) {
-      console.error('Game plan API error:', resp.status, data)
+    } catch(e) {
+      console.error('Game plan fetch error:', e)
       return null
     }
-    const text = data.content?.[0]?.text?.trim() || ''
-    console.log('Game plan raw response:', text.slice(0, 300))
-    const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
-    const arrayMatch = clean.match(/\[[\s\S]*\]/)
-    if (!arrayMatch) {
-      console.error('No JSON array found in response:', clean.slice(0, 200))
-      return null
-    }
-    const steps = JSON.parse(arrayMatch[0])
-
-    // Calculate times ourselves working BACKWARD from targetTime
-    // Work backward: dinner time minus total duration of each step from the end
-    const dinnerMins = gpParseTime(targetTime)
-    const now = new Date()
-    const nowMins = now.getHours() * 60 + now.getMinutes()
-    const isTodayMeal = date === now.toISOString().slice(0, 10)
-
-    // Calculate cumulative time from end, assign start times
-    const result = []
-    let cursor = dinnerMins
-
-    // Process steps in reverse to assign times backward from dinner
-    const reversed = [...steps].reverse()
-    for (const s of reversed) {
-      const total = (s.active_min || 0) + (s.passive_min || 0)
-      cursor -= total
-      // Show actual time — label as "Start now" if it's already past for today's meal
-      result.unshift({
-        time: gpFormatTime(cursor),
-        step: s.step
-      })
-    }
-
-    // Add serving step at dinner time
-    result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
-
-    return result
-  } catch(e) {
-    console.error('Game plan error:', e)
+  }
+  if (!gpResp || !gpResp.ok) {
+    console.error('Game plan API failed:', gpResp?.status)
     return null
   }
+  let gpData
+  try { gpData = await gpResp.json() } catch(e) { return null }
+  const gpText = (gpData.content?.[0]?.text || '').trim()
+  console.log('Game plan raw response:', gpText.slice(0, 300))
+  const gpClean = gpText.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+  const gpMatch = gpClean.match(/\[[\s\S]*\]/)
+  if (!gpMatch) {
+    console.error('No JSON array found:', gpClean.slice(0, 200))
+    return null
+  }
+  let gpSteps
+  try { gpSteps = JSON.parse(gpMatch[0]) } catch(e) {
+    console.error('JSON parse error:', e)
+    return null
+  }
+  const gpDinnerMins = gpParseTime(targetTime)
+  const gpResult = []
+  let gpCursor = gpDinnerMins
+  const gpReversed = [...gpSteps].reverse()
+  for (const s of gpReversed) {
+    const total = (s.active_min || 0) + (s.passive_min || 0)
+    gpCursor -= total
+    gpResult.unshift({ time: gpFormatTime(gpCursor), step: s.step })
+  }
+  gpResult.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
+  return gpResult
 }
 
 function renderTagOrganizerModal() {
@@ -5874,6 +5862,7 @@ async function estimateCaloriesAI(description) {
     setTimeout(() => {
       const el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
     }, 50)
     saveGamePlanToDb()
   }
