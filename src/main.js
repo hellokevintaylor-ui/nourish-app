@@ -3085,6 +3085,7 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
 
 
 function renderGamePlanResult(gp, blackHeader, wrapFn) {
+  const gpEditing = state.gamePlanEditing || false
   const { slot, targetTime, date, result, view } = gp
   const slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
   const timeVal = targetTime || '7:00 PM'
@@ -3184,7 +3185,6 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
 
   const tabContent = gpTab === 'ingredients' ? ingredientsTab : gpTab === 'plan' ? planTab : notesTab
 
-  const gpEditing = state.gamePlanEditing || false
   const header = blackHeader(
     slotLabel + ' Game Plan',
     dateLabel + ' · eat at ' + esc(timeVal),
