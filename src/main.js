@@ -854,14 +854,7 @@ function render() {
         </div>
       </div>
 
-      <!-- PERMANENT ACTION ROW -->
-      <div style="background:var(--white);padding:8px 14px;display:flex;flex-wrap:nowrap;gap:6px;border-bottom:0.5px solid var(--border);overflow-x:auto">
-        <button class="icon-btn" id="clip-url-btn" style="border-color:#1a1a1a;color:#1a1a1a;font-weight:700">📎 Clip</button>
-        <button class="icon-btn" id="paste-btn">📋 Paste</button>
-        <button class="icon-btn" id="force-update-btn">↻ Update</button>
-        <button class="icon-btn" id="sync-toggle">🔗 Sync</button>
-        <button class="icon-btn ${state.showGoals?'active':''}" id="goals-toggle" style="${state.showGoals?'border-color:var(--accent);color:var(--accent);':'border-color:#9d174d;color:#9d174d;'}">⚙️ Goals</button>
-      </div>
+
 
       <!-- GOALS PANEL -->
       ${state.showGoals ? `
@@ -973,13 +966,12 @@ function render() {
 
       <!-- TABS -->
       <div class="tabs">
-        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">&#127859; Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
-        <div class="tab ${state.tab==='pantry'?'active':''}" data-tab="pantry">🧺 Pantry${state.pantry.length>0?'<span class="tab-badge">'+state.pantry.length+'</span>':''}</div>
-        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">🛒 List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
-        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">&#128221; Log</div>
-        <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">📅 Week</div>
-        <div class="tab ${state.tab==='tags'?'active':''}" data-tab="tags">🏷 Tags</div>
-        <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">💬 AI</div>
+        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
+        <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">Week</div>
+        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">Log</div>
+        <div class="tab" id="nav-update-btn">Update</div>
+        <div class="tab" id="nav-sync-btn">Sync</div>
       </div>
 
 
@@ -1289,6 +1281,52 @@ function renderSearchBar(id, value, placeholder) {
   '</div>'
 }
 
+function renderTonightCard() {
+  const today = new Date().toISOString().slice(0,10)
+  // Prefer Dinner, fall back to Lunch
+  let entries = getMealPlanEntries(today, 'Dinner')
+  let slotLabel = 'Dinner'
+  if (!entries.length) {
+    entries = getMealPlanEntries(today, 'Lunch')
+    slotLabel = 'Lunch'
+  }
+
+  if (!entries.length) {
+    // Empty state
+    return '<div style="border:1.5px dashed var(--border-strong);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🍽</div>' +
+      '<div>' +
+        '<div style="font-size:13px;color:var(--text-2)">Nothing planned for tonight.</div>' +
+        '<div class="tonight-plan-nav" style="font-size:12px;font-weight:700;color:var(--black);margin-top:2px;cursor:pointer">Plan dinner →</div>' +
+      '</div>' +
+    '</div>'
+  }
+
+  // Get recipe names
+  const recipeNames = entries.map(e => {
+    const r = state.recipes.find(x => x.id === e.recipe_id)
+    return r ? r.name : e.recipe_name || 'Recipe'
+  })
+
+  const nameDisplay = recipeNames.length === 1
+    ? recipeNames[0]
+    : recipeNames.join(' · ')
+
+  // For cook now — if single recipe go to cook mode, if multiple open game plan
+  const isSingle = entries.length === 1
+  const singleId = isSingle ? entries[0].recipe_id : null
+
+  return '<div style="background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:14px">' +
+    '<div style="font-size:10px;font-weight:700;letter-spacing:0.7px;color:rgba(255,255,255,0.38);text-transform:uppercase;margin-bottom:6px">Tonight's plan · ' + slotLabel + '</div>' +
+    '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:3px;letter-spacing:-0.3px;line-height:1.3">' + esc(nameDisplay) + '</div>' +
+    '<div style="font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px">' + entries.length + ' recipe' + (entries.length>1?'s':'') + ' planned</div>' +
+    (isSingle
+      ? '<button class="ra-btn" data-cook-mode="' + singleId + '" style="background:var(--accent);color:white;border-color:var(--accent);font-size:12px;font-weight:600;padding:7px 16px;border-radius:8px">Cook now</button>'
+      : '<button class="tonight-plan-btn" data-tonight-slot="' + slotLabel + '" style="background:var(--accent);color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Game Plan →</button>') +
+  '</div>'
+}
+
+
 function renderRecipes() {
   const search = (state.recipeSearch || '').toLowerCase()
   const activeTags = state.activeTagFilters['recipe']
@@ -1342,13 +1380,15 @@ function renderRecipes() {
 
   return `
     <div class="tab-content">
+      ${renderTonightCard()}
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <div style="display:flex;gap:6px">
-          <button class="add-btn" id="scan-recipe-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">Scan</button>
-          <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">Clip URL</button>
+          <button class="add-btn" id="scan-recipe-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Scan</button>
+          <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Clip</button>
+          <button class="add-btn" id="paste-recipe-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Paste</button>
           <button class="add-btn" id="add-recipe-btn">+ Add</button>
-          <button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--forest2)">🏷 Tags</button>
+          <button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light);color:var(--accent);border:1.5px solid var(--accent-mid)">Tags</button>
         </div>
       </div>
       <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
@@ -1502,6 +1542,7 @@ function renderShopItems(items) {
 }
 
 function renderShop() {
+  const tonightCard = renderTonightCard()
   const locationTags = state.activeTagFilters['location']
   const search = (state.shopSearch || '').toLowerCase()
 
@@ -1516,6 +1557,8 @@ function renderShop() {
   const done = state.shopList.filter(i => i.have)
 
   return '<div class="tab-content">' +
+    tonightCard +
+    '<button id="shop-view-pantry-btn" style="width:100%;margin-bottom:12px;padding:10px;background:var(--white);border:1.5px solid var(--border-strong);border-radius:10px;font-size:13px;font-weight:600;color:var(--text-2);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px">🧺 View Pantry</button>' +
     '<div class="shop-header">' +
       '<div class="section-title">Shopping List</div>' +
       '<div style="display:flex;gap:6px">' +
@@ -1735,6 +1778,7 @@ function renderLogInner() {
   }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
+    '<button id="log-goals-btn" style="width:100%;margin-bottom:12px;padding:10px 14px;background:var(--black);color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">Calories · Weight · Activity →</span></button>' +
 
     // 1. Day navigation + today summary banner
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
@@ -3863,10 +3907,30 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       const recipeId = el.dataset.cookMode
+      // Expand the recipe first if on recipes tab
+      if (state.tab === 'recipes') state.expandedRecipe = recipeId
       state.cookMode = { recipeId, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
       render()
       // Start fetching step amounts immediately in background
       fetchStepAmounts(recipeId)
+      // Scroll to the recipe card
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + recipeId + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 80)
+    })
+  })
+
+  // Tonight's plan — "Plan dinner →" navigates to Week tab
+  document.querySelectorAll('.tonight-plan-nav').forEach(el => {
+    el.addEventListener('click', () => { state.tab = 'calendar'; render() })
+  })
+  // Tonight's plan — Game Plan button for multi-recipe dinner
+  document.querySelectorAll('[data-tonight-slot]').forEach(el => {
+    el.addEventListener('click', () => {
+      const today = new Date().toISOString().slice(0,10)
+      state.gamePlanModal = { date: today, slot: el.dataset.tonightSlot, result: null, notes: '', generating: false, view: 'form', fullscreen: false }
+      render()
     })
   })
   document.getElementById('cook-mode-close')?.addEventListener('click', () => {
@@ -4185,6 +4249,9 @@ function bindEvents() {
 
   document.getElementById('shop-clear')?.addEventListener('click', async () => {
     if (confirm('Clear shopping list?')) { state.shopList = []; await db.clearShopList(); render() }
+  })
+  document.getElementById('shop-view-pantry-btn')?.addEventListener('click', () => {
+    state.tab = 'pantry'; render()
   })
   document.getElementById('shop-copy-btn')?.addEventListener('click', () => {
     const need = state.shopList.filter(i => !i.have)
@@ -4647,6 +4714,10 @@ async function estimateCaloriesAI(description) {
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
 
   // Dismiss recipe search on outside tap
+  document.getElementById('log-goals-btn')?.addEventListener('click', () => {
+    state.showGoals = !state.showGoals; state.showSync = false; render()
+    if (state.showGoals) setTimeout(() => document.querySelector('.goals-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  })
   document.getElementById('log-tab-content')?.addEventListener('click', e => {
     if (!e.target.closest('.log-search-wrap') && state.logSearch) {
       state.logSearch = ''; render()
@@ -4678,6 +4749,16 @@ async function estimateCaloriesAI(description) {
 
   // Paste modal
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('paste-recipe-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('nav-update-btn')?.addEventListener('click', async () => {
+    const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
+    state.recipes = recipes.map(normalizeRecipe)
+    state.allTags = allTags || []
+    render()
+  })
+  document.getElementById('nav-sync-btn')?.addEventListener('click', () => {
+    state.showSync = !state.showSync; state.showGoals = false; render()
+  })
 
   // Clip URL modal
   document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
