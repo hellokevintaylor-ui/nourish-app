@@ -2652,6 +2652,15 @@ function renderChat() {
 }
 
 
+function gpNormalizeTime(t) {
+  if (!t) return t
+  // Remove seconds: "7:30:00 PM" -> "7:30 PM"
+  return t.replace(/(\d+:\d+):\d+\s*(AM|PM)/i, '$1 $2')
+          .replace(/(\d+):(00)\s*(AM|PM)/i, '$1:00 $3')
+          .trim()
+}
+
+
 function gpParseTime(t) {
   const m = (t||'').match(/(\d+):(\d+)\s*(AM|PM)/i)
   if (!m) return 0
@@ -2734,7 +2743,7 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
 SERVE AT: ${targetTime} — this is the FIXED target. The last cooking step must finish at ${targetTime}. Work BACKWARDS from this time.
 DATE: ${mealDate}
 RECIPES: ${recipeNames.join(', ')}
-${notes ? 'USER CONSTRAINTS (hard requirements — the schedule MUST respect these):\n' + notes : ''}
+${notes ? 'USER CONSTRAINTS — these are HARD requirements, not suggestions. The schedule MUST respect every one of these:\n' + notes + '\n\nIMPORTANT: If the user says they can start at a certain time, NO step should appear before that time. If they have a gap (e.g. free now for an hour, then back at 7pm), schedule prep steps during the first window and cooking steps during the second window.' : ''}
 
 FULL RECIPE DETAILS:
 ${mealText}
@@ -5805,7 +5814,7 @@ async function estimateCaloriesAI(description) {
         if (!/AM|PM/.test(norm)) norm = norm.trim() + ' PM'
       }
       console.log('Captured meal time:', captured, '->', norm)
-      state.gamePlanModal = { ...state.gamePlanModal, targetTime: norm }
+      state.gamePlanModal = { ...state.gamePlanModal, targetTime: gpNormalizeTime(norm) }
       if (state.gamePlanModal.date && state.gamePlanModal.slot) {
         localStorage.setItem('mep_dinner_time', norm)
       }
