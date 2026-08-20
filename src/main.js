@@ -2746,37 +2746,34 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
     .join('\n---\n')
     .slice(0, 2000) // last ~2000 chars of assistant responses = the agreed plan
 
-  var prompt = `You are a professional chef generating a detailed step-by-step cooking plan.
+  var prompt = `You are a professional chef generating a detailed step-by-step cooking timeline.
 
-SERVE AT: ${targetTime} — this is fixed.
-CURRENT TIME: ${currentTime}
+MEAL DATE: ${mealDate}
+SERVE AT: ${targetTime} on ${mealDate}
 RECIPES: ${recipeNames.join(', ')}
 
-THE AGREED TIMING FRAMEWORK (from planning chat — you MUST honor these time anchors):
+PLANNING CONVERSATION (the timing framework already agreed on — honor these time anchors exactly):
 ${planningChat || notes}
 
 FULL RECIPE DETAILS:
 ${mealText}
 
-YOUR JOB:
-The user and the AI already agreed on a timing framework above. Your job is to take that framework and fill in the detailed step-by-step cooking steps that fit within it. 
+YOUR JOB: Fill in the detailed steps that match the agreed timing framework. The plan may span multiple time windows (e.g. morning prep + afternoon cooking). Use the exact scheduled_time from the agreed framework.
 
-For example if the framework says "morning prep", output the detailed morning prep steps with small durations. If it says "start chicken at 5pm", output chicken steps that begin around that time.
-
-Return a JSON array where each step has a scheduled_time (the actual clock time this step starts, matching the agreed framework) and a duration:
+CRITICAL RULES:
+- NEVER refuse or flag conflicts — just output the JSON regardless of current time
+- The plan may be for tomorrow or another day — do not compare to current time
+- scheduled_time must match the times discussed in the planning conversation
+- Include exact quantities in every step
+- Label which recipe for each step
+- Return ONLY a valid JSON array, no explanation, no markdown
 
 [
-  {"step": "Morning prep: Set up 3 bowls — 1 cup flour, 3 beaten eggs, 2 cups panko mixed with 2oz Parmigiano-Reggiano", "scheduled_time": "7:00 AM", "active_min": 5, "passive_min": 0},
-  {"step": "Morning prep: Pound 8 chicken cutlets to 1/4 inch, season with salt and pepper, dredge through flour/egg/panko, lay on parchment-lined baking sheet", "scheduled_time": "7:05 AM", "active_min": 10, "passive_min": 0},
-  {"step": "For Broccoli: Heat oven to 450°F, toss 1.5 lbs broccoli florets with 3 tbsp olive oil, salt, pepper", "scheduled_time": "5:15 PM", "active_min": 5, "passive_min": 20},
-  {"step": "For Chicken: Fill large skillet with 1/4 inch vegetable oil, heat over high until shimmering (~375°F)", "scheduled_time": "5:30 PM", "active_min": 5, "passive_min": 0}
-]
-
-Rules:
-- scheduled_time must match the agreed framework — don't invent new times
-- Include exact quantities inline with every step
-- Label which recipe for each step
-- No markdown, no backticks, ONLY the JSON array\``
+  {"step": "Morning prep: Pound 8 chicken cutlets to 1/4 inch, season with salt and pepper", "scheduled_time": "7:00 AM", "active_min": 8, "passive_min": 0},
+  {"step": "Morning prep: Set up breading station — flour, beaten eggs, panko mixed with 2oz Parmigiano-Reggiano in 3 separate bowls", "scheduled_time": "7:08 AM", "active_min": 5, "passive_min": 0},
+  {"step": "For Broccoli: Preheat oven to 450°F, toss 1.5 lbs broccoli florets with 3 tbsp olive oil, salt, pepper on sheet pan", "scheduled_time": "5:30 PM", "active_min": 5, "passive_min": 20},
+  {"step": "For Chicken: Heat large skillet over medium-high, add oil", "scheduled_time": "5:35 PM", "active_min": 3, "passive_min": 0}
+]\``
 
   let gpResp, gpAttempts = 0
   while (gpAttempts < 3) {
@@ -2806,10 +2803,10 @@ Rules:
     console.error('Game plan API failed:', gpResp?.status)
     return null
   }
-  let gpData
+  var gpData
   try { gpData = await gpResp.json() } catch(e) { return null }
   var gpText = (gpData.content?.[0]?.text || '').trim()
-  console.log('Game plan raw response:', gpText.slice(0, 300))
+  console.log('Game plan raw response:', gpText.slice(0, 600))
   var gpClean = gpText.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
   var gpMatch = gpClean.match(/\[[\s\S]*\]/)
   if (!gpMatch) {
