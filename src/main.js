@@ -939,31 +939,6 @@ function render() {
         <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--accent);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
 
       </div>` : ''}
-      <!-- SYNC PANEL -->
-      ${state.showSync ? `
-      <div class="sync-panel">
-        <div class="sync-title">Sync Devices</div>
-        <div class="sync-hint">Use the same Account ID on all your devices.</div>
-        <div class="sync-id-box">
-          <div class="sync-id-label">Your Account ID</div>
-          <div class="sync-id-value" id="sync-id-display">${getUserId()}</div>
-          <button class="sync-copy-btn" id="sync-copy-btn">Copy</button>
-        </div>
-        <div class="sync-id-box" style="flex-direction:column;align-items:flex-start;gap:8px">
-          <div class="sync-id-label">Add to iPhone Home Screen</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.5">Open this link in Safari, then Share -> Add to Home Screen. Your Account ID saves automatically.</div>
-          <button class="sync-copy-btn" id="sync-bookmark-btn">Copy Bookmark Link</button>
-        </div>
-        <div class="sync-switch-box">
-          <div class="sync-id-label">Switch Account ID</div>
-          <div class="sync-input-row">
-            <input id="sync-input" placeholder="Paste Account ID here..." />
-            <button class="add-btn" id="sync-switch-btn">Switch</button>
-          </div>
-          <div class="sync-warning">[!] This will replace your current data with that account's data.</div>
-        </div>
-      </div>` : ""}
-
       <!-- TABS -->
       <div class="tabs">
         <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
@@ -978,6 +953,29 @@ function render() {
 
       <!-- CONTENT -->
       <div class="content">
+        ${state.showSync ? `
+        <div class="sync-panel">
+          <div class="sync-title">Sync Devices</div>
+          <div class="sync-hint">Use the same Account ID on all your devices.</div>
+          <div class="sync-id-box">
+            <div class="sync-id-label">Your Account ID</div>
+            <div class="sync-id-value" id="sync-id-display">${getUserId()}</div>
+            <button class="sync-copy-btn" id="sync-copy-btn">Copy</button>
+          </div>
+          <div class="sync-id-box" style="flex-direction:column;align-items:flex-start;gap:8px">
+            <div class="sync-id-label">Add to iPhone Home Screen</div>
+            <div style="font-size:11px;color:var(--text-3);line-height:1.5">Open this link in Safari, then Share → Add to Home Screen. Your Account ID saves automatically.</div>
+            <button class="sync-copy-btn" id="sync-bookmark-btn">Copy Bookmark Link</button>
+          </div>
+          <div class="sync-switch-box">
+            <div class="sync-id-label">Switch Account ID</div>
+            <div class="sync-input-row">
+              <input id="sync-input" placeholder="Paste Account ID here..." />
+              <button class="add-btn" id="sync-switch-btn">Switch</button>
+            </div>
+            <div class="sync-warning">[!] This will replace your current data with that account's data.</div>
+          </div>
+        </div>` : ''}
         ${state.loading ? '<div class="loading"><div class="spinner"></div><div>Loading your data…</div></div>' : ''}
         ${!state.loading && state.tab === 'recipes' ? renderRecipes() : ''}
         ${!state.loading && state.tab === 'pantry'  ? renderPantry()  : ''}
@@ -4751,10 +4749,19 @@ async function estimateCaloriesAI(description) {
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
   document.getElementById('paste-recipe-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
   document.getElementById('nav-update-btn')?.addEventListener('click', async () => {
-    const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
-    state.recipes = recipes.map(normalizeRecipe)
-    state.allTags = allTags || []
-    render()
+    const el = document.getElementById('nav-update-btn')
+    if (el) el.textContent = 'Updating...'
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map(r => r.unregister()))
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys()
+        await Promise.all(keys.map(k => caches.delete(k)))
+      }
+    } catch(e) {}
+    window.location.reload(true)
   })
   document.getElementById('nav-sync-btn')?.addEventListener('click', () => {
     state.showSync = !state.showSync; state.showGoals = false; render()
