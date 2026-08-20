@@ -3006,14 +3006,15 @@ async function initGamePlanChat() {
 
   let opening
   if (recipes.length === 0) {
-    opening = 'I\'d like to help you plan your ' + (slot||'meal').toLowerCase() + '. What are you making, and what time do you want to eat?'
+    opening = 'I\'d like to help you plan your ' + (slot||'meal').toLowerCase() + ' at ' + targetTime + '. What are you making? Or say "generate it" and I\'ll build a plan.'
   } else {
     const names = recipes.map(r => r.name).join(' and ')
     const totalActiveMin = recipes.reduce((sum, r) => sum + (r.recipe?.prepTime?.active_min || 0), 0)
-    const prepHint = totalActiveMin > 0 ? ' (about ' + totalActiveMin + ' min of active cooking)' : ''
-    opening = 'I see you have ' + names + ' planned for ' + (slot||'dinner').toLowerCase() + ' at ' + targetTime + prepHint + '. ' +
-      'Before I build the timeline — when can you start cooking? Any prep already done, or anything to work around? ' +
-      'Or just say "generate it" and I\'ll build a plan right now.'
+    const prepHint = totalActiveMin > 0 ? ' (~' + totalActiveMin + ' min active cooking)' : ''
+    opening = 'I\'ll plan ' + names + ' for ' + (slot||'dinner').toLowerCase() + ' at ' + targetTime + prepHint + '. ' +
+      'I\'ll assume you have all ingredients ready and will work backwards so everything is hot and fresh at ' + targetTime + '. ' +
+      'Anything specific to factor in — like a window when you can\'t be in the kitchen, something already prepped, or kids eating earlier? ' +
+      'Otherwise just say "generate it" and I\'ll build your timeline now.'
   }
 
   state.gamePlanChats[chatKey] = [{ role: 'assistant', content: opening }]
@@ -4239,8 +4240,22 @@ function bindEvents() {
   document.querySelectorAll('[data-tonight-slot]').forEach(el => {
     el.addEventListener('click', () => {
       const today = new Date().toISOString().slice(0,10)
-      state.gamePlanModal = { date: today, slot: el.dataset.tonightSlot, result: null, notes: '', generating: false, view: 'form', fullscreen: false }
+      const slot = el.dataset.tonightSlot
+      const defaultTime = slot === 'Lunch' ? '12:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+      // Check for saved plan
+      const key = today + '-' + slot
+      const saved = state.savedGamePlans[key]
+      if (saved && saved.result) {
+        state.gamePlanModal = { ...saved }
+        state.gamePlanResult = saved.result
+      } else {
+        state.gamePlanResult = null
+        state.gamePlanModal = { date: today, slot, targetTime: defaultTime, result: null, notes: '', generating: false, view: 'planning-chat' }
+      }
+      // Navigate to Week tab so the inline game plan is visible
+      state.tab = 'calendar'
       render()
+      if (!state.gamePlanModal?.result) initGamePlanChat()
     })
   })
   document.getElementById('cook-mode-close')?.addEventListener('click', () => {
@@ -5774,7 +5789,9 @@ async function estimateCaloriesAI(description) {
         }).join('\n')
         system = 'You are a friendly cooking assistant helping plan a meal.' +
           (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
-          ' Ask one or two questions at a time about when they can start, any prep done, any constraints. Reference the actual recipes. Keep it brief. When ready, remind them to say "generate it" or tap the button.'
+          ' ALWAYS ASSUME: (1) the user has all ingredients already, never ask about this. (2) Work backwards from the target meal time so everything is hot and ready at once. ' +
+          ' Only ask about: when they can start cooking, any prep already done, any scheduling constraints like kids eating earlier or a window when they can\'t cook. ' +
+          ' One or two questions max. Keep it brief. When ready, remind them to say "generate it" or tap the button.'
       }
       const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
       const resp = await fetch('/api/chat', {
@@ -5823,10 +5840,17 @@ async function estimateCaloriesAI(description) {
   document.getElementById('gp-generate')?.addEventListener('click', gpGenerateHandler)
 
 async function gpGenerateHandler() {
-    const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
-    const notes = document.getElementById('gp-notes')?.value?.trim() || ''
     if (!state.gamePlanModal) return
     const { slot, date, recipeId } = state.gamePlanModal
+    // Time: from input if it exists, otherwise from state
+    const timeInput = document.getElementById('gp-dinner-time')?.value?.trim()
+    const timeVal = timeInput || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    // Notes: from input if exists, otherwise summarize chat conversation
+    const notesInput = document.getElementById('gp-notes')?.value?.trim()
+    const chatKey = date + '-' + slot
+    const chatHistory = state.gamePlanChats[chatKey] || []
+    const chatNotes = chatHistory.filter(m => m.role === 'user').map(m => m.content).join('. ')
+    const notes = notesInput || chatNotes || state.gamePlanModal.notes || ''
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
@@ -5843,10 +5867,9 @@ async function gpGenerateHandler() {
     const chatKey = date + '-' + slot
     const slotLabel = slot === 'Day' ? 'whole day' : slot
     const timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
-    const seedMessages = []
-    if (notes) seedMessages.push({ role: 'user', content: notes })
-    seedMessages.push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
-    state.gamePlanChats[chatKey] = seedMessages
+    // Preserve existing chat history, just add the result as an assistant message
+    if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
+    state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
     state.gamePlanView = 'result'
     // Persist plan so it survives close/reopen
     const planKey = date + '-' + slot
