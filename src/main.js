@@ -3069,8 +3069,8 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
         '<input id="gp-chat-input" placeholder="e.g. I can start at 5pm, already made the rice..." style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none" ' + (chatLoading||generating?'disabled':'') + ' />' +
         '<button id="gp-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit" ' + (chatLoading||generating?'disabled':'') + '>Send</button>' +
       '</div>' +
-      '<button id="gp-generate" style="width:100%;padding:9px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit" ' + (generating?'disabled':'') + '>' +
-        (generating ? '⏳ Generating...' : '📋 Generate the plan now') +
+      '<button id="gp-generate" style="width:100%;padding:9px;background:' + (generating?'#f2f2f0':'white') + ';color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' +
+        (generating ? '⏳ Building your timeline...' : '📋 Generate the plan now') +
       '</button>' +
     '</div>'
 
@@ -5806,11 +5806,16 @@ async function estimateCaloriesAI(description) {
       state.gamePlanChatLoading = false
       state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
       render()
-      const { slot, date, recipeId } = state.gamePlanModal
-      const result = await generateGamePlan(slot, targetTime, date, recipeId, convoNotes)
-      const finalResult = result || [{ time: '?', step: 'Could not generate — check connection and try again.' }]
+      const { slot: gpSlot, date: gpDate, recipeId: gpRid } = state.gamePlanModal
+      let gpResult = null
+      try {
+        gpResult = await generateGamePlan(gpSlot, targetTime, gpDate, gpRid, convoNotes)
+      } catch(e) {
+        console.error('gp generate error:', e)
+      }
+      const finalResult = gpResult || [{ time: '?', step: 'Could not generate — check connection and try again.' }]
       state.gamePlanResult = finalResult
-      state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false, targetTime }
+      if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false, targetTime }
       const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       state.savedGamePlans[key] = { ...state.gamePlanModal }
       state.gamePlanTab = 'ingredients'
@@ -5910,9 +5915,15 @@ async function gpGenerateHandler() {
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
-    state.gamePlanLoading = false
-    state.gamePlanModal = { ...state.gamePlanModal, generating: false }
+    let result = null
+    try {
+      result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
+    } catch(e) {
+      console.error('generateGamePlan error:', e)
+    } finally {
+      state.gamePlanLoading = false
+      if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, generating: false }
+    }
     const finalResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     state.gamePlanResult = finalResult
     // Also store result IN the modal so inline renderers can see it
