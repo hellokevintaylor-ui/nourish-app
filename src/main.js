@@ -2653,6 +2653,7 @@ function renderChat() {
 
 
 async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
+  console.log('generateGamePlan called:', { slot, targetTime, date, recipeId, notesLen: (notes||'').length })
   const isWholeDay = slot === 'Day'
 
   // Helper — build full recipe detail, trimming will happen at the end if needed
@@ -2703,7 +2704,13 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   const mealDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'today'
   const isToday = date === new Date().toISOString().slice(0, 10)
 
+  console.log('mealText length:', mealText.length, 'mealPlan entries:', state.mealPlan.length)
+  if (!mealText) {
+    console.warn('generateGamePlan: no meal text found for', date, slot)
+    return [{ time: targetTime || '7:00 PM', step: 'No recipes found for this slot — add recipes to your meal plan first.' }]
+  }
   const recipeNames = (mealText.match(/=== (.+?) ===/g) || []).map(m => m.replace(/===/g, '').trim())
+  console.log('recipeNames:', recipeNames)
   const slotLabel = isWholeDay ? 'the whole day' : slot
   const prompt = `You are a professional chef planning a dinner cooking session. Your job is to output ONE unified list of steps that intelligently interleaves ALL recipes so everything is ready at ${targetTime}.
 
