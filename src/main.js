@@ -1209,7 +1209,7 @@ function renderRecipeCard(r) {
   const pickerStyles = mealTags.filter(t => t.tag_type === 'style')
   const hasTwoTiers = pickerStyles.length > 0
   const tagPicker = isPickerOpen ? (
-    '<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' +
+    '<div class="tag-picker-popover" id="tag-picker-popover">' +
     (hasTwoTiers ? (
       (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
       pickerCategories.map(t => {
@@ -1256,30 +1256,27 @@ function renderRecipeCard(r) {
     '</div>'
   )
 
-  // Tag picker without the chip row (chips shown in header already)
-  const tagRowWithPicker = '<div class="tag-row" style="margin-bottom:4px">' + tagChips + tagPicker + '</div>'
-
   const body = '<div class="recipe-body">' +
     // Source link
     (r.clippedFrom ? '<div class="recipe-link" style="margin-bottom:8px"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original ↗</a></div>' : '') +
-    // Tag chips with picker (no duplicate — header shows them collapsed, expanded shows editable chips)
-    tagRowWithPicker +
+    // Tag picker popover only — chips shown in collapsed header, no duplication here
+    (tagPicker ? '<div style="position:relative">' + tagPicker + '</div>' : '') +
     // Prep time
     prepBox +
-    // Cook — full width prominent button
-    '<div style="margin-top:12px">' +
-      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="width:100%;background:var(--black);color:white;border-color:var(--black);font-size:14px;padding:13px;font-weight:700;border-radius:10px;letter-spacing:0.2px">Cook</button>' +
+    // Cook — full width, same height as other buttons
+    '<div class="recipe-actions" style="margin-top:12px">' +
+      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="flex:1;width:100%;background:var(--black);color:white;border-color:var(--black);font-size:11px;padding:7px 4px;font-weight:700">Cook</button>' +
     '</div>' +
-    // Secondary actions — all same grey style
-    '<div class="recipe-actions" style="margin-top:8px">' +
-      '<button class="ra-btn" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">+ List</button>' +
-      '<button class="ra-btn" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Log</button>' +
-      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px">+ Week</button>' +
+    // Secondary actions — List, Week, Log, Tag, Archive, Del
+    '<div class="recipe-actions" style="margin-top:6px">' +
+      '<button class="ra-btn" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">+ List</button>' +
+      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">+ Week</button>' +
+      '<button class="ra-btn" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">Log</button>' +
+      '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe" style="flex:1;font-size:11px;padding:7px 4px;border-radius:8px;border:1.5px solid var(--border-strong);background:var(--white);cursor:pointer;font-family:inherit;color:var(--text-2)">+ Tag</button>' +
       (r.archived
-        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Restore</button>'
-        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Archive</button>') +
+        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">Restore</button>'
+        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-2);border-color:var(--border-strong)">Archive</button>') +
       '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.8;font-size:11px;padding:7px 4px">Del</button>' +
-      '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe" style="flex:0.8;font-size:11px;padding:7px 4px;border-radius:8px;border:1.5px solid var(--border-strong);background:var(--white);cursor:pointer;font-family:inherit;color:var(--text-3)">+ Tag</button>' +
     '</div>' +
   '</div>'
 
@@ -1447,7 +1444,7 @@ function renderPantry() {
         const pickerId = item.id + '-location'
         const isOpen = state.tagPickerOpen === pickerId
         const pantryTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
-        const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+        const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover">' + pantryTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + item.id + '" data-tag-ns="location" ' + ((item.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + item.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + item.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
         const isEditing = state.editingPantryId === String(item.id)
         return '<div class="pantry-row pantry-row-wrap">' +
           '<div class="pantry-row-main">' +
@@ -1479,7 +1476,7 @@ function renderShopItems(items) {
     const pickerId = i.id + '-location'
     const isOpen = state.tagPickerOpen === pickerId
     const storeTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
-    const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover" style="' + tagPickerStyle() + '">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
+    const picker = isOpen ? ('<div class="tag-picker-popover" id="tag-picker-popover">' + storeTags.map(t => '<label class="tag-picker-option"><input type="checkbox" class="tag-picker-check" data-pick-tag="' + esc(t.name) + '" data-tag-item="' + i.id + '" data-tag-ns="location" ' + ((i.tags||[]).includes(t.name)?'checked':'') + ' />' + esc(t.name) + '</label>').join('') + '<div class="tag-picker-new"><input class="tag-picker-input" id="new-tag-' + i.id + '-location" placeholder="New tag..." /><button class="tag-picker-add" data-new-tag-item="' + i.id + '" data-new-tag-ns="location">Add</button></div></div>') : ''
     const isEditingS = state.editingShopId === String(i.id)
 
     const isChecked = !!i.have
@@ -1493,7 +1490,7 @@ function renderShopItems(items) {
       :
         '<div class="shop-item-name" data-edit-shop="' + i.id + '" style="cursor:pointer;' + (isChecked ? 'text-decoration:line-through;color:var(--text-4)' : '') + '" title="Tap to edit">' + esc(i.name) + '</div>'
       ) +
-      '<div class="shop-item-tags">' +
+      '<div class="shop-item-tags" style="position:relative">' +
         (!isChecked ? chips + '<button class="tag-picker-btn" data-picker-id="' + i.id + '" data-picker-ns="location">+ Tag</button>' + picker : '') +
         // Pantry button always visible — moves to cart AND adds to pantry
         '<button class="ra-btn ra-log" data-move-to-pantry="' + i.id + '" style="font-size:10px;padding:3px 8px' + (isChecked ? ';opacity:1' : '') + '">🧺 Pantry</button>' +

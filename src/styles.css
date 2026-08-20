@@ -661,9 +661,10 @@ html, body {
 }
 .tag-picker-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 .tag-picker-popover {
-  position: fixed; background: var(--white); border: 1.5px solid var(--border-strong);
+  position: absolute; background: var(--white); border: 1.5px solid var(--border-strong);
   border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px;
-  box-shadow: 0 8px 24px var(--shadow2); z-index: 200; min-width: 200px; max-height: 60vh; overflow-y: auto;
+  box-shadow: 0 8px 24px var(--shadow2); z-index: 200; min-width: 200px;
+  max-height: 240px; overflow-y: auto; left: 0; top: calc(100% + 4px); width: 100%;
 }
 .tag-picker-option { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); padding: 5px 4px; cursor: pointer; border-radius: 6px; }
 .tag-picker-option:hover { background: var(--gray-50); }
