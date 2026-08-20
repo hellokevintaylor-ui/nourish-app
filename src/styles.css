@@ -414,8 +414,7 @@ html, body {
 .tonight-empty-link { font-size: 12px; font-weight: 700; color: var(--accent); margin-top: 2px; cursor: pointer; }
 
 /* ── FILTER ROW (tag/category pills) ── */
-.tag-filter-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; flex-wrap: nowrap; }
-.tag-filter-row::-webkit-scrollbar { display: none; }
+.tag-filter-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .tag-filter-chip {
   padding: 4px 12px; background: var(--white);
   border: 1.5px solid var(--border-strong); border-radius: 20px;
