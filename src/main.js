@@ -865,7 +865,7 @@ function render() {
         <div class="goals-grid">
           <div class="goal-field">
             <label>Goal Start Date</label>
-            <input type="date" id="goal-start-date-input" style="padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.1);color:white;font-size:13px;width:100%" value="${state.goals.goal_start_date || new Date().toISOString().slice(0,10)}" />
+            <input type="date" id="goal-start-date-input" value="${state.goals.goal_start_date || new Date().toISOString().slice(0,10)}" />
           </div>
           <div class="goal-field">
             <label>Goal Start Weight (lbs)</label>
@@ -881,9 +881,7 @@ function render() {
           </div>
           <div class="goal-field">
             <label>Current Weight (lbs)</label>
-            <div style="padding:8px;background:rgba(255,255,255,0.08);border-radius:8px;border:1px solid rgba(255,255,255,0.15);font-size:13px;color:${state.weightLog&&state.weightLog.length>0?'white':'rgba(255,255,255,0.35)'}">
-              ${state.weightLog&&state.weightLog.length>0 ? state.weightLog[state.weightLog.length-1].weight+' lbs' : 'Log a weigh-in'}
-            </div>
+            <input type="text" readonly value="${state.weightLog&&state.weightLog.length>0 ? state.weightLog[state.weightLog.length-1].weight+' lbs' : 'Log a weigh-in'}" style="opacity:${state.weightLog&&state.weightLog.length>0?'1':'0.5'};cursor:default" />
           </div>
         </div>
 
@@ -902,7 +900,7 @@ function render() {
         <!-- Activity level -->
         <div class="goal-field" style="margin-top:8px">
           <label>Activity Level</label>
-          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:var(--forest);color:white;font-size:13px">
+          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #d4d4d0;background:#f9f9f8;color:#1a1a1a;font-size:13px;font-family:inherit">
             <option value="sedentary" ${state.goals.activity_level==='sedentary'?'selected':''}>Sedentary (desk job, little exercise)</option>
             <option value="light" ${state.goals.activity_level==='light'?'selected':''}>Lightly Active (1-3 days/week)</option>
             <option value="moderate" ${state.goals.activity_level==='moderate'?'selected':''}>Moderately Active (3-5 days/week)</option>
@@ -4081,6 +4079,9 @@ function bindEvents() {
     })
   })
 
+  // Game plan generate — use delegation since button can be in multiple inline locations
+  document.querySelectorAll('#gp-generate').forEach(btn => btn.addEventListener('click', gpGenerateHandler))
+
   // Cook Mode
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
@@ -5620,20 +5621,23 @@ async function estimateCaloriesAI(description) {
   document.getElementById('game-plan-bg')?.addEventListener('click', e => {
     if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; state.gamePlanResult = null; render() }
   })
-  document.getElementById('gp-generate')?.addEventListener('click', async () => {
+  document.getElementById('gp-generate')?.addEventListener('click', gpGenerateHandler)
+
+async function gpGenerateHandler() {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
     const notes = document.getElementById('gp-notes')?.value?.trim() || ''
+    if (!state.gamePlanModal) return
     const { slot, date, recipeId } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes }
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
     const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
+    state.gamePlanModal = { ...state.gamePlanModal, generating: false }
     state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
-    // Seed the chat thread and go straight to it
     const chatKey = date + '-' + slot
     const slotLabel = slot === 'Day' ? 'whole day' : slot
     const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
@@ -5642,6 +5646,7 @@ async function estimateCaloriesAI(description) {
     seedMessages.push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
     state.gamePlanChats[chatKey] = seedMessages
     state.gamePlanView = 'chat'
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'chat' }
     saveGamePlanToDb()
     render()
     setTimeout(() => {
@@ -5649,7 +5654,7 @@ async function estimateCaloriesAI(description) {
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
-  })
+  }
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
     const { slot, date, recipeId, notes } = state.gamePlanModal
