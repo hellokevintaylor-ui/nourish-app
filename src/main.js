@@ -2809,17 +2809,27 @@ Rules:
     console.error('JSON parse error:', e)
     return null
   }
-  const gpDinnerMins = gpParseTime(targetTime)
-  const gpResult = []
-  let gpCursor = gpDinnerMins
-  const gpReversed = [...gpSteps].reverse()
-  for (const s of gpReversed) {
-    const total = (s.active_min || 0) + (s.passive_min || 0)
-    gpCursor -= total
-    gpResult.unshift({ time: gpFormatTime(gpCursor), step: s.step })
+  return gpBuildTimeline(gpSteps, targetTime, isWholeDay, slot)
+}
+
+function gpBuildTimeline(steps, targetTime, isWholeDay, slot) {
+  var dinnerMins = gpParseTime(targetTime)
+  var result = []
+  var cursor = dinnerMins
+  var reversed = steps.slice().reverse()
+  for (var i = 0; i < reversed.length; i++) {
+    var s = reversed[i]
+    // If step already has a time field, use it directly
+    if (s.time) {
+      result.unshift({ time: s.time, step: s.step })
+    } else {
+      var total = (s.active_min || 0) + (s.passive_min || 0)
+      cursor -= total
+      result.unshift({ time: gpFormatTime(cursor), step: s.step })
+    }
   }
-  gpResult.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
-  return gpResult
+  result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
+  return result
 }
 
 function renderTagOrganizerModal() {
