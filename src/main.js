@@ -2740,6 +2740,7 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   var slotLabel = isWholeDay ? 'the whole day' : slot
   var prompt = `You are a professional chef planning a cooking session. Output ONE unified list of steps so everything is ready at EXACTLY ${targetTime}.
 
+CURRENT TIME: ${currentTime}
 SERVE AT: ${targetTime} — this is the FIXED target. The last cooking step must finish at ${targetTime}. Work BACKWARDS from this time.
 DATE: ${mealDate}
 RECIPES: ${recipeNames.join(', ')}
@@ -2819,25 +2820,78 @@ Rules:
     console.error('JSON parse error:', e)
     return null
   }
-  return gpBuildTimeline(gpSteps, targetTime, isWholeDay, slot)
+  return gpBuildTimeline(gpSteps, targetTime, isWholeDay, slot, notes)
 }
 
-function gpBuildTimeline(steps, targetTime, isWholeDay, slot) {
-  var dinnerMins = gpParseTime(targetTime)
-  var result = []
-  var cursor = dinnerMins
-  var reversed = steps.slice().reverse()
-  for (var i = 0; i < reversed.length; i++) {
-    var s = reversed[i]
-    // If step already has a time field, use it directly
-    if (s.time) {
-      result.unshift({ time: s.time, step: s.step })
-    } else {
-      var total = (s.active_min || 0) + (s.passive_min || 0)
-      cursor -= total
-      result.unshift({ time: gpFormatTime(cursor), step: s.step })
-    }
+function gpParseConstraints(notes) {
+  // Extract start time and gaps from notes string
+  var constraints = { startMins: null, gaps: [] }
+  if (!notes) return constraints
+  var lower = notes.toLowerCase()
+
+  // Extract start time — "start at 5", "starting at 5pm", "can start at 5:30", "start now"
+  var startMatch = lower.match(/(?:start|starting|begin|free|available|can cook)(?:\s+(?:at|from|now))\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
+  if (!startMatch) startMatch = lower.match(/(?:it(?:'s| is)|right now|currently)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+  if (!startMatch && lower.includes('start now')) {
+    // Use current time
+    var now = new Date()
+    constraints.startMins = now.getHours() * 60 + now.getMinutes()
+  } else if (startMatch) {
+    var t = startMatch[1].trim()
+    if (!/am|pm/i.test(t)) t += ' PM' // assume PM
+    constraints.startMins = gpParseTime(t)
   }
+
+  // Extract gaps — "free until X then back at Y", "gap from X to Y", "back at Y"
+  var gapMatch = lower.match(/(?:free|away|unavailable|gone|break)(?:[^.]*?)(?:until|till|to)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)[^.]*?(?:back|return|free again|available|start again)?(?:[^.]*?at\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?))?/i)
+  // Simpler: look for "back at X" or "free again at X"
+  var backMatch = lower.match(/(?:back|return|start again|free again|available again)(?:\s+at)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
+  if (backMatch) {
+    var gapEnd = backMatch[1].trim()
+    if (!/am|pm/i.test(gapEnd)) gapEnd += ' PM'
+    // Gap is from "end of first window" to backMins
+    constraints.gapEndMins = gpParseTime(gapEnd)
+  }
+
+  return constraints
+}
+
+function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
+  var dinnerMins = gpParseTime(targetTime)
+  var constraints = gpParseConstraints(notes || '')
+  var startMins = constraints.startMins
+  var gapEndMins = constraints.gapEndMins || null
+
+  // Calculate total cook time
+  var totalMins = steps.reduce(function(sum, s) {
+    return sum + (s.active_min || 0) + (s.passive_min || 0)
+  }, 0)
+
+  // Work backwards from dinner to find when we should start
+  var calcStartMins = dinnerMins - totalMins
+
+  // If user gave a start time, use whichever is LATER (respect their constraint)
+  if (startMins !== null && startMins > calcStartMins) {
+    calcStartMins = startMins
+  }
+
+  // Build timeline forward from calcStartMins
+  var result = []
+  var cursor = calcStartMins
+
+  for (var i = 0; i < steps.length; i++) {
+    var s = steps[i]
+    var stepMins = (s.active_min || 0) + (s.passive_min || 0)
+
+    // If we're in the gap window, jump to gap end
+    if (gapEndMins && cursor < gapEndMins && cursor + stepMins > calcStartMins + 60) {
+      cursor = gapEndMins
+    }
+
+    result.push({ time: gpFormatTime(cursor), step: s.step })
+    cursor += stepMins
+  }
+
   result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
   return result
 }
@@ -5871,7 +5925,9 @@ async function estimateCaloriesAI(description) {
           return r.name + ptStr + (ingPreview ? ' — ' + ingPreview : '')
         }).join('\n')
         var mealTime = state.gamePlanModal?.targetTime || targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+        var nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
         system = 'You are a friendly cooking assistant helping plan a meal.' +
+          ' CURRENT TIME: ' + nowStr + '.' +
           ' TARGET: ' + (slot||'Dinner') + ' served at ' + mealTime + ' — this is fixed. The final step of the plan must land at ' + mealTime + '.' +
           (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
           ' RULES: (1) Ingredients are already on hand — never ask about this. (2) Always work backwards from ' + mealTime + ' so everything is hot and fresh at serving time. (3) The user may have time gaps — e.g. free now for an hour, then back at 5pm. Accept and factor these in.' +
