@@ -807,10 +807,13 @@ async function fetchStepAmounts(recipeId) {
   render()
   try {
     const prompt = 'Given this ingredient list and recipe instructions, for each numbered step list which ingredients (with exact amounts) are used in that step. Return ONLY valid JSON with no extra text: {"steps":[{"step":1,"amounts":["2 tbsp butter","1 cup cream"]},{"step":2,"amounts":["1 tsp salt"]}]}. Only include steps that use ingredients with measurable amounts. Do not include steps with no ingredients.\n\nIngredients:\n' + r.ingredients + '\n\nInstructions:\n' + r.instructions
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({
+        system: 'You map recipe ingredients to steps. Return only valid JSON, no explanation.',
+        messages: [{ role: 'user', content: prompt }]
+      })
     })
     const data = await res.json()
     const text = (data.content || []).find(b => b.type === 'text')?.text || ''
