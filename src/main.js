@@ -2740,8 +2740,9 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   var slotLabel = isWholeDay ? 'the whole day' : slot
   var prompt = `You are a professional chef planning a cooking session. Output ONE unified list of steps so everything is ready at EXACTLY ${targetTime}.
 
-CURRENT TIME: ${currentTime}
-SERVE AT: ${targetTime} — this is the FIXED target. The last cooking step must finish at ${targetTime}. Work BACKWARDS from this time.
+CURRENT TIME RIGHT NOW: ${currentTime} — NO step should be scheduled before this time.
+SERVE AT: ${targetTime} — FIXED. Last step finishes at ${targetTime}. Work BACKWARDS from this time.
+CRITICAL: The first step in your plan cannot start earlier than ${currentTime}.
 DATE: ${mealDate}
 RECIPES: ${recipeNames.join(', ')}
 ${notes ? 'USER CONSTRAINTS — these are HARD requirements, not suggestions. The schedule MUST respect every one of these:\n' + notes + '\n\nIMPORTANT: If the user says they can start at a certain time, NO step should appear before that time. If they have a gap (e.g. free now for an hour, then back at 7pm), schedule prep steps during the first window and cooking steps during the second window.' : ''}
@@ -3081,7 +3082,9 @@ async function initGamePlanChat() {
     var names = recipes.map(r => r.name).join(' and ')
     var totalActiveMin = recipes.reduce((sum, r) => sum + (r.recipe?.prepTime?.active_min || 0), 0)
     var prepHint = totalActiveMin > 0 ? ' (~' + totalActiveMin + ' min of active cooking)' : ''
-    opening = 'I see you have ' + names + ' for ' + (slot||'dinner').toLowerCase() + prepHint + '. What time do you want to eat?'
+    opening = 'I see you have ' + names + ' for ' + (slot||'dinner').toLowerCase() + prepHint + '.' +
+      ' I have eat time set to ' + targetTime + ' — change the field above if that\'s wrong.' +
+      ' What time can you start cooking, and any gaps or constraints I should know about?'
   }
 
   state.gamePlanChats[chatKey] = [{ role: 'assistant', content: opening }]
@@ -3129,6 +3132,11 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
   )
 
   var body =
+    // Eat-at time field — visible and editable above chat
+    '<div style="padding:10px 14px 0;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid #e8e8e5;background:#f9f9f8">' +
+      '<span style="font-size:12px;font-weight:700;color:#6e6e69;white-space:nowrap">🍽 Eat at</span>' +
+      '<input id="gp-eat-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:30 PM" style="flex:1;padding:6px 10px;border:1.5px solid #3d52c4;border-radius:8px;font-size:14px;font-weight:700;color:#3d52c4;font-family:inherit;outline:none;background:white" />' +
+    '</div>' +
     '<div id="gp-chat-messages" style="padding:14px;min-height:200px;overflow-y:visible">' +
       (chatMessages.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:30px 0">Starting your plan...</div>' : bubbles) +
       thinkingDots +
@@ -4232,6 +4240,20 @@ function bindEvents() {
 
   // Game plan generate — use delegation since button can be in multiple inline locations
   document.querySelectorAll('#gp-generate').forEach(btn => btn.addEventListener('click', gpGenerateHandler))
+
+  // Eat-at time field in chat view
+  document.getElementById('gp-eat-time')?.addEventListener('change', function() {
+    var val = gpNormalizeTime(this.value.trim())
+    if (val && state.gamePlanModal) {
+      state.gamePlanModal = { ...state.gamePlanModal, targetTime: val }
+      localStorage.setItem('mep_dinner_time', val)
+      // Update opening message if chat hasn't started yet
+      var key = gpChatKey()
+      if (!state.gamePlanChats[key] || state.gamePlanChats[key].length === 0) {
+        initGamePlanChat()
+      }
+    }
+  })
 
   // Game Plan edit toggle
   document.getElementById('gp-edit-toggle')?.addEventListener('click', () => {
@@ -5985,8 +6007,8 @@ async function gpGenerateHandler() {
     if (!state.gamePlanModal) return
     var { slot, date, recipeId } = state.gamePlanModal
     // Time: from input if it exists, otherwise from state
-    var timeInput = document.getElementById('gp-dinner-time')?.value?.trim()
-    var timeVal = timeInput || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    var timeInput = document.getElementById('gp-eat-time')?.value?.trim() || document.getElementById('gp-dinner-time')?.value?.trim()
+    var timeVal = gpNormalizeTime(timeInput) || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
     // Notes: from input if exists, otherwise summarize chat conversation
     var notesInput = document.getElementById('gp-notes')?.value?.trim()
     var gpGenChatKey = date + '-' + slot
