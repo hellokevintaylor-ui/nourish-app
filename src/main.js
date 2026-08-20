@@ -2979,25 +2979,44 @@ async function saveGamePlanToDb() {
   )
 }
 
+function buildGpRecipeContext(slot, date) {
+  const mealDate = date || new Date().toISOString().slice(0,10)
+  const entries = state.mealPlan.filter(e => {
+    if (e.date !== mealDate) return false
+    if (slot !== 'Day' && e.meal_slot?.toLowerCase() !== slot?.toLowerCase()) return false
+    return true
+  })
+  const recipes = entries.map(e => {
+    const r = state.recipes.find(x => String(x.id) === String(e.recipe_id))
+    return { name: e.recipe_name || (r?.name) || 'Unknown', recipe: r, entry: e }
+  }).filter(x => x.name)
+  return recipes
+}
+
 async function initGamePlanChat() {
   if (!state.gamePlanModal) return
-  const { slot, date, recipeId } = state.gamePlanModal
+  const { slot, date } = state.gamePlanModal
   const chatKey = gpChatKey()
-  if (state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0) return // already started
+  if (state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0) return
   if (state.gamePlanChatLoading) return
 
-  // Build context about the meal
-  const mealDate = date || new Date().toISOString().slice(0,10)
-  const entries = state.mealPlan.filter(e => e.date === mealDate && (slot === 'Day' || e.meal_slot === slot) && e.recipe_id)
-  const recipeNames = entries.map(e => e.recipe_name || 'recipe').join(', ')
+  const recipes = buildGpRecipeContext(slot, date)
   const defaultTime = slot === 'Lunch' ? '12:30 PM' : '7:00 PM'
   const targetTime = state.gamePlanModal.targetTime || defaultTime
 
-  const openingPrompt = 'I want to help you plan cooking ' + (recipeNames || 'your meal') + ' for ' + slot.toLowerCase() + ' at ' + targetTime + '. ' +
-    'Before I build the timeline, tell me: When can you start? Any prep already done? Anything to work around? ' +
-    'Or just say "generate it" and I\'ll build a plan now.'
+  let opening
+  if (recipes.length === 0) {
+    opening = 'I\'d like to help you plan your ' + (slot||'meal').toLowerCase() + '. What are you making, and what time do you want to eat?'
+  } else {
+    const names = recipes.map(r => r.name).join(' and ')
+    const totalActiveMin = recipes.reduce((sum, r) => sum + (r.recipe?.prepTime?.active_min || 0), 0)
+    const prepHint = totalActiveMin > 0 ? ' (about ' + totalActiveMin + ' min of active cooking)' : ''
+    opening = 'I see you have ' + names + ' planned for ' + (slot||'dinner').toLowerCase() + ' at ' + targetTime + prepHint + '. ' +
+      'Before I build the timeline — when can you start cooking? Any prep already done, or anything to work around? ' +
+      'Or just say "generate it" and I\'ll build a plan right now.'
+  }
 
-  state.gamePlanChats[chatKey] = [{ role: 'assistant', content: openingPrompt }]
+  state.gamePlanChats[chatKey] = [{ role: 'assistant', content: opening }]
   state.gamePlanModal = { ...state.gamePlanModal, view: 'planning-chat' }
   render()
 }
@@ -3042,7 +3061,7 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
   )
 
   const body =
-    '<div id="gp-chat-messages" style="padding:14px;min-height:160px;max-height:360px;overflow-y:auto">' +
+    '<div id="gp-chat-messages" style="padding:14px;min-height:200px;overflow-y:visible">' +
       (chatMessages.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:30px 0">Starting your plan...</div>' : bubbles) +
       thinkingDots +
       generatingBanner +
@@ -5744,7 +5763,20 @@ async function estimateCaloriesAI(description) {
       const hasResult = !!result
       const system = hasResult
         ? 'You are a cooking timeline assistant helping the user adjust their existing cooking plan. Be specific and practical. Keep responses concise. If they want to change a time or step, confirm and suggest how. Reference actual steps from the timeline.'
-        : 'You are a friendly meal planning assistant helping the user plan out their cooking session. Ask about: what time they want to eat, when they can start cooking, any prep already done, any constraints. Keep it conversational — one or two questions at a time. Once you understand their situation well, suggest "say \'generate it\' when ready and I\'ll build your timeline." Be warm and concise.'
+        : (() => {
+            const gpRecipes = buildGpRecipeContext(slot, date)
+            const recipeCtx = gpRecipes.map(r => {
+              const pt = r.recipe?.prepTime
+              const ptStr = pt ? ' (' + pt.active_min + ' min active' + (pt.passive_min > 0 ? ', ' + pt.passive_min + ' min passive' : '') + ')' : ''
+              const ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,6).join(', ') : ''
+              return r.name + ptStr + (ingPreview ? '\nKey ingredients: ' + ingPreview : '')
+            }).join('\n\n')
+            return 'You are a friendly cooking assistant helping plan a meal. ' +
+              'RECIPES FOR THIS MEAL:\n' + (recipeCtx || 'Not specified yet') + '\n\n' +
+              'Help the user figure out timing and logistics conversationally. Ask one or two focused questions at a time about when they can start, any prep already done, any constraints. ' +
+              'Reference the actual recipes and their approximate cook times in your responses. ' +
+              'Once you have enough info, remind them to say "generate it" or tap the button below. Be warm, specific, and brief.'
+          })()
       const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
       const resp = await fetch('/api/chat', {
         method: 'POST',
