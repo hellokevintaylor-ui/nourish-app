@@ -3550,8 +3550,8 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       unlockAudio()
-      const seconds = parseInt(el.dataset.timerSeconds)
-      const label = el.dataset.timerLabel
+      var seconds = parseInt(el.dataset.timerSeconds)
+      var label = el.dataset.timerLabel
       startTimer(seconds, label)
     })
   })
@@ -3561,7 +3561,7 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       unlockAudio()
-      const rect = el.getBoundingClientRect()
+      var rect = el.getBoundingClientRect()
       state.timerSlider = {
         low: parseInt(el.dataset.timerLow),
         high: parseInt(el.dataset.timerHigh),
@@ -3583,7 +3583,7 @@ function bindEvents() {
       // Auto-scroll to today when switching to calendar tab
       if (el.dataset.tab === 'calendar') {
         setTimeout(() => {
-          const todayCard = document.querySelector('.cal-day-today')
+          var todayCard = document.querySelector('.cal-day-today')
           if (todayCard) todayCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }, 80)
       }
@@ -3599,11 +3599,11 @@ function bindEvents() {
 
   document.getElementById('save-goals-btn')?.addEventListener('click', async () => {
     document.querySelectorAll('input[data-goal]').forEach(el => {
-      const f = el.dataset.goal
+      var f = el.dataset.goal
       state.goals[f] = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
         ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
     })
-    const btn = document.getElementById('save-goals-btn')
+    var btn = document.getElementById('save-goals-btn')
     if (btn) { btn.textContent = '✓ Saved!'; btn.style.background = 'var(--sage4)' }
     await db.saveGoals(state.goals)
     setTimeout(() => render(), 1200)
@@ -3614,7 +3614,7 @@ function bindEvents() {
   // Filter toggle button (open/close the dropdown)
   document.querySelectorAll('.tag-filter-toggle[data-filter-toggle]').forEach(el => {
     el.addEventListener('click', () => {
-      const ns = el.dataset.filterToggle
+      var ns = el.dataset.filterToggle
       if (state.showTagFilter && state.activeTagFilterNs === ns) {
         state.showTagFilter = false
       } else {
@@ -3628,10 +3628,10 @@ function bindEvents() {
   // Filter chips — All lights up everything, individual tags toggle off
   document.querySelectorAll('.tag-filter-chip[data-filter-all]').forEach(el => {
     el.addEventListener('click', () => {
-      const ns = el.dataset.filterAll
-      const tags = getTagsForNamespace(ns)
-      const active = state.activeTagFilters[ns]
-      const allSelected = active && tags.every(t => active.has(t.name))
+      var ns = el.dataset.filterAll
+      var tags = getTagsForNamespace(ns)
+      var active = state.activeTagFilters[ns]
+      var allSelected = active && tags.every(t => active.has(t.name))
       if (allSelected) {
         // All were selected — clicking again clears back to default (show all, nothing lit)
         state.activeTagFilters[ns] = null
@@ -3644,11 +3644,11 @@ function bindEvents() {
   })
   document.querySelectorAll('.tag-filter-chip[data-filter-tag]').forEach(el => {
     el.addEventListener('click', () => {
-      const ns = el.dataset.filterNs
-      const tag = el.dataset.filterTag
+      var ns = el.dataset.filterNs
+      var tag = el.dataset.filterTag
       if (tag === '__untagged__') {
         // Untagged is exclusive — toggle it on/off alone
-        const active = state.activeTagFilters[ns]
+        var active = state.activeTagFilters[ns]
         if (active && active.has('__untagged__')) {
           state.activeTagFilters[ns] = null
         } else {
@@ -3660,7 +3660,7 @@ function bindEvents() {
       if (!state.activeTagFilters[ns]) {
         state.activeTagFilters[ns] = new Set([tag])
       } else {
-        const active = state.activeTagFilters[ns]
+        var active = state.activeTagFilters[ns]
         // Clear untagged if switching to a real tag
         active.delete('__untagged__')
         if (active.has(tag)) {
@@ -3677,22 +3677,22 @@ function bindEvents() {
   // Tag input - show/hide suggestions on focus
   document.querySelectorAll('.tag-input[data-tag-item]').forEach(el => {
     el.addEventListener('focus', () => {
-      const sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
+      var sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
       if (sugg) sugg.style.display = 'flex'
     })
     el.addEventListener('keydown', async e => {
       if (e.key === 'Enter') {
         e.preventDefault()
-        const name = el.value.trim()
+        var name = el.value.trim()
         if (!name) return
-        const ns = el.dataset.tagNs
-        const itemId = el.dataset.tagItem
+        var ns = el.dataset.tagNs
+        var itemId = el.dataset.tagItem
         await addTagToItem(name, ns, itemId)
       }
     })
     el.addEventListener('input', () => {
-      const val = el.value.toLowerCase()
-      const sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
+      var val = el.value.toLowerCase()
+      var sugg = document.getElementById('tag-sugg-' + el.dataset.tagItem)
       if (!sugg) return
       sugg.querySelectorAll('.tag-suggestion').forEach(btn => {
         btn.style.display = btn.dataset.suggTag.toLowerCase().includes(val) ? 'block' : 'none'
@@ -3717,17 +3717,17 @@ function bindEvents() {
     })
   })
   document.getElementById('force-update-btn')?.addEventListener('click', async () => {
-    const btn = document.getElementById('force-update-btn')
+    var btn = document.getElementById('force-update-btn')
     if (btn) { btn.textContent = '↻ Updating...'; btn.disabled = true }
     try {
       // Unregister all service workers
       if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations()
+        var regs = await navigator.serviceWorker.getRegistrations()
         await Promise.all(regs.map(r => r.unregister()))
       }
       // Clear all caches
       if ('caches' in window) {
-        const keys = await caches.keys()
+        var keys = await caches.keys()
         await Promise.all(keys.map(k => caches.delete(k)))
       }
     } catch(e) {}
@@ -3747,14 +3747,14 @@ function bindEvents() {
     });
   })
   document.getElementById('sync-bookmark-btn')?.addEventListener('click', () => {
-    const bookmarkUrl = window.location.origin + '/?uid=' + getUserId()
+    var bookmarkUrl = window.location.origin + '/?uid=' + getUserId()
     navigator.clipboard.writeText(bookmarkUrl).then(() => {
-      const btn = document.getElementById('sync-bookmark-btn')
+      var btn = document.getElementById('sync-bookmark-btn')
       if (btn) { btn.textContent = 'Copied!'; setTimeout(() => render(), 1500) }
     })
   })
   document.getElementById('sync-switch-btn')?.addEventListener('click', async () => {
-    const newId = document.getElementById('sync-input')?.value?.trim();
+    var newId = document.getElementById('sync-input')?.value?.trim();
     if (!newId || newId.length < 3) { alert('Please enter an Account ID (at least 3 characters)'); return; }
     if (!confirm("Switch to this account? Your current local data will be replaced with that accounts data.")) return;
     localStorage.setItem('nourish_uid', newId);
@@ -3774,15 +3774,15 @@ function bindEvents() {
   })
   document.querySelectorAll('.preset-btn[data-preset]').forEach(el => {
     el.addEventListener('click', async () => {
-      const p = GOAL_PRESETS[el.dataset.preset]
+      var p = GOAL_PRESETS[el.dataset.preset]
       state.goals = { calories: p.calories, goal: el.dataset.preset }
       render(); await db.saveGoals(state.goals)
     })
   })
   document.querySelectorAll('input[data-goal]').forEach(el => {
-    const saveGoalField = async () => {
-      const f = el.dataset.goal
-      const newVal = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
+    var saveGoalField = async () => {
+      var f = el.dataset.goal
+      var newVal = (f === 'weight' || f === 'age' || f === 'height_inches' || f === 'target_weight')
         ? (parseFloat(el.value) || '') : (parseInt(el.value) || 0)
       // Only save if value actually changed
       if (state.goals[f] === newVal) return
@@ -3802,7 +3802,7 @@ function bindEvents() {
     render()
   })
   document.getElementById('goal-start-date-input')?.addEventListener('change', async e => {
-    const val = e.target.value
+    var val = e.target.value
     if (!val) return
     state.goals.goal_start_date = val
     await db.saveGoals(state.goals)
@@ -3827,18 +3827,18 @@ function bindEvents() {
   document.querySelectorAll('[data-cat-recipe]').forEach(el => {
     el.addEventListener('change', async e => {
       e.stopPropagation()
-      const r = state.recipes.find(x => String(x.id) === String(el.dataset.catRecipe))
+      var r = state.recipes.find(x => String(x.id) === String(el.dataset.catRecipe))
       if (r) { r.category = el.value; await db.updateRecipe(r.id, { category: el.value }); render() }
     })
   })
 
   // Tab search handlers
   function refocusSearch(id) {
-    const el = document.getElementById(id)
-    if (el) { const pos = el.value.length; el.focus(); el.setSelectionRange(pos, pos) }
+    var el = document.getElementById(id)
+    if (el) { var pos = el.value.length; el.focus(); el.setSelectionRange(pos, pos) }
   }
   function addSearchHandlers(id, stateKey) {
-    const el = document.getElementById(id)
+    var el = document.getElementById(id)
     if (!el) return
     el.addEventListener('input', e => { state[stateKey] = e.target.value; render(); refocusSearch(id) })
     el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); render() } })
@@ -3849,7 +3849,7 @@ function bindEvents() {
   addSearchHandlers('tag-search', 'tagSearch')
   document.querySelectorAll('[data-clear-search]').forEach(el => {
     el.addEventListener('click', () => {
-      const id = el.dataset.clearSearch
+      var id = el.dataset.clearSearch
       if (id === 'recipe-search') state.recipeSearch = ''
       else if (id === 'pantry-search') state.pantrySearch = ''
       else if (id === 'shop-search') state.shopSearch = ''
@@ -3865,33 +3865,33 @@ function bindEvents() {
   document.getElementById('scan-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'scan-picker-bg') { state.scanPickerOpen = false; render() } })
   document.getElementById('scan-use-camera')?.addEventListener('click', () => {
     state.scanPickerOpen = false; render()
-    const input = document.getElementById('scan-file-input')
+    var input = document.getElementById('scan-file-input')
     if (input) { input.removeAttribute('capture'); input.setAttribute('capture', 'environment'); input.click() }
   })
   document.getElementById('scan-use-library')?.addEventListener('click', () => {
     state.scanPickerOpen = false; render()
-    const input = document.getElementById('scan-file-input')
+    var input = document.getElementById('scan-file-input')
     if (input) { input.removeAttribute('capture'); input.click() }
   })
   document.getElementById('scan-file-input')?.addEventListener('change', async e => {
-    const file = e.target.files?.[0]
+    var file = e.target.files?.[0]
     if (!file) return
     state.pasteModal = true
     state.shareLoading = true
     render()
     try {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader()
+      var base64 = await new Promise((resolve, reject) => {
+        var reader = new FileReader()
         reader.onload = () => resolve(reader.result.split(',')[1])
         reader.onerror = reject
         reader.readAsDataURL(file)
       })
-      const resp = await fetch('/api/scan', {
+      var resp = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: base64, mediaType: file.type })
       })
-      const recipe = await resp.json()
+      var recipe = await resp.json()
       if (recipe.error) throw new Error(recipe.error)
       state.shareLoading = false
       state.sharedRecipe = { ...recipe, source: 'Scanned from photo' }
@@ -3901,7 +3901,7 @@ function bindEvents() {
       state.sharedRecipe = null
       render()
       setTimeout(() => {
-        const nameEl = document.getElementById('paste-name')
+        var nameEl = document.getElementById('paste-name')
         if (nameEl) nameEl.placeholder = "Could not read photo -- paste recipe manually"
       }, 50)
     }
@@ -3912,8 +3912,8 @@ function bindEvents() {
     state.clipUrlModal = true; render()
     setTimeout(async () => {
       try {
-        const text = await navigator.clipboard.readText()
-        const input = document.getElementById('clip-url-input')
+        var text = await navigator.clipboard.readText()
+        var input = document.getElementById('clip-url-input')
         if (input && text && text.startsWith('http')) input.value = text
       } catch(e) {}
       document.getElementById('clip-url-input')?.focus()
@@ -3931,21 +3931,21 @@ function bindEvents() {
   document.getElementById('r-notes')?.addEventListener('input', e => { state.addRecipeModalDraft.notes = e.target.value })
   document.querySelectorAll('.r-tag-check').forEach(el => {
     el.addEventListener('change', () => {
-      const checked = [...document.querySelectorAll('.r-tag-check:checked')].map(c => c.dataset.tag)
+      var checked = [...document.querySelectorAll('.r-tag-check:checked')].map(c => c.dataset.tag)
       state.addRecipeModalDraft.tags = checked
     })
   })
 
   document.getElementById('r-save-btn')?.addEventListener('click', async () => {
-    const name = document.getElementById('r-name')?.value?.trim()
-    const ingredients = document.getElementById('r-ingredients')?.value?.trim()
-    const instructions = document.getElementById('r-instructions')?.value?.trim()
-    const notes = document.getElementById('r-notes')?.value?.trim()
-    const tags = state.addRecipeModalDraft.tags || []
+    var name = document.getElementById('r-name')?.value?.trim()
+    var ingredients = document.getElementById('r-ingredients')?.value?.trim()
+    var instructions = document.getElementById('r-instructions')?.value?.trim()
+    var notes = document.getElementById('r-notes')?.value?.trim()
+    var tags = state.addRecipeModalDraft.tags || []
     if (!name) return
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes, clippedFrom: '', tags })
+    var saved = await db.saveRecipe({ name, ingredients, instructions, notes, clippedFrom: '', tags })
     if (saved) {
-      const normalized = normalizeRecipe(saved)
+      var normalized = normalizeRecipe(saved)
       if (tags.length) { normalized.tags = tags; await db.updateRecipeTags(saved.id, tags) }
       state.recipes.unshift(normalized)
     }
@@ -3956,7 +3956,7 @@ function bindEvents() {
 
   document.querySelectorAll('.recipe-card-header').forEach(el => {
     el.addEventListener('click', () => {
-      const rid = el.closest('.recipe-card').dataset.rid
+      var rid = el.closest('.recipe-card').dataset.rid
       state.expandedRecipe = state.expandedRecipe === rid ? null : rid
       render()
     })
@@ -3966,7 +3966,7 @@ function bindEvents() {
   document.querySelectorAll('[data-recipe-edit]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const rid = el.dataset.recipeEdit
+      var rid = el.dataset.recipeEdit
       state.editingRecipeId = state.editingRecipeId === rid ? null : rid
       render()
       setTimeout(() => document.getElementById('edit-ingredients-' + rid)?.focus(), 50)
@@ -3975,11 +3975,11 @@ function bindEvents() {
   document.querySelectorAll('[data-recipe-save]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const rid = el.dataset.recipeSave
-      const recipe = state.recipes.find(r => String(r.id) === String(rid))
-      const name = document.getElementById('edit-recipe-name-' + rid)?.value?.trim()
-      const ingredients = document.getElementById('edit-ingredients-' + rid)?.value?.trim()
-      const instructions = document.getElementById('edit-instructions-' + rid)?.value?.trim()
+      var rid = el.dataset.recipeSave
+      var recipe = state.recipes.find(r => String(r.id) === String(rid))
+      var name = document.getElementById('edit-recipe-name-' + rid)?.value?.trim()
+      var ingredients = document.getElementById('edit-ingredients-' + rid)?.value?.trim()
+      var instructions = document.getElementById('edit-instructions-' + rid)?.value?.trim()
       if (recipe) {
         if (name) recipe.name = name
         recipe.ingredients = ingredients
@@ -3994,7 +3994,7 @@ function bindEvents() {
   document.querySelectorAll('[data-notes-edit]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const rid = el.dataset.notesEdit
+      var rid = el.dataset.notesEdit
       state.editingNotes = state.editingNotes === rid ? null : rid
       render(); setTimeout(() => document.getElementById('notes-ta-' + rid)?.focus(), 50)
     })
@@ -4003,9 +4003,9 @@ function bindEvents() {
   document.querySelectorAll('[data-notes-save]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const rid = el.dataset.notesSave
-      const val = document.getElementById('notes-ta-' + rid)?.value?.trim()
-      const recipe = state.recipes.find(r => r.id === rid)
+      var rid = el.dataset.notesSave
+      var val = document.getElementById('notes-ta-' + rid)?.value?.trim()
+      var recipe = state.recipes.find(r => r.id === rid)
       if (recipe) { recipe.cookingNotes = val; await db.updateRecipe(rid, { cookingNotes: val }) }
       state.editingNotes = null; render()
     })
@@ -4014,9 +4014,9 @@ function bindEvents() {
   document.querySelectorAll('[data-shop]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const r = state.recipes.find(x => x.id === el.dataset.shop)
+      var r = state.recipes.find(x => x.id === el.dataset.shop)
       if (!r) return
-      const ingLines = (r.ingredients || r.text || '').split('\n')
+      var ingLines = (r.ingredients || r.text || '').split('\n')
         .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^[\d]+\.\s*/, '').trim())
         .filter(l => {
           if (l.length < 3 || l.length > 150) return false
@@ -4028,11 +4028,11 @@ function bindEvents() {
           if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
           return true
         })
-      const items = ingLines.map(raw => {
-        const name = parseIngredientLine(raw)
-        const stripped = stripMeasurements(raw)
-        const match = state.pantry.find(p => {
-          const pl = p.name.toLowerCase()
+      var items = ingLines.map(raw => {
+        var name = parseIngredientLine(raw)
+        var stripped = stripMeasurements(raw)
+        var match = state.pantry.find(p => {
+          var pl = p.name.toLowerCase()
           return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
         })
         return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
@@ -4047,14 +4047,14 @@ function bindEvents() {
   document.querySelectorAll('.shop-review-pantry-btn').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const idx = +el.dataset.pantryIdx
+      var idx = +el.dataset.pantryIdx
       if (!state.shopReview) return
-      const item = state.shopReview.items[idx]
+      var item = state.shopReview.items[idx]
       item.inPantry = true
       item.checked = false
-      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
+      var exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
       if (!exists) {
-        const saved = await db.addPantryItem(item.name, '')
+        var saved = await db.addPantryItem(item.name, '')
         if (saved) state.pantry.push(saved)
       }
       render()
@@ -4063,10 +4063,10 @@ function bindEvents() {
   document.querySelectorAll('.shop-review-tag-btn').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const idx = parseInt(el.dataset.reviewTagIdx)
-      const tag = el.dataset.reviewTag
+      var idx = parseInt(el.dataset.reviewTagIdx)
+      var tag = el.dataset.reviewTag
       if (!state.shopReview?.items[idx]) return
-      const item = state.shopReview.items[idx]
+      var item = state.shopReview.items[idx]
       if (!item.tags) item.tags = []
       if (item.tags.includes(tag)) {
         item.tags = item.tags.filter(t => t !== tag)
@@ -4075,7 +4075,7 @@ function bindEvents() {
       }
       // Snapshot name inputs before re-render
       document.querySelectorAll('.shop-review-name-input').forEach(inp => {
-        const i = parseInt(inp.dataset.reviewIdx)
+        var i = parseInt(inp.dataset.reviewIdx)
         if (state.shopReview?.items[i]) state.shopReview.items[i].name = inp.value.trim() || state.shopReview.items[i].name
       })
       render()
@@ -4083,7 +4083,7 @@ function bindEvents() {
   })
   document.querySelectorAll('.shop-review-name-input').forEach(el => {
     el.addEventListener('change', () => {
-      const idx = parseInt(el.dataset.reviewIdx)
+      var idx = parseInt(el.dataset.reviewIdx)
       if (state.shopReview && state.shopReview.items[idx]) {
         state.shopReview.items[idx].name = el.value.trim() || state.shopReview.items[idx].name
       }
@@ -4094,16 +4094,16 @@ function bindEvents() {
   document.getElementById('shop-review-add')?.addEventListener('click', async () => {
     if (!state.shopReview) return
     document.querySelectorAll('.shop-review-name-input').forEach(el => {
-      const idx = parseInt(el.dataset.reviewIdx)
+      var idx = parseInt(el.dataset.reviewIdx)
       if (state.shopReview.items[idx]) {
         state.shopReview.items[idx].name = el.value.trim() || state.shopReview.items[idx].name
       }
     })
-    const toAdd = state.shopReview.items.filter(i => i.checked && !i.inPantry)
-    for (const item of toAdd) {
-      const already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
+    var toAdd = state.shopReview.items.filter(i => i.checked && !i.inPantry)
+    for (var item of toAdd) {
+      var already = state.shopList.some(s => s.name.toLowerCase() === item.name.toLowerCase())
       if (!already) {
-        const saved = await db.addShopItem(item.name, state.shopReview.recipeName, item.tags || [])
+        var saved = await db.addShopItem(item.name, state.shopReview.recipeName, item.tags || [])
         if (saved) state.shopList.push({ ...saved, fromRecipe: saved.from_recipe, tags: item.tags || [] })
       }
     }
@@ -4113,15 +4113,15 @@ function bindEvents() {
   document.querySelectorAll('[data-plan-recipe]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const rid = el.dataset.planRecipe
-      const today = new Date().toISOString().slice(0, 10)
-      const plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))
-      const slot = plannedEntry?.meal_slot || 'Dinner'
-      const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
-      const chatKey = today + '-' + slot
-      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
-      const key = today + '-' + slot
-      const saved = state.savedGamePlans[key]
+      var rid = el.dataset.planRecipe
+      var today = new Date().toISOString().slice(0, 10)
+      var plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))
+      var slot = plannedEntry?.meal_slot || 'Dinner'
+      var defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+      var chatKey = today + '-' + slot
+      var hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
+      var key = today + '-' + slot
+      var saved = state.savedGamePlans[key]
       if (saved && saved.result) {
         // Restore saved plan
         state.gamePlanModal = { ...saved, recipeId: rid }
@@ -4145,7 +4145,7 @@ function bindEvents() {
       // Start planning chat if fresh plan
       if (!state.gamePlanModal?.result) initGamePlanChat()
       setTimeout(() => {
-        const card = document.querySelector('[data-rid="' + rid + '"]')
+        var card = document.querySelector('[data-rid="' + rid + '"]')
         if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 50)
     })
@@ -4155,7 +4155,7 @@ function bindEvents() {
   document.querySelectorAll('[data-cook-scaled]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const rid = el.dataset.cookScaled
+      var rid = el.dataset.cookScaled
       state.cookMode = {
         recipeId: rid,
         tab: 'ingredients',
@@ -4185,8 +4185,8 @@ function bindEvents() {
   // Game Plan ingredient checkoff
   document.querySelectorAll('.gp-ing-row').forEach(el => {
     el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.gpIng)
-      const checked = state.gamePlanCheckedIngs
+      var idx = parseInt(el.dataset.gpIng)
+      var checked = state.gamePlanCheckedIngs
       if (checked.has(idx)) checked.delete(idx); else checked.add(idx)
       render()
     })
@@ -4203,15 +4203,15 @@ function bindEvents() {
       input.style.borderBottomColor = 'transparent'
       input.style.background = 'none'
       input.style.borderRadius = '0'
-      const stepIdx = parseInt(input.dataset.gpStep)
-      const newTime = input.value.trim()
+      var stepIdx = parseInt(input.dataset.gpStep)
+      var newTime = input.value.trim()
       if (state.gamePlanModal && state.gamePlanModal.result && newTime) {
-        const result = [...state.gamePlanModal.result]
+        var result = [...state.gamePlanModal.result]
         result[stepIdx] = { ...result[stepIdx], time: newTime }
         state.gamePlanModal = { ...state.gamePlanModal, result }
         state.gamePlanResult = result
         // Save updated plan
-        const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+        var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
         if (key) state.savedGamePlans[key] = { ...state.gamePlanModal }
       }
     })
@@ -4223,14 +4223,14 @@ function bindEvents() {
   // Game Plan step text editing
   document.querySelectorAll('.gp-step-edit').forEach(ta => {
     ta.addEventListener('blur', () => {
-      const stepIdx = parseInt(ta.dataset.gpStep)
-      const newText = ta.value.trim()
+      var stepIdx = parseInt(ta.dataset.gpStep)
+      var newText = ta.value.trim()
       if (state.gamePlanModal && state.gamePlanModal.result && newText) {
-        const result = [...state.gamePlanModal.result]
+        var result = [...state.gamePlanModal.result]
         result[stepIdx] = { ...result[stepIdx], step: newText }
         state.gamePlanModal = { ...state.gamePlanModal, result }
         state.gamePlanResult = result
-        const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+        var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
         if (key) state.savedGamePlans[key] = { ...state.gamePlanModal }
       }
     })
@@ -4238,15 +4238,15 @@ function bindEvents() {
 
   // Game Plan notes save
   document.getElementById('gp-notes-save')?.addEventListener('click', () => {
-    const notes = document.getElementById('gp-notes-edit')?.value || ''
+    var notes = document.getElementById('gp-notes-edit')?.value || ''
     state.gamePlanNotes = notes
     if (state.gamePlanModal) {
       state.gamePlanModal = { ...state.gamePlanModal, notes }
-      const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       if (key) state.savedGamePlans[key] = { ...state.gamePlanModal }
     }
     // Brief visual feedback
-    const btn = document.getElementById('gp-notes-save')
+    var btn = document.getElementById('gp-notes-save')
     if (btn) { btn.textContent = 'Saved ✓'; setTimeout(() => { if (btn) btn.textContent = 'Save notes' }, 1500) }
   })
 
@@ -4254,13 +4254,13 @@ function bindEvents() {
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const recipeId = el.dataset.cookMode
+      var recipeId = el.dataset.cookMode
       state.expandedRecipe = recipeId
       state.cookMode = { recipeId, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
       render()
       fetchStepAmounts(recipeId)
       setTimeout(() => {
-        const card = document.querySelector('[data-rid="' + recipeId + '"]')
+        var card = document.querySelector('[data-rid="' + recipeId + '"]')
         if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 80)
     })
@@ -4270,12 +4270,12 @@ function bindEvents() {
   })
   document.querySelectorAll('[data-tonight-slot]').forEach(el => {
     el.addEventListener('click', () => {
-      const today = new Date().toISOString().slice(0,10)
-      const slot = el.dataset.tonightSlot
-      const defaultTime = slot === 'Lunch' ? '12:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
+      var today = new Date().toISOString().slice(0,10)
+      var slot = el.dataset.tonightSlot
+      var defaultTime = slot === 'Lunch' ? '12:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
       // Check for saved plan
-      const key = today + '-' + slot
-      const saved = state.savedGamePlans[key]
+      var key = today + '-' + slot
+      var saved = state.savedGamePlans[key]
       if (saved && saved.result) {
         state.gamePlanModal = { ...saved }
         state.gamePlanResult = saved.result
@@ -4299,13 +4299,13 @@ function bindEvents() {
     state.cookMode = { ...state.cookMode, editing: !state.cookMode.editing }; render()
   })
   document.getElementById('cook-edit-save')?.addEventListener('click', async () => {
-    const rid = state.cookMode?.recipeId
-    const r = state.recipes.find(x => x.id === rid)
+    var rid = state.cookMode?.recipeId
+    var r = state.recipes.find(x => x.id === rid)
     if (!r) return
-    const name = document.getElementById('cook-edit-name')?.value?.trim() || r.name
-    const ingredients = document.getElementById('cook-edit-ingredients')?.value?.trim() || r.ingredients
-    const instructions = document.getElementById('cook-edit-instructions')?.value?.trim() || r.instructions
-    const notes = document.getElementById('cook-edit-notes')?.value?.trim() ?? r.cookingNotes
+    var name = document.getElementById('cook-edit-name')?.value?.trim() || r.name
+    var ingredients = document.getElementById('cook-edit-ingredients')?.value?.trim() || r.ingredients
+    var instructions = document.getElementById('cook-edit-instructions')?.value?.trim() || r.instructions
+    var notes = document.getElementById('cook-edit-notes')?.value?.trim() ?? r.cookingNotes
     if (document.getElementById('cook-edit-name')) r.name = name
     if (document.getElementById('cook-edit-ingredients')) r.ingredients = ingredients
     if (document.getElementById('cook-edit-instructions')) {
@@ -4324,9 +4324,9 @@ function bindEvents() {
   })
   document.querySelectorAll('.cook-ing-row').forEach(el => {
     el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.ingIdx)
+      var idx = parseInt(el.dataset.ingIdx)
       if (!state.cookMode) return
-      const checked = state.cookMode.checkedIngredients || new Set()
+      var checked = state.cookMode.checkedIngredients || new Set()
       if (checked.has(idx)) checked.delete(idx); else checked.add(idx)
       state.cookMode = { ...state.cookMode, checkedIngredients: checked }; render()
     })
@@ -4338,14 +4338,14 @@ function bindEvents() {
   })
 
   document.getElementById('organize-tags-btn')?.addEventListener('click', async () => {
-    const recipeTags = state.allTags.filter(t => t.namespace === 'recipe')
+    var recipeTags = state.allTags.filter(t => t.namespace === 'recipe')
     if (!recipeTags.length) return
     // Open modal in loading state, ask AI to classify
     state.tagOrganizerModal = { loading: true, tags: recipeTags }
     render()
     try {
-      const tagNames = recipeTags.map(t => t.name).join(', ')
-      const resp = await fetch('/api/chat', {
+      var tagNames = recipeTags.map(t => t.name).join(', ')
+      var resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4354,12 +4354,12 @@ function bindEvents() {
           messages: [{ role: 'user', content: `Classify these recipe tags as either "category" (what the dish IS — ingredient, protein, cuisine type like Chicken, Pork, Pasta, Salad, Soup, Italian) or "style" (how it's made or when it's served — like Sous Vide, Weeknight, Party Ideas, Meal Prep, Quick, Slow Cooker, Grilled). Return ONLY a JSON object like: {"Pork":"category","Sous Vide":"style"}. Tags: ${tagNames}` }]
         })
       })
-      const data = await resp.json()
-      const text = data.content?.[0]?.text || '{}'
-      const clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
-      const classified = JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0] || '{}')
+      var data = await resp.json()
+      var text = data.content?.[0]?.text || '{}'
+      var clean = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+      var classified = JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0] || '{}')
       // Apply AI suggestions to tags
-      const updatedTags = recipeTags.map(t => ({
+      var updatedTags = recipeTags.map(t => ({
         ...t,
         tag_type: classified[t.name] || t.tag_type || 'category'
       }))
@@ -4375,9 +4375,9 @@ function bindEvents() {
   document.querySelectorAll('.tag-type-btn[data-tag-id]').forEach(el => {
     el.addEventListener('click', () => {
       if (!state.tagOrganizerModal?.tags) return
-      const id = el.dataset.tagId
-      const type = el.dataset.tagType
-      const tag = state.tagOrganizerModal.tags.find(t => String(t.id) === String(id))
+      var id = el.dataset.tagId
+      var type = el.dataset.tagType
+      var tag = state.tagOrganizerModal.tags.find(t => String(t.id) === String(id))
       if (tag) { tag.tag_type = type; render() }
     })
   })
@@ -4385,9 +4385,9 @@ function bindEvents() {
   // Save tag organizer
   document.getElementById('tag-organizer-save')?.addEventListener('click', async () => {
     if (!state.tagOrganizerModal?.tags) return
-    for (const t of state.tagOrganizerModal.tags) {
+    for (var t of state.tagOrganizerModal.tags) {
       await db.updateTagType(t.id, t.tag_type || 'category')
-      const existing = state.allTags.find(x => x.id === t.id)
+      var existing = state.allTags.find(x => x.id === t.id)
       if (existing) existing.tag_type = t.tag_type
     }
     state.tagOrganizerModal = false
@@ -4415,7 +4415,7 @@ function bindEvents() {
   // List row expand/collapse
   document.querySelectorAll('[data-expand-recipe]').forEach(el => {
     el.addEventListener('click', () => {
-      const id = el.dataset.expandRecipe
+      var id = el.dataset.expandRecipe
       state.expandedRecipe = state.expandedRecipe === id ? null : id
       render()
     })
@@ -4428,8 +4428,8 @@ function bindEvents() {
   document.querySelectorAll('[data-archive-recipe]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.archiveRecipe
-      const r = state.recipes.find(r => r.id === id)
+      var id = el.dataset.archiveRecipe
+      var r = state.recipes.find(r => r.id === id)
       if (r) { r.archived = true; await db.archiveRecipe(id, true); render() }
     })
   })
@@ -4437,8 +4437,8 @@ function bindEvents() {
   document.querySelectorAll('[data-restore-recipe]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.restoreRecipe
-      const r = state.recipes.find(r => r.id === id)
+      var id = el.dataset.restoreRecipe
+      var r = state.recipes.find(r => r.id === id)
       if (r) { r.archived = false; await db.archiveRecipe(id, false); render() }
     })
   })
@@ -4447,15 +4447,15 @@ function bindEvents() {
   document.querySelectorAll('[data-share-recipe]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.shareRecipe
-      const r = state.recipes.find(r => r.id === id)
+      var id = el.dataset.shareRecipe
+      var r = state.recipes.find(r => r.id === id)
       if (!r) return
-      const lines = [r.name]
+      var lines = [r.name]
       if (r.clippedFrom) lines.push('Source: ' + r.clippedFrom)
       lines.push('')
       if (r.ingredients) lines.push('Ingredients\n' + r.ingredients)
       if (r.instructions) lines.push('\nInstructions\n' + r.instructions)
-      const text = lines.join('\n')
+      var text = lines.join('\n')
       if (navigator.share) {
         navigator.share({ title: r.name, text }).catch(() => {})
       } else {
@@ -4467,7 +4467,7 @@ function bindEvents() {
   document.querySelectorAll('[data-del]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.del
+      var id = el.dataset.del
       state.recipes = state.recipes.filter(r => r.id !== id)
       state.expandedRecipe = null
       await db.deleteRecipe(id); render()
@@ -4477,14 +4477,14 @@ function bindEvents() {
   document.querySelectorAll('[data-ask]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const r = state.recipes.find(x => x.id === el.dataset.ask)
+      var r = state.recipes.find(x => x.id === el.dataset.ask)
       if (!r) return
       state.chatRecipeContext = r
       state.tab = 'chat'
       localStorage.setItem('mep_tab', 'chat')
       // Load persisted chat from Supabase if not already in memory
       if (!state.recipeChatMessages[r.id] || state.recipeChatMessages[r.id].length === 0) {
-        const saved = await db.fetchRecipeChat(r.id)
+        var saved = await db.fetchRecipeChat(r.id)
         if (saved && saved.length > 0) state.recipeChatMessages[r.id] = saved
       }
       render()
@@ -4494,11 +4494,11 @@ function bindEvents() {
 
   // Pantry
   document.getElementById('pantry-add-btn')?.addEventListener('click', async () => {
-    const name = document.getElementById('pantry-name')?.value?.trim()
-    const qty  = document.getElementById('pantry-qty')?.value?.trim()
+    var name = document.getElementById('pantry-name')?.value?.trim()
+    var qty  = document.getElementById('pantry-qty')?.value?.trim()
     if (!name) return
-    const tags = Array.from(document.querySelectorAll('.pantry-new-tag-check:checked')).map(el => el.dataset.tag)
-    const saved = await db.addPantryItem(name, qty)
+    var tags = Array.from(document.querySelectorAll('.pantry-new-tag-check:checked')).map(el => el.dataset.tag)
+    var saved = await db.addPantryItem(name, qty)
     if (saved) {
       if (tags.length) { saved.tags = tags; await db.updatePantryTags(saved.id, tags) }
       state.pantry.push(saved)
@@ -4513,7 +4513,7 @@ function bindEvents() {
   })
   document.querySelectorAll('[data-qty-id]').forEach(el => {
     el.addEventListener('change', async () => {
-      const item = state.pantry.find(p => p.id === el.dataset.qtyId)
+      var item = state.pantry.find(p => p.id === el.dataset.qtyId)
       if (item) { item.qty = el.value.trim(); await db.updatePantryItem(item.id, item.qty) }
     })
   })
@@ -4532,7 +4532,7 @@ function bindEvents() {
   // Check off item (strike-through, don't delete)
   document.querySelectorAll('[data-check]').forEach(el => {
     el.addEventListener('click', async () => {
-      const item = state.shopList.find(x => x.id === el.dataset.check)
+      var item = state.shopList.find(x => x.id === el.dataset.check)
       if (!item) return
       if (item.have) {
         // Tap again to uncheck
@@ -4550,7 +4550,7 @@ function bindEvents() {
 
   document.querySelectorAll('[data-uncheck]').forEach(el => {
     el.addEventListener('click', async () => {
-      const item = state.shopList.find(x => x.id === el.dataset.uncheck)
+      var item = state.shopList.find(x => x.id === el.dataset.uncheck)
       if (item) { item.have = false; item.checked_at = null; await db.updateShopItem(item.id, false); render() }
     })
   })
@@ -4563,29 +4563,29 @@ function bindEvents() {
   })
 
   document.getElementById('shop-got-it')?.addEventListener('click', async () => {
-    const now = Date.now()
+    var now = Date.now()
     state.shopList.forEach(i => {
       if (!i.have) { i.have = true; i.checked_at = now }
     })
     await db.markAllGotIt(state.shopList, state.pantry)
-    const newPantry = await db.fetchPantry()
+    var newPantry = await db.fetchPantry()
     state.pantry = newPantry
     render()
   })
 
   // Clear only checked items
   document.getElementById('shop-clear-checked')?.addEventListener('click', async () => {
-    const checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
+    var checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
     state.shopList = state.shopList.filter(i => !i.have)
-    for (const id of checkedIds) await db.deleteShopItem(id)
+    for (var id of checkedIds) await db.deleteShopItem(id)
     render()
   })
 
   // Remove all items in cart (same as clear checked)
   document.getElementById('shop-clear-cart')?.addEventListener('click', async () => {
-    const checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
+    var checkedIds = state.shopList.filter(i => i.have).map(i => i.id)
     state.shopList = state.shopList.filter(i => !i.have)
-    for (const id of checkedIds) await db.deleteShopItem(id)
+    for (var id of checkedIds) await db.deleteShopItem(id)
     render()
   })
 
@@ -4599,10 +4599,10 @@ function bindEvents() {
     state.showGoals = !state.showGoals; state.showSync = false; render()
   })
   document.getElementById('shop-copy-btn')?.addEventListener('click', () => {
-    const need = state.shopList.filter(i => !i.have)
+    var need = state.shopList.filter(i => !i.have)
     // Group by tag if tags exist
-    const tagged = {}
-    const untagged = []
+    var tagged = {}
+    var untagged = []
     need.forEach(i => {
       if (i.tags && i.tags.length) {
         i.tags.forEach(t => { if (!tagged[t]) tagged[t] = []; tagged[t].push(i.name) })
@@ -4624,7 +4624,7 @@ function bindEvents() {
   document.getElementById('shop-add-anyway')?.addEventListener('click', async () => {
     const { val, tags } = state._shopPendingItem || {}
     if (!val) return
-    const saved = await db.addShopItem(val, 'Manual')
+    var saved = await db.addShopItem(val, 'Manual')
     if (saved) {
       if (tags?.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
       state.shopList.push({ ...saved, fromRecipe: 'Manual', tags: tags || [] })
@@ -4641,15 +4641,15 @@ function bindEvents() {
   })
 
   document.getElementById('shop-manual-add')?.addEventListener('click', async () => {
-    const val = document.getElementById('shop-manual-input')?.value?.trim()
+    var val = document.getElementById('shop-manual-input')?.value?.trim()
     if (!val) return
-    const tags = Array.from(document.querySelectorAll('.shop-new-tag-check:checked')).map(el => el.dataset.tag)
+    var tags = Array.from(document.querySelectorAll('.shop-new-tag-check:checked')).map(el => el.dataset.tag)
 
     // Fuzzy pantry check — does the pantry have something that contains or is contained by this item name?
-    const valWords = val.toLowerCase().split(/\s+/).filter(w => w.length > 2)
-    const pantryMatch = state.pantry.find(p => {
-      const pl = p.name.toLowerCase()
-      const pWords = pl.split(/\s+/).filter(w => w.length > 2)
+    var valWords = val.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+    var pantryMatch = state.pantry.find(p => {
+      var pl = p.name.toLowerCase()
+      var pWords = pl.split(/\s+/).filter(w => w.length > 2)
       return pl.includes(val.toLowerCase()) || val.toLowerCase().includes(pl) ||
         valWords.some(w => pWords.includes(w))
     })
@@ -4662,7 +4662,7 @@ function bindEvents() {
       return
     }
 
-    const saved = await db.addShopItem(val, 'Manual')
+    var saved = await db.addShopItem(val, 'Manual')
     if (saved) {
       if (tags.length) { saved.tags = tags; await db.updateShopItemTags(saved.id, tags) }
       state.shopList.push({ ...saved, fromRecipe: 'Manual', tags })
@@ -4676,25 +4676,25 @@ function bindEvents() {
   // Log
   // Weight log
   document.getElementById('log-weight-btn')?.addEventListener('click', async () => {
-    const val = parseFloat(document.getElementById('log-weight-input')?.value)
+    var val = parseFloat(document.getElementById('log-weight-input')?.value)
     if (!val || isNaN(val)) return
-    const isViewingToday = (state.logDayOffset || 0) === 0
-    const dateStr = isViewingToday ? new Date().toLocaleDateString('sv') : state._viewedDateStr
+    var isViewingToday = (state.logDayOffset || 0) === 0
+    var dateStr = isViewingToday ? new Date().toLocaleDateString('sv') : state._viewedDateStr
 
     // Check if there's already an entry for this day
-    const existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === dateStr)
+    var existing = (state.weightLog || []).find(e => new Date(e.logged_at).toLocaleDateString('sv') === dateStr)
 
     if (existing) {
       // Update existing entry
-      const saved = await db.updateWeightEntry(existing.id, val)
+      var saved = await db.updateWeightEntry(existing.id, val)
       if (saved) {
         existing.weight = val
         state.weightLog.sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at))
       }
     } else {
       // Add new entry
-      const entryDateStr = isViewingToday ? null : state._viewedDateStr
-      const saved = await db.addWeightEntry(val, '', entryDateStr)
+      var entryDateStr = isViewingToday ? null : state._viewedDateStr
+      var saved = await db.addWeightEntry(val, '', entryDateStr)
       if (saved) {
         state.weightLog = state.weightLog || []
         state.weightLog.push(saved)
@@ -4706,26 +4706,26 @@ function bindEvents() {
   document.getElementById('log-weight-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('log-weight-btn')?.click() } })
   document.querySelectorAll('[data-weight-del]').forEach(el => {
     el.addEventListener('click', async () => {
-      const id = el.dataset.weightDel
+      var id = el.dataset.weightDel
       state.weightLog = (state.weightLog || []).filter(x => String(x.id) !== String(id))
       await db.deleteWeightEntry(id)
       render()
     })
   })
   document.getElementById('log-exercise-btn')?.addEventListener('click', async () => {
-    const activity = document.getElementById('log-exercise')?.value?.trim()
+    var activity = document.getElementById('log-exercise')?.value?.trim()
     if (!activity) return
-    const btn = document.getElementById('log-exercise-btn')
+    var btn = document.getElementById('log-exercise-btn')
     if (btn) { btn.textContent = '...'; btn.disabled = true }
-    const weight = state.goals.weight || 155
-    const age = state.goals.age || 35
+    var weight = state.goals.weight || 155
+    var age = state.goals.age || 35
     const { calories, breakdown } = await estimateCaloriesAI(
       'Calories BURNED (not consumed) during: "' + activity + '" for a person weighing ' + weight + ' lbs, age ' + age + '. ' +
       'Reply with ONLY:\nCALORIES: [number]\nBREAKDOWN: [brief explanation]\nNo other text.'
     )
-    const isExToday = (state.logDayOffset || 0) === 0
-    const exDateStr = isExToday ? null : state._viewedDateStr
-    const saved = await db.addExerciseEntry(activity, calories, breakdown, exDateStr)
+    var isExToday = (state.logDayOffset || 0) === 0
+    var exDateStr = isExToday ? null : state._viewedDateStr
+    var saved = await db.addExerciseEntry(activity, calories, breakdown, exDateStr)
     if (saved) {
       saved.breakdown = breakdown
       if (isExToday) {
@@ -4736,7 +4736,7 @@ function bindEvents() {
         state.viewedDayExercise.push(saved)
       }
     }
-    const input = document.getElementById('log-exercise')
+    var input = document.getElementById('log-exercise')
     if (input) input.value = ''
     if (btn) { btn.textContent = '+ Add'; btn.disabled = false }
     render()
@@ -4747,7 +4747,7 @@ function bindEvents() {
   document.querySelectorAll('[data-ex-breakdown-id]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const id = 'ex-' + el.dataset.exBreakdownId
+      var id = 'ex-' + el.dataset.exBreakdownId
       state.logBreakdownId = state.logBreakdownId === id ? null : id
       render()
     })
@@ -4756,7 +4756,7 @@ function bindEvents() {
   // Exercise delete
   document.querySelectorAll('[data-ex-del]').forEach(el => {
     el.addEventListener('click', async () => {
-      const id = el.dataset.exDel
+      var id = el.dataset.exDel
       state.exerciseLog = (state.exerciseLog || []).filter(x => String(x.id) !== String(id))
       await db.deleteExerciseEntry(id)
       render()
@@ -4764,7 +4764,7 @@ function bindEvents() {
   })
   async function estimatePrepTime(recipe) {
   try {
-    const resp = await fetch('/api/chat', {
+    var resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4777,8 +4777,8 @@ function bindEvents() {
         }]
       })
     })
-    const data = await resp.json()
-    const text = data.content?.[0]?.text?.trim() || ''
+    var data = await resp.json()
+    var text = data.content?.[0]?.text?.trim() || ''
     return JSON.parse(text)
   } catch(e) { return null }
 }
@@ -4789,7 +4789,7 @@ async function saveRecipePrepTime(recipeId, prepTime) {
 
 async function estimateCaloriesAI(description) {
     try {
-      const resp = await fetch('/api/chat', {
+      var resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4806,10 +4806,10 @@ async function estimateCaloriesAI(description) {
           }]
         })
       })
-      const data = await resp.json()
-      const text = data.content?.[0]?.text || ''
-      const calMatch = text.match(/CALORIES:\s*(\d+)/i)
-      const breakdownMatch = text.match(/BREAKDOWN:\s*(.+)/i)
+      var data = await resp.json()
+      var text = data.content?.[0]?.text || ''
+      var calMatch = text.match(/CALORIES:\s*(\d+)/i)
+      var breakdownMatch = text.match(/BREAKDOWN:\s*(.+)/i)
       return {
         calories: calMatch ? parseInt(calMatch[1]) : 0,
         breakdown: breakdownMatch ? breakdownMatch[1].trim() : ''
@@ -4818,29 +4818,29 @@ async function estimateCaloriesAI(description) {
   }
 
   document.getElementById('log-add-btn')?.addEventListener('click', async () => {
-    const foodEl = document.getElementById('log-food')
-    const qtyEl = document.getElementById('log-qty')
-    const unitEl = document.getElementById('log-unit')
-    const notesEl = document.getElementById('log-notes')
-    const food = foodEl?.value?.trim()
-    const qty = qtyEl?.value?.trim()
-    const unit = unitEl?.value || ''
-    const notes = notesEl?.value?.trim() || ''
+    var foodEl = document.getElementById('log-food')
+    var qtyEl = document.getElementById('log-qty')
+    var unitEl = document.getElementById('log-unit')
+    var notesEl = document.getElementById('log-notes')
+    var food = foodEl?.value?.trim()
+    var qty = qtyEl?.value?.trim()
+    var unit = unitEl?.value || ''
+    var notes = notesEl?.value?.trim() || ''
     if (!food) return
 
     let foodStr = food
     if (qty && unit) foodStr = qty + ' ' + unit + ' ' + food
     else if (qty) foodStr = qty + ' ' + food
 
-    const aiQuery = notes ? foodStr + ' — ' + notes : foodStr
+    var aiQuery = notes ? foodStr + ' — ' + notes : foodStr
 
-    const btn = document.getElementById('log-add-btn')
+    var btn = document.getElementById('log-add-btn')
     if (btn) { btn.textContent = '...'; btn.disabled = true }
     try {
       const { calories, breakdown } = await estimateCaloriesAI(aiQuery)
-      const isToday = (state.logDayOffset || 0) === 0
-      const dateStr = isToday ? null : state._viewedDateStr
-      const saved = await db.addLogEntry(foodStr + (notes ? ' (' + notes + ')' : ''), calories, null, dateStr)
+      var isToday = (state.logDayOffset || 0) === 0
+      var dateStr = isToday ? null : state._viewedDateStr
+      var saved = await db.addLogEntry(foodStr + (notes ? ' (' + notes + ')' : ''), calories, null, dateStr)
       if (saved) {
         saved.breakdown = breakdown
         if (isToday) {
@@ -4866,10 +4866,10 @@ async function estimateCaloriesAI(description) {
   // Log day navigation
   document.getElementById('log-prev-day')?.addEventListener('click', async () => {
     state.logDayOffset = (state.logDayOffset || 0) - 1
-    const now = new Date()
-    const d = new Date(now)
+    var now = new Date()
+    var d = new Date(now)
     d.setDate(now.getDate() + state.logDayOffset)
-    const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+    var dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
     state._viewedDateStr = dateStr
     state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
     state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
@@ -4883,10 +4883,10 @@ async function estimateCaloriesAI(description) {
       state.viewedDayExercise = null
       state._viewedDateStr = null
     } else {
-      const now = new Date()
-      const d = new Date(now)
+      var now = new Date()
+      var d = new Date(now)
       d.setDate(now.getDate() + state.logDayOffset)
-      const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+      var dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
       state._viewedDateStr = dateStr
       state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
       state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
@@ -4897,11 +4897,11 @@ async function estimateCaloriesAI(description) {
   // Prep time — estimate button
   document.querySelectorAll('[data-estimate-prep]').forEach(el => {
     el.addEventListener('click', async () => {
-      const rid = el.dataset.estimatePrep
-      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      var rid = el.dataset.estimatePrep
+      var recipe = state.recipes.find(r => String(r.id) === String(rid))
       if (!recipe) return
       state.estimatingPrepId = rid; render()
-      const pt = await estimatePrepTime(recipe)
+      var pt = await estimatePrepTime(recipe)
       if (pt) {
         recipe.prepTime = pt
         await saveRecipePrepTime(rid, pt)
@@ -4914,11 +4914,11 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-refresh-prep]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const rid = el.dataset.refreshPrep
-      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      var rid = el.dataset.refreshPrep
+      var recipe = state.recipes.find(r => String(r.id) === String(rid))
       if (!recipe) return
       state.refreshingPrepId = rid; render()
-      const pt = await estimatePrepTime(recipe)
+      var pt = await estimatePrepTime(recipe)
       if (pt) {
         recipe.prepTime = pt
         await saveRecipePrepTime(rid, pt)
@@ -4929,15 +4929,15 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.scale-btn[data-scale]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const rid = el.dataset.recipeId
-      const scale = el.dataset.scale
-      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      var rid = el.dataset.recipeId
+      var scale = el.dataset.scale
+      var recipe = state.recipes.find(r => String(r.id) === String(rid))
       if (!recipe || !recipe.ingredients) return
       state.scaleModal = { recipeId: rid, label: scale, loading: true, ingredients: '' }
       render()
       try {
-        const multiplier = scale === '½x' ? '0.5' : scale === '2x' ? '2' : '3'
-        const resp = await fetch('/api/chat', {
+        var multiplier = scale === '½x' ? '0.5' : scale === '2x' ? '2' : '3'
+        var resp = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -4948,8 +4948,8 @@ async function estimateCaloriesAI(description) {
             }]
           })
         })
-        const data = await resp.json()
-        const scaled = data.content?.[0]?.text?.trim() || ''
+        var data = await resp.json()
+        var scaled = data.content?.[0]?.text?.trim() || ''
         state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: scaled }
       } catch(e) {
         state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: 'Error scaling — try again.' }
@@ -4964,11 +4964,11 @@ async function estimateCaloriesAI(description) {
     el.addEventListener('click', async e => {
       e.stopPropagation()
       if (!state.scaleModal) return
-      const rid = el.dataset.saveScaled
-      const recipe = state.recipes.find(r => String(r.id) === String(rid))
+      var rid = el.dataset.saveScaled
+      var recipe = state.recipes.find(r => String(r.id) === String(rid))
       if (!recipe) return
-      const name = recipe.name + ' (' + state.scaleModal.label + ')'
-      const saved = await db.saveRecipe({ name, ingredients: state.scaleModal.ingredients, instructions: recipe.instructions || '', notes: '', clippedFrom: '', tags: recipe.tags || [] })
+      var name = recipe.name + ' (' + state.scaleModal.label + ')'
+      var saved = await db.saveRecipe({ name, ingredients: state.scaleModal.ingredients, instructions: recipe.instructions || '', notes: '', clippedFrom: '', tags: recipe.tags || [] })
       if (saved) state.recipes.unshift(normalizeRecipe(saved))
       state.scaleModal = null
       render()
@@ -4985,11 +4985,11 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-save-log]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.saveLog
-      const entry = state.log.find(x => x.id === id)
+      var id = el.dataset.saveLog
+      var entry = state.log.find(x => x.id === id)
       if (!entry) return
-      const food = document.getElementById('edit-log-food-' + id)?.value?.trim()
-      const cals = parseInt(document.getElementById('edit-log-cals-' + id)?.value) || 0
+      var food = document.getElementById('edit-log-food-' + id)?.value?.trim()
+      var cals = parseInt(document.getElementById('edit-log-cals-' + id)?.value) || 0
       if (!food) return
       entry.food = food
       entry.calories = cals
@@ -5008,7 +5008,7 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-breakdown-id]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const id = el.dataset.breakdownId
+      var id = el.dataset.breakdownId
       state.logBreakdownId = state.logBreakdownId === id ? null : id
       render()
     })
@@ -5017,7 +5017,7 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-log-del]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.logDel
+      var id = el.dataset.logDel
       state.log = state.log.filter(x => String(x.id) !== String(id))
       if (state.viewedDayLog) state.viewedDayLog = state.viewedDayLog.filter(x => String(x.id) !== String(id))
       await db.deleteLogEntry(id)
@@ -5027,7 +5027,7 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.ra-log[data-log-recipe]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const r = state.recipes.find(x => String(x.id) === String(el.dataset.logRecipe))
+      var r = state.recipes.find(x => String(x.id) === String(el.dataset.logRecipe))
       if (r) { state.logModal = { recipeId: r.id, recipeName: r.name }; render() }
     })
   })
@@ -5036,9 +5036,9 @@ async function estimateCaloriesAI(description) {
   // Estimate button in log modal
   document.getElementById('lm-estimate')?.addEventListener('click', async () => {
     if (!state.logModal) return
-    const portion = document.getElementById('lm-portion')?.value?.trim()
-    const notes = document.getElementById('lm-notes')?.value?.trim()
-    const recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
+    var portion = document.getElementById('lm-portion')?.value?.trim()
+    var notes = document.getElementById('lm-notes')?.value?.trim()
+    var recipe = state.logModal.recipeId ? state.recipes.find(r => String(r.id) === String(state.logModal.recipeId)) : null
     state.logModal = { ...state.logModal, portion, notes, estimating: true }
     render()
     let description = ''
@@ -5066,12 +5066,12 @@ async function estimateCaloriesAI(description) {
   })
 
   document.getElementById('lm-save')?.addEventListener('click', async () => {
-    const portionEl = document.getElementById('lm-portion')
-    const calsEl = document.getElementById('lm-cals')
-    const notesEl = document.getElementById('lm-notes')
-    const portion = portionEl?.value?.trim()
-    const cals = parseInt(calsEl?.value) || state.logModal?.calories || 0
-    const notes = notesEl?.value?.trim()
+    var portionEl = document.getElementById('lm-portion')
+    var calsEl = document.getElementById('lm-cals')
+    var notesEl = document.getElementById('lm-notes')
+    var portion = portionEl?.value?.trim()
+    var cals = parseInt(calsEl?.value) || state.logModal?.calories || 0
+    var notes = notesEl?.value?.trim()
     if (!portion) {
       if (portionEl) portionEl.placeholder = 'Please enter portion!'
       portionEl?.focus()
@@ -5079,7 +5079,7 @@ async function estimateCaloriesAI(description) {
     }
     let food = (state.logModal?.recipeName || 'Food') + ' (' + portion + ')'
     if (notes) food += ' — ' + notes
-    const saved = await db.addLogEntry(food, cals)
+    var saved = await db.addLogEntry(food, cals)
     if (saved) {
       if (state.logModal?.recipeId) saved.recipe_id = state.logModal.recipeId
       saved.breakdown = state.logModal?.breakdown || ''
@@ -5092,15 +5092,15 @@ async function estimateCaloriesAI(description) {
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
   document.getElementById('paste-recipe-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
   document.getElementById('nav-update-btn')?.addEventListener('click', async () => {
-    const el = document.getElementById('nav-update-btn')
+    var el = document.getElementById('nav-update-btn')
     if (el) el.textContent = 'Updating...'
     try {
       if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations()
+        var regs = await navigator.serviceWorker.getRegistrations()
         await Promise.all(regs.map(r => r.unregister()))
       }
       if ('caches' in window) {
-        const keys = await caches.keys()
+        var keys = await caches.keys()
         await Promise.all(keys.map(k => caches.delete(k)))
       }
     } catch(e) {}
@@ -5115,8 +5115,8 @@ async function estimateCaloriesAI(description) {
     state.clipUrlModal = true;  render()
     setTimeout(async () => {
       try {
-        const text = await navigator.clipboard.readText()
-        const input = document.getElementById('clip-url-input')
+        var text = await navigator.clipboard.readText()
+        var input = document.getElementById('clip-url-input')
         if (input && text && text.startsWith('http')) input.value = text
       } catch(e) {}
       document.getElementById('clip-url-input')?.focus()
@@ -5125,12 +5125,12 @@ async function estimateCaloriesAI(description) {
   document.getElementById('clip-url-cancel')?.addEventListener('click', () => { state.clipUrlModal = false; render() })
   document.getElementById('clip-url-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'clip-url-modal-bg') { state.clipUrlModal = false; render() } })
   document.getElementById('clip-url-go')?.addEventListener('click', async () => {
-    const url = document.getElementById('clip-url-input')?.value?.trim()
+    var url = document.getElementById('clip-url-input')?.value?.trim()
     if (!url || !url.startsWith('http')) return
     state.clipUrlModal = false; state.pasteModal = true; state.shareLoading = true; render()
     try {
-      const resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
-      const recipe = await resp.json()
+      var resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
+      var recipe = await resp.json()
       if (recipe.error) throw new Error(recipe.error)
       state.shareLoading = false; state.sharedRecipe = recipe; render()
     } catch(e) {
@@ -5141,11 +5141,11 @@ async function estimateCaloriesAI(description) {
 
   // Clipboard banner
   document.getElementById('clipboard-yes')?.addEventListener('click', async () => {
-    const url = state.clipboardBanner
+    var url = state.clipboardBanner
     state.clipboardBanner = null; state.pasteModal = true; state.shareLoading = true; render()
     try {
-      const resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
-      const recipe = await resp.json()
+      var resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
+      var recipe = await resp.json()
       if (recipe.error) throw new Error(recipe.error)
       state.shareLoading = false; state.sharedRecipe = recipe; render()
     } catch(e) { state.shareLoading = false; state.sharedRecipe = null; render() }
@@ -5163,11 +5163,11 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-save-pantry]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.savePantry
-      const name = document.querySelector('[data-edit-pantry-name="' + id + '"]')?.value?.trim()
-      const qty = document.querySelector('[data-qty-id="' + id + '"]')?.value?.trim()
+      var id = el.dataset.savePantry
+      var name = document.querySelector('[data-edit-pantry-name="' + id + '"]')?.value?.trim()
+      var qty = document.querySelector('[data-qty-id="' + id + '"]')?.value?.trim()
       if (!name) return
-      const item = state.pantry.find(p => String(p.id) === String(id))
+      var item = state.pantry.find(p => String(p.id) === String(id))
       if (item) { item.name = name; item.qty = qty; await db.updatePantryItem(id, { name, qty }) }
       state.editingPantryId = null; render()
     })
@@ -5179,11 +5179,11 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-move-to-list]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.moveToList
-      const item = state.pantry.find(p => String(p.id) === String(id))
+      var id = el.dataset.moveToList
+      var item = state.pantry.find(p => String(p.id) === String(id))
       if (!item) return
-      const tags = item.tags || []
-      const saved = await db.addShopItem(item.name, 'Pantry', tags)
+      var tags = item.tags || []
+      var saved = await db.addShopItem(item.name, 'Pantry', tags)
       if (saved) state.shopList.push({ ...saved, fromRecipe: 'Pantry', tags })
       await db.deletePantryItem(id)
       state.pantry = state.pantry.filter(p => String(p.id) !== String(id))
@@ -5202,10 +5202,10 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-save-shop]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.saveShop
-      const name = document.querySelector('[data-edit-shop-name="' + id + '"]')?.value?.trim()
+      var id = el.dataset.saveShop
+      var name = document.querySelector('[data-edit-shop-name="' + id + '"]')?.value?.trim()
       if (!name) return
-      const item = state.shopList.find(i => String(i.id) === String(id))
+      var item = state.shopList.find(i => String(i.id) === String(id))
       if (item) { item.name = name; await db.updateShopItem(id, { name }) }
       state.editingShopId = null; render()
     })
@@ -5217,14 +5217,14 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-move-to-pantry]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const id = el.dataset.moveToPantry
-      const item = state.shopList.find(i => String(i.id) === String(id))
+      var id = el.dataset.moveToPantry
+      var item = state.shopList.find(i => String(i.id) === String(id))
       if (!item) return
-      const tags = item.tags || []
+      var tags = item.tags || []
       // Add to pantry
-      const exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
+      var exists = state.pantry.some(p => p.name.toLowerCase() === item.name.toLowerCase())
       if (!exists) {
-        const saved = await db.addPantryItem(item.name, '', tags)
+        var saved = await db.addPantryItem(item.name, '', tags)
         if (saved) state.pantry.push({ ...saved, tags })
       }
       // Move to cart (check it off) rather than deleting
@@ -5243,24 +5243,24 @@ async function estimateCaloriesAI(description) {
   document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; render() })
   document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
   document.getElementById('paste-save')?.addEventListener('click', async () => {
-    const name = document.getElementById('paste-name')?.value?.trim()
+    var name = document.getElementById('paste-name')?.value?.trim()
     if (!name) return
     let ingredients = '', instructions = ''
     if (state.sharedRecipe) {
       ingredients = document.getElementById('paste-ingredients')?.value?.trim() || ''
       instructions = document.getElementById('paste-instructions')?.value?.trim() || ''
     } else {
-      const text = document.getElementById('paste-text')?.value?.trim() || ''
+      var text = document.getElementById('paste-text')?.value?.trim() || ''
       if (!text) return
       ingredients = text; instructions = ''
-      const splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
+      var splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
       if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
     }
-    const tags = Array.from(document.querySelectorAll('.paste-tag-check:checked')).map(el => el.dataset.tag)
-    const clippedFrom = state.sharedRecipe?.url || ''
-    const saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom, tags })
+    var tags = Array.from(document.querySelectorAll('.paste-tag-check:checked')).map(el => el.dataset.tag)
+    var clippedFrom = state.sharedRecipe?.url || ''
+    var saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom, tags })
     if (saved) {
-      const recipe = normalizeRecipe(saved)
+      var recipe = normalizeRecipe(saved)
       if (tags.length) await db.updateRecipeTags(recipe.id, tags)
       state.recipes.unshift(recipe)
       // Auto-estimate prep time in background
@@ -5283,13 +5283,13 @@ async function estimateCaloriesAI(description) {
   // Add tag from library tab
   document.querySelectorAll('[data-add-lib-tag]').forEach(el => {
     el.addEventListener('click', async () => {
-      const ns = el.dataset.addLibTag
-      const tagType = el.dataset.tagType || 'category'
-      const inputId = el.dataset.inputId || ('new-lib-tag-' + ns)
-      const input = document.getElementById(inputId)
-      const name = input?.value?.trim()
+      var ns = el.dataset.addLibTag
+      var tagType = el.dataset.tagType || 'category'
+      var inputId = el.dataset.inputId || ('new-lib-tag-' + ns)
+      var input = document.getElementById(inputId)
+      var name = input?.value?.trim()
       if (!name) return
-      const saved = await db.saveTag(name, ns, tagType)
+      var saved = await db.saveTag(name, ns, tagType)
       if (saved) {
         saved.tag_type = tagType
         if (!state.allTags.find(t => t.name === name && t.namespace === ns)) state.allTags.push(saved)
@@ -5301,7 +5301,7 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.tag-lib-input').forEach(el => {
     el.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
-        const ns = el.id.replace('new-lib-tag-', '')
+        var ns = el.id.replace('new-lib-tag-', '')
         document.querySelector('[data-add-lib-tag="' + ns + '"]')?.click()
       }
     })
@@ -5318,16 +5318,16 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.tag-picker-btn[data-picker-id]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const key = el.dataset.pickerId + '-' + el.dataset.pickerNs
+      var key = el.dataset.pickerId + '-' + el.dataset.pickerNs
       if (state.tagPickerOpen === key) {
         state.tagPickerOpen = null
         state.tagPickerPos = null
       } else {
         state.tagPickerOpen = key
-        const rect = el.getBoundingClientRect()
-        const pickerHeight = 220 // estimated picker height
-        const spaceBelow = window.innerHeight - rect.bottom
-        const flipUp = spaceBelow < pickerHeight && rect.top > pickerHeight
+        var rect = el.getBoundingClientRect()
+        var pickerHeight = 220 // estimated picker height
+        var spaceBelow = window.innerHeight - rect.bottom
+        var flipUp = spaceBelow < pickerHeight && rect.top > pickerHeight
         state.tagPickerPos = {
           top: flipUp ? rect.top - pickerHeight - 4 : rect.bottom + 6,
           left: Math.min(rect.left, window.innerWidth - 220),
@@ -5354,8 +5354,8 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.tag-picker-add[data-new-tag-item]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
-      const input = el.closest('.tag-picker-new')?.querySelector('.tag-picker-input')
-      const name = input?.value?.trim()
+      var input = el.closest('.tag-picker-new')?.querySelector('.tag-picker-input')
+      var name = input?.value?.trim()
       if (!name) return
       state.tagPickerOpen = null
       await addTagToItem(name, el.dataset.newTagNs, el.dataset.newTagItem)
@@ -5382,7 +5382,7 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.cal-nav[data-week-nav]').forEach(el => {
     el.addEventListener('click', async () => {
       state.weekOffset += parseInt(el.dataset.weekNav)
-      const dates = getWeekDates(state.weekOffset)
+      var dates = getWeekDates(state.weekOffset)
       state.mealPlan = await db.fetchMealPlan(dates[0], dates[6])
       render()
     })
@@ -5413,8 +5413,8 @@ async function estimateCaloriesAI(description) {
   document.getElementById('cal-search-input')?.addEventListener('input', e => {
     state.calendarSearch = e.target.value
     render()
-    const el = document.getElementById('cal-search-input')
-    if (el) { const p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
+    var el = document.getElementById('cal-search-input')
+    if (el) { var p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
   })
 
   // Pick recipe for calendar slot
@@ -5422,7 +5422,7 @@ async function estimateCaloriesAI(description) {
     el.addEventListener('click', async () => {
       if (!state.calendarSlot) return
       const { date, slot } = state.calendarSlot
-      const saved = await db.saveMealPlanEntry(date, slot, el.dataset.pickRecipe, el.dataset.pickName, '')
+      var saved = await db.saveMealPlanEntry(date, slot, el.dataset.pickRecipe, el.dataset.pickName, '')
       if (saved) state.mealPlan.push(saved)
       state.calendarSlot = null
       state.calendarSearch = ''
@@ -5456,11 +5456,11 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('[data-shop-plan]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const rid = el.dataset.shopPlan
+      var rid = el.dataset.shopPlan
       if (!rid) return
-      const r = state.recipes.find(x => String(x.id) === String(rid))
+      var r = state.recipes.find(x => String(x.id) === String(rid))
       if (!r) return
-      const ingLines = (r.ingredients || r.text || '').split('\n')
+      var ingLines = (r.ingredients || r.text || '').split('\n')
         .map(l => l.replace(/^[•*\-]\s*/, '').replace(/^\d+\.\s*/, '').trim())
         .filter(l => {
           if (l.length < 3 || l.length > 150) return false
@@ -5469,11 +5469,11 @@ async function estimateCaloriesAI(description) {
           if (/^(preheat|heat|cook|bake|mix|combine|add|stir|bring|place|remove|serve|let|allow|set|pour|transfer)/i.test(l)) return false
           return true
         })
-      const items = ingLines.map(raw => {
-        const name = parseIngredientLine(raw)
-        const stripped = stripMeasurements(raw)
-        const match = state.pantry.find(p => {
-          const pl = p.name.toLowerCase()
+      var items = ingLines.map(raw => {
+        var name = parseIngredientLine(raw)
+        var stripped = stripMeasurements(raw)
+        var match = state.pantry.find(p => {
+          var pl = p.name.toLowerCase()
           return stripped.includes(pl) || pl.includes(stripped.split(' ').filter(w => w.length > 2)[0] || stripped)
         })
         return { name, pantryQty: match ? (match.qty || 'v in pantry') : null, checked: !match }
@@ -5485,12 +5485,12 @@ async function estimateCaloriesAI(description) {
 
   // Log today's meals button
   document.getElementById('log-today-btn')?.addEventListener('click', async () => {
-    const today = new Date().toISOString().slice(0,10)
-    const todayEntries = state.mealPlan.filter(e => e.date === today)
-    for (const entry of todayEntries) {
-      const already = state.log.some(l => l.food.includes(entry.recipe_name))
+    var today = new Date().toISOString().slice(0,10)
+    var todayEntries = state.mealPlan.filter(e => e.date === today)
+    for (var entry of todayEntries) {
+      var already = state.log.some(l => l.food.includes(entry.recipe_name))
       if (!already) {
-        const saved = await db.addLogEntry(entry.recipe_name, 0)
+        var saved = await db.addLogEntry(entry.recipe_name, 0)
         if (saved) state.log.push(saved)
       }
     }
@@ -5503,8 +5503,8 @@ async function estimateCaloriesAI(description) {
   document.getElementById('log-search')?.addEventListener('input', e => {
     state.logSearch = e.target.value
     render()
-    const el = document.getElementById('log-search')
-    if (el) { const p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
+    var el = document.getElementById('log-search')
+    if (el) { var p = el.value.length; el.focus(); el.setSelectionRange(p, p) }
   })
   document.getElementById('log-search-clear')?.addEventListener('click', () => {
     state.logSearch = ''
@@ -5534,12 +5534,12 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.log-add-cals-btn[data-add-cals-id]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const cals = prompt('How many calories?')
+      var cals = prompt('How many calories?')
       if (!cals || isNaN(parseInt(cals))) return
-      const id = el.dataset.addCalsId
-      const calories = parseInt(cals)
+      var id = el.dataset.addCalsId
+      var calories = parseInt(cals)
       // Update in both today's log and viewed day log
-      const entry = [...(state.log || []), ...(state.viewedDayLog || [])].find(l => String(l.id) === String(id))
+      var entry = [...(state.log || []), ...(state.viewedDayLog || [])].find(l => String(l.id) === String(id))
       if (entry) {
         entry.calories = calories
         db.updateLogEntry(id, { calories })
@@ -5562,7 +5562,7 @@ async function estimateCaloriesAI(description) {
     el.addEventListener('click', e => {
       e.stopPropagation()
       if (state.tab === 'calendar') {
-        const rid = String(el.dataset.goRecipe)
+        var rid = String(el.dataset.goRecipe)
         // Toggle — tap same recipe again to close
         if (state.calendarRecipePreview === rid) {
           state.calendarRecipePreview = null
@@ -5577,7 +5577,7 @@ async function estimateCaloriesAI(description) {
         state.expandedRecipe = String(el.dataset.goRecipe)
         render()
         setTimeout(() => {
-          const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+          var card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
           if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }, 100)
       }
@@ -5592,7 +5592,7 @@ async function estimateCaloriesAI(description) {
     el.addEventListener('click', e => {
       e.stopPropagation()
       state.addToWeekModal = { recipeId: el.dataset.addToWeek, recipeName: el.dataset.addName, selectedDay: null, selectedSlot: null }
-      const d = new Date(); state.addToWeekModal.selectedDay = d.toISOString().slice(0, 10)
+      var d = new Date(); state.addToWeekModal.selectedDay = d.toISOString().slice(0, 10)
       render()
     })
   })
@@ -5611,9 +5611,9 @@ async function estimateCaloriesAI(description) {
   document.getElementById('add-week-cancel')?.addEventListener('click', () => { state.addToWeekModal = null; render() })
   document.getElementById('add-week-bg')?.addEventListener('click', e => { if (e.target.id === 'add-week-bg') { state.addToWeekModal = null; render() } })
   document.getElementById('add-week-save')?.addEventListener('click', async () => {
-    const m = state.addToWeekModal
+    var m = state.addToWeekModal
     if (!m || !m.selectedSlot) return
-    const saved = await db.saveMealPlanEntry(m.selectedDay, m.selectedSlot, m.recipeId, m.recipeName)
+    var saved = await db.saveMealPlanEntry(m.selectedDay, m.selectedSlot, m.recipeId, m.recipeName)
     if (saved) {
       if (!state.mealPlan) state.mealPlan = []
       state.mealPlan.push(saved)
@@ -5624,10 +5624,10 @@ async function estimateCaloriesAI(description) {
 
   // Manual text entry in calendar picker
   document.getElementById('cal-manual-add')?.addEventListener('click', async () => {
-    const val = document.getElementById('cal-manual-input')?.value?.trim()
+    var val = document.getElementById('cal-manual-input')?.value?.trim()
     if (!val || !state.calendarSlot) return
     const { date, slot } = state.calendarSlot
-    const saved = await db.saveMealPlanEntry(date, slot, null, val)
+    var saved = await db.saveMealPlanEntry(date, slot, null, val)
     if (saved) state.mealPlan.push(saved)
     state.calendarSlot = null; state.calendarTagFilter = null; render()
   })
@@ -5650,13 +5650,13 @@ async function estimateCaloriesAI(description) {
   document.querySelectorAll('.cal-game-plan-btn[data-game-plan-slot]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      const slot = el.dataset.gamePlanSlot
-      const targetTime = el.dataset.gamePlanTime
-      const date = el.dataset.gamePlanDate
-      const recipeId = el.dataset.gamePlanRid
-      const chatKey = date + '-' + slot
-      const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
-      const hasPriorResult = state._lastGamePlan?.slot === slot && state._lastGamePlan?.date === date && state.gamePlanResult
+      var slot = el.dataset.gamePlanSlot
+      var targetTime = el.dataset.gamePlanTime
+      var date = el.dataset.gamePlanDate
+      var recipeId = el.dataset.gamePlanRid
+      var calGpKey = date + '-' + slot
+      var hasPriorChat = state.gamePlanChats[calGpKey] && state.gamePlanChats[chatKey].length > 0
+      var hasPriorResult = state._lastGamePlan?.slot === slot && state._lastGamePlan?.date === date && state.gamePlanResult
 
       if (hasPriorChat) {
         // Has a saved chat — go straight to it
@@ -5664,12 +5664,12 @@ async function estimateCaloriesAI(description) {
         state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || targetTime, date, recipeId }
         render()
         setTimeout(() => {
-          const el = document.getElementById('gp-chat-messages')
+          var el = document.getElementById('gp-chat-messages')
           if (el) el.scrollTop = el.scrollHeight
         }, 50)
       } else {
-        const key = date + '-' + slot
-        const saved = state.savedGamePlans[key]
+        var key = date + '-' + slot
+        var saved = state.savedGamePlans[key]
         if (saved && saved.result) {
           // Restore saved plan
           state.gamePlanModal = { ...saved, recipeId }
@@ -5687,37 +5687,37 @@ async function estimateCaloriesAI(description) {
     })
   })
   document.querySelectorAll('#gp-tweak').forEach(btn => btn.addEventListener('click', () => {
-    const { slot, targetTime, result: modalResult } = state.gamePlanModal || {}
-    const result = modalResult || state.gamePlanResult
-    if (!result) return
-    const chatKey = gpChatKey()
+    const { slot: twkSlot, targetTime: twkTime, result: twkModalResult } = state.gamePlanModal || {}
+    var twkResult = twkModalResult || state.gamePlanResult
+    if (!twkResult) return
+    var chatKey = gpChatKey()
     // If no prior chat, seed it with the timeline as the opening assistant message
     if (!state.gamePlanChats[chatKey] || state.gamePlanChats[chatKey].length === 0) {
-      const slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
-      const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
+      var twkSlotLabel = twkSlot === 'Day' ? 'whole day' : (twkSlot || 'meal')
+      var twkTimelineText = twkResult.map(item => item.time + ' — ' + item.step).join('\n')
       state.gamePlanChats[chatKey] = [{
         role: 'assistant',
-        content: 'Here\'s your ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+        content: 'Here\'s your ' + slotLabel + ' cooking timeline (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + twkTimelineText + '\n\nWhat tweaks would you like to make?'
       }]
     }
     state.gamePlanView = 'chat'
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'chat' }
     if (state.gamePlanModal?.date && state.gamePlanModal?.slot) {
-      const k = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      var k = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       state.savedGamePlans[k] = { ...state.gamePlanModal }
     }
     render()
     setTimeout(() => {
-      const el = document.getElementById('gp-chat-messages')
+      var el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
   }))
 
   document.querySelectorAll('#gp-start-over').forEach(btn => btn.addEventListener('click', () => {
-    const { date, slot } = state.gamePlanModal || {}
-    const chatKey = (date || 'today') + '-' + (slot || 'Dinner')
-    const planKey = date + '-' + slot
+    const { date: soDate, slot: soSlot } = state.gamePlanModal || {}
+    var chatKey = (soDate || 'today') + '-' + (soSlot || 'Dinner')
+    var planKey = soDate + '-' + soSlot
     // Wipe everything
     if (planKey) delete state.savedGamePlans[planKey]
     state.gamePlanChats[chatKey] = []
@@ -5744,21 +5744,21 @@ async function estimateCaloriesAI(description) {
   })
 
   document.getElementById('gp-tweak-from-fullscreen')?.addEventListener('click', () => {
-    const { slot, targetTime } = state.gamePlanModal || {}
-    const result = state.gamePlanResult
-    if (!result) return
-    const chatKey = gpChatKey()
+    const { slot: scSlot, targetTime: scTime } = state.gamePlanModal || {}
+    var scResult = state.gamePlanResult
+    if (!scResult) return
+    var scChatKey = gpChatKey()
     if (!state.gamePlanChats[chatKey] || state.gamePlanChats[chatKey].length === 0) {
-      const slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
-      const timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
+      var slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
+      var timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
       state.gamePlanChats[chatKey] = [{
         role: 'assistant',
-        content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
+        content: 'Here\'s your ' + twkSlotLabel + ' plan (dinner at ' + (targetTime || '7:00 PM') + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?'
       }]
     }
     state.gamePlanView = 'chat'; render()
     setTimeout(() => {
-      const el = document.getElementById('gp-chat-messages')
+      var el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
@@ -5773,21 +5773,21 @@ async function estimateCaloriesAI(description) {
   // Send message in game plan chat
   async function sendGpChatMessage(text) {
     if (!text.trim() || state.gamePlanChatLoading) return
-    const chatKey = gpChatKey()
+    var chatKey = gpChatKey()
     if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
 
     // Detect generate intent
-    const generatePhrases = ['generate it', 'generate the plan', 'looks good', 'go ahead', 'build it', 'make it', 'yes generate', 'do it', 'generate now', 'create the plan', 'build the plan']
-    const isGenerateIntent = generatePhrases.some(p => text.toLowerCase().includes(p))
+    var generatePhrases = ['generate it', 'generate the plan', 'looks good', 'go ahead', 'build it', 'make it', 'yes generate', 'do it', 'generate now', 'create the plan', 'build the plan']
+    var isGenerateIntent = generatePhrases.some(p => text.toLowerCase().includes(p))
 
     state.gamePlanChats[chatKey].push({ role: 'user', content: text })
 
     // Capture meal time if user is answering "what time"
-    const timeMatch = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+    var timeMatch = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
     if (timeMatch && state.gamePlanModal && !state.gamePlanModal.result) {
-      const captured = timeMatch[1].trim()
+      var captured = timeMatch[1].trim()
       // Normalize e.g. "7pm" -> "7:00 PM"
-      const norm = captured.replace(/(\d+)(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
+      var norm = captured.replace(/(\d+)(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
                            .replace(/(\d+):(\d+)(am|pm)/i, (_, h, m, ap) => h + ':' + m + ' ' + ap.toUpperCase())
       state.gamePlanModal = { ...state.gamePlanModal, targetTime: norm }
       if (state.gamePlanModal.date && state.gamePlanModal.slot) {
@@ -5798,16 +5798,16 @@ async function estimateCaloriesAI(description) {
     state.gamePlanChatLoading = true
     render()
     setTimeout(() => {
-      const el = document.getElementById('gp-chat-messages')
+      var el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
     }, 50)
 
     if (isGenerateIntent && !state.gamePlanModal?.result) {
       // User wants to generate — extract time from conversation if mentioned
       // Use the stored target time — don't try to parse it from the message
-      const targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+      var targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
       // Summarize conversation as notes
-      const convoNotes = state.gamePlanChats[chatKey].filter(m => m.role === 'user').map(m => m.content).join('. ')
+      var convoNotes = state.gamePlanChats[chatKey].filter(m => m.role === 'user').map(m => m.content).join('. ')
       state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Got it! Building your timeline now...' })
       state.gamePlanChatLoading = false
       state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
@@ -5819,10 +5819,10 @@ async function estimateCaloriesAI(description) {
       } catch(e) {
         console.error('gp generate error:', e)
       }
-      const finalResult = gpResult || [{ time: '?', step: 'Could not generate — check connection and try again.' }]
+      var finalResult = gpResult || [{ time: '?', step: 'Could not generate — check connection and try again.' }]
       state.gamePlanResult = finalResult
       if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false, targetTime }
-      const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       state.savedGamePlans[key] = { ...state.gamePlanModal }
       state.gamePlanTab = 'ingredients'
       state.gamePlanCheckedIngs = new Set()
@@ -5833,19 +5833,19 @@ async function estimateCaloriesAI(description) {
 
     try {
       const { slot, targetTime, result, date: gpDate } = state.gamePlanModal || {}
-      const hasResult = !!result
+      var hasResult = !!result
       let system
       if (hasResult) {
         system = 'You are a cooking timeline assistant helping the user adjust their existing cooking plan. Be specific and practical. Keep responses concise. Reference actual steps from the timeline.'
       } else {
-        const gpRecipes = buildGpRecipeContext(slot, gpDate)
-        const recipeCtx = gpRecipes.map(r => {
-          const pt = r.recipe?.prepTime
-          const ptStr = pt ? ' (' + pt.active_min + ' min active' + (pt.passive_min > 0 ? ', ' + pt.passive_min + ' min passive' : '') + ')' : ''
-          const ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,5).join(', ') : ''
+        var gpRecipes = buildGpRecipeContext(slot, gpDate)
+        var recipeCtx = gpRecipes.map(r => {
+          var pt = r.recipe?.prepTime
+          var ptStr = pt ? ' (' + pt.active_min + ' min active' + (pt.passive_min > 0 ? ', ' + pt.passive_min + ' min passive' : '') + ')' : ''
+          var ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,5).join(', ') : ''
           return r.name + ptStr + (ingPreview ? ' — ' + ingPreview : '')
         }).join('\n')
-        const mealTime = state.gamePlanModal?.targetTime || targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+        var mealTime = state.gamePlanModal?.targetTime || targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
         system = 'You are a friendly cooking assistant helping plan a meal.' +
           ' TARGET: ' + (slot||'Dinner') + ' served at ' + mealTime + ' — this is fixed. The final step of the plan must land at ' + mealTime + '.' +
           (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
@@ -5853,15 +5853,15 @@ async function estimateCaloriesAI(description) {
           ' FLOW: Ask one or two questions to understand their schedule. Once you have enough info, propose a rough draft timeline in plain conversational English — e.g. "Here\'s what I\'m thinking: chop the veg now 2–3pm, back at 5pm to start the chicken, sauce simmering by 5:30, everything on the table at ' + mealTime + '. Sound right?" — then ask if they want to adjust anything or are ready to generate. Keep the draft brief, no bullet points, just a natural sentence or two.' +
           ' Only after they confirm or tweak, tell them to say "generate it" or tap the button.'
       }
-      const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
-      const resp = await fetch('/api/chat', {
+      var messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
+      var resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, system, max_tokens: 400 })
       })
       if (!resp.ok) throw new Error('API error ' + resp.status)
-      const data = await resp.json()
-      const reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
+      var data = await resp.json()
+      var reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
       state.gamePlanChats[chatKey].push({ role: 'assistant', content: reply })
     } catch(e) {
       console.error('gp chat error:', e)
@@ -5870,7 +5870,7 @@ async function estimateCaloriesAI(description) {
     state.gamePlanChatLoading = false
     render()
     setTimeout(() => {
-      const el = document.getElementById('gp-chat-messages')
+      var el = document.getElementById('gp-chat-messages')
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
@@ -5878,21 +5878,21 @@ async function estimateCaloriesAI(description) {
   }
 
   document.querySelectorAll('#gp-chat-send').forEach(btn => btn.addEventListener('click', () => {
-    const input = document.getElementById('gp-chat-input')
-    const text = input?.value?.trim()
+    var input = document.getElementById('gp-chat-input')
+    var text = input?.value?.trim()
     if (text) { input.value = ''; sendGpChatMessage(text) }
   }))
   document.querySelectorAll('#gp-chat-input').forEach(inp => inp.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      const text = e.target.value?.trim()
+      var text = e.target.value?.trim()
       if (text) { e.target.value = ''; sendGpChatMessage(text) }
     }
   }))
   document.getElementById('gp-close')?.addEventListener('click', () => {
     // Save plan state before closing so it can be restored
     if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
-      const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       state.savedGamePlans[key] = { ...state.gamePlanModal }
     }
     state.gamePlanModal = false
@@ -5904,19 +5904,19 @@ async function gpGenerateHandler() {
     if (!state.gamePlanModal) return
     const { slot, date, recipeId } = state.gamePlanModal
     // Time: from input if it exists, otherwise from state
-    const timeInput = document.getElementById('gp-dinner-time')?.value?.trim()
-    const timeVal = timeInput || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    var timeInput = document.getElementById('gp-dinner-time')?.value?.trim()
+    var timeVal = timeInput || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
     // Notes: from input if exists, otherwise summarize chat conversation
-    const notesInput = document.getElementById('gp-notes')?.value?.trim()
-    const chatKey = date + '-' + slot
-    const chatHistory = state.gamePlanChats[chatKey] || []
-    const chatNotes = chatHistory.filter(m => m.role === 'user').map(m => m.content).join('. ')
-    const notes = notesInput || chatNotes || state.gamePlanModal.notes || ''
+    var notesInput = document.getElementById('gp-notes')?.value?.trim()
+    var gpGenChatKey = date + '-' + slot
+    var chatHistory = state.gamePlanChats[gpGenChatKey] || []
+    var chatNotes = chatHistory.filter(m => m.role === 'user').map(m => m.content).join('. ')
+    var notes = notesInput || chatNotes || state.gamePlanModal.notes || ''
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
     // Clear saved plan so we don't restore the old one during generation
-    const regenKey = date + '-' + slot
+    var regenKey = date + '-' + slot
     delete state.savedGamePlans[regenKey]
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, generating: true }
     state.gamePlanLoading = true
@@ -5931,29 +5931,29 @@ async function gpGenerateHandler() {
       state.gamePlanLoading = false
       if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, generating: false }
     }
-    const finalResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    var finalResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     state.gamePlanResult = finalResult
     // Also store result IN the modal so inline renderers can see it
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false }
-    const slotLabel = slot === 'Day' ? 'whole day' : slot
-    const timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
+    var slotLabel = slot === 'Day' ? 'whole day' : slot
+    var timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
     // Preserve existing chat history, just add the result as an assistant message
-    if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
-    state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
+    if (!state.gamePlanChats[regenChatKey]) state.gamePlanChats[regenChatKey] = []
+    state.gamePlanChats[regenChatKey].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
     state.gamePlanView = 'result'
     // Persist plan so it survives close/reopen
-    const planKey = date + '-' + slot
+    var planKey = date + '-' + slot
     state.savedGamePlans[planKey] = { ...state.gamePlanModal }
     saveGamePlanToDb()
     render()
     // Scroll to the game plan
     setTimeout(() => {
-      const el = document.getElementById('gp-start-cooking') || document.getElementById('gp-tweak')
+      var el = document.getElementById('gp-start-cooking') || document.getElementById('gp-tweak')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
   }
   document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
-    const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
+    var timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
     const { slot, date, recipeId, notes } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal }
@@ -5961,16 +5961,16 @@ async function gpGenerateHandler() {
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
-    const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
+    var result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
-    const finalResult2 = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    var finalResult2 = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
     state.gamePlanResult = finalResult2
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
     // Re-seed chat thread with new timeline
-    const chatKey = date + '-' + slot
-    const slotLabel = slot === 'Day' ? 'whole day' : slot
-    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
-    const seedMessages = []
+    var regenChatKey = date + '-' + slot
+    var slotLabel = slot === 'Day' ? 'whole day' : slot
+    var timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    var seedMessages = []
     if (notes) seedMessages.push({ role: 'user', content: notes })
     seedMessages.push({ role: 'assistant', content: 'Here\'s your updated ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
     state.gamePlanChats[chatKey] = seedMessages
@@ -5980,21 +5980,21 @@ async function gpGenerateHandler() {
     saveGamePlanToDb()
     render()
     setTimeout(() => {
-      const el = document.getElementById('gp-start-cooking')
+      var el = document.getElementById('gp-start-cooking')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
   }))
 
   // ── CHAT HANDLERS ──
   document.getElementById('chat-send')?.addEventListener('click', () => {
-    const input = document.getElementById('chat-input')
-    const msg = input?.value?.trim()
+    var input = document.getElementById('chat-input')
+    var msg = input?.value?.trim()
     if (msg) { input.value = ''; sendChatMessage(msg) }
   })
   document.getElementById('chat-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      const msg = e.target.value?.trim()
+      var msg = e.target.value?.trim()
       if (msg) { e.target.value = ''; sendChatMessage(msg) }
     }
   })
@@ -6006,22 +6006,22 @@ async function gpGenerateHandler() {
   })
 
   // Back arrow and recipe name link — both jump back to the recipe card
-  const goToRecipeFromChat = () => {
+  var goToRecipeFromChat = () => {
     if (!state.chatRecipeContext) return
-    const rid = String(state.chatRecipeContext.id)
+    var rid = String(state.chatRecipeContext.id)
     state.tab = 'recipes'
     state.expandedRecipe = rid
     localStorage.setItem('mep_tab', 'recipes')
     render()
     setTimeout(() => {
-      const card = document.querySelector('[data-rid="' + rid + '"]')
+      var card = document.querySelector('[data-rid="' + rid + '"]')
       if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 80)
   }
   document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
   document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
   document.getElementById('chat-clear')?.addEventListener('click', () => {
-    const rid = state.chatRecipeContext?.id
+    var rid = state.chatRecipeContext?.id
     if (rid) {
       state.recipeChatMessages[rid] = []
       db.saveRecipeChat(rid, [])
@@ -6039,7 +6039,7 @@ async function gpGenerateHandler() {
       localStorage.setItem('mep_tab', 'recipes')
       render()
       setTimeout(() => {
-        const card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+        var card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
         if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 100)
     })
@@ -6065,10 +6065,10 @@ document.addEventListener('visibilitychange', async () => {
 
     // Check clipboard for a recipe URL
     try {
-      const text = await navigator.clipboard.readText()
-      const trimmed = (text || '').trim()
-      const isUrl = trimmed.startsWith('http') && trimmed.length < 500
-      const alreadyShown = state._lastClipboardUrl === trimmed
+      var text = await navigator.clipboard.readText()
+      var trimmed = (text || '').trim()
+      var isUrl = trimmed.startsWith('http') && trimmed.length < 500
+      var alreadyShown = state._lastClipboardUrl === trimmed
       if (isUrl && !alreadyShown && !state.pasteModal && !state.shareLoading) {
         state._lastClipboardUrl = trimmed
         state.clipboardBanner = trimmed
