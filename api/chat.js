@@ -17,7 +17,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
+        max_tokens: Math.min(req.body.max_tokens || 1024, 4000),
         system: system || 'You are a helpful meal planning assistant.',
         messages
       })
