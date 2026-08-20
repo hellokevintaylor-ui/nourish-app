@@ -1317,7 +1317,7 @@ function renderTonightCard() {
   const singleId = isSingle ? entries[0].recipe_id : null
 
   return '<div style="background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:14px">' +
-    '<div style="font-size:10px;font-weight:700;letter-spacing:0.7px;color:rgba(255,255,255,0.38);text-transform:uppercase;margin-bottom:6px">Tonight's plan · ' + slotLabel + '</div>' +
+    '<div style="font-size:10px;font-weight:700;letter-spacing:0.7px;color:rgba(255,255,255,0.38);text-transform:uppercase;margin-bottom:6px">Tonight&#39;s plan · ' + slotLabel + '</div>' +
     '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:3px;letter-spacing:-0.3px;line-height:1.3">' + esc(nameDisplay) + '</div>' +
     '<div style="font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px">' + entries.length + ' recipe' + (entries.length>1?'s':'') + ' planned</div>' +
     (isSingle
