@@ -5759,35 +5759,36 @@ async function estimateCaloriesAI(description) {
     }
 
     try {
-      const { slot, targetTime, result } = state.gamePlanModal || {}
+      const { slot, targetTime, result, date: gpDate } = state.gamePlanModal || {}
       const hasResult = !!result
-      const system = hasResult
-        ? 'You are a cooking timeline assistant helping the user adjust their existing cooking plan. Be specific and practical. Keep responses concise. If they want to change a time or step, confirm and suggest how. Reference actual steps from the timeline.'
-        : (() => {
-            const gpRecipes = buildGpRecipeContext(slot, date)
-            const recipeCtx = gpRecipes.map(r => {
-              const pt = r.recipe?.prepTime
-              const ptStr = pt ? ' (' + pt.active_min + ' min active' + (pt.passive_min > 0 ? ', ' + pt.passive_min + ' min passive' : '') + ')' : ''
-              const ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,6).join(', ') : ''
-              return r.name + ptStr + (ingPreview ? '\nKey ingredients: ' + ingPreview : '')
-            }).join('\n\n')
-            return 'You are a friendly cooking assistant helping plan a meal. ' +
-              'RECIPES FOR THIS MEAL:\n' + (recipeCtx || 'Not specified yet') + '\n\n' +
-              'Help the user figure out timing and logistics conversationally. Ask one or two focused questions at a time about when they can start, any prep already done, any constraints. ' +
-              'Reference the actual recipes and their approximate cook times in your responses. ' +
-              'Once you have enough info, remind them to say "generate it" or tap the button below. Be warm, specific, and brief.'
-          })()
+      let system
+      if (hasResult) {
+        system = 'You are a cooking timeline assistant helping the user adjust their existing cooking plan. Be specific and practical. Keep responses concise. Reference actual steps from the timeline.'
+      } else {
+        const gpRecipes = buildGpRecipeContext(slot, gpDate)
+        const recipeCtx = gpRecipes.map(r => {
+          const pt = r.recipe?.prepTime
+          const ptStr = pt ? ' (' + pt.active_min + ' min active' + (pt.passive_min > 0 ? ', ' + pt.passive_min + ' min passive' : '') + ')' : ''
+          const ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,5).join(', ') : ''
+          return r.name + ptStr + (ingPreview ? ' — ' + ingPreview : '')
+        }).join('\n')
+        system = 'You are a friendly cooking assistant helping plan a meal.' +
+          (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
+          ' Ask one or two questions at a time about when they can start, any prep done, any constraints. Reference the actual recipes. Keep it brief. When ready, remind them to say "generate it" or tap the button.'
+      }
       const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, system, max_tokens: 300 })
       })
+      if (!resp.ok) throw new Error('API error ' + resp.status)
       const data = await resp.json()
       const reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
       state.gamePlanChats[chatKey].push({ role: 'assistant', content: reply })
     } catch(e) {
-      state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Something went wrong — try again.' })
+      console.error('gp chat error:', e)
+      state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Something went wrong (' + e.message + ') — try again.' })
     }
     state.gamePlanChatLoading = false
     render()
