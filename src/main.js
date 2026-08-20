@@ -996,7 +996,6 @@ function render() {
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
       ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
-      ${state.calendarRecipePreview ? renderCalendarRecipePreviewModal() : ''}
 
       <!-- SCROLL TO TOP -->
       <button id="scroll-top-btn" style="display:none;position:fixed;bottom:24px;right:18px;z-index:999;background:var(--forest);color:white;border:none;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,0.25);align-items:center;gap:5px">&#8679; Top</button>
@@ -2344,19 +2343,45 @@ function renderCalendar() {
       entries.forEach(entry => {
         html += '<div class="cal-entry">'
         html += (entry.recipe_id
-          ? '<button class="cal-entry-name" data-go-recipe="' + entry.recipe_id + '" style="background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:var(--forest);font-weight:600;font-size:13px;padding:0;text-decoration:underline dotted">' + esc(entry.recipe_name || 'Unnamed') + '</button>'
+          ? '<button class="cal-entry-name" data-go-recipe="' + entry.recipe_id + '" style="background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;color:#3d52c4;font-weight:600;font-size:13px;padding:0;text-decoration:underline dotted">' + esc(entry.recipe_name || 'Unnamed') + '</button>'
           : '<span class="cal-entry-name">' + esc(entry.recipe_name || 'Unnamed') + '</span>')
         html += '<div class="cal-entry-actions">'
         html += '<button class="cal-entry-log" data-log-plan="' + entry.id + '" data-plan-name="' + esc(entry.recipe_name) + '" data-plan-rid="' + (entry.recipe_id||'') + '">+ Log</button>'
-        if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:var(--sage4);color:var(--forest)">+ List</button>'
+        if (entry.recipe_id) html += '<button class="cal-entry-log" data-shop-plan="' + entry.recipe_id + '" style="background:#eef0fc;color:#3d52c4">+ List</button>'
         html += '<button class="cal-entry-del" data-del-plan="' + entry.id + '">&times;</button>'
         html += '</div>'
         html += '</div>'
+        // Inline recipe preview — expands below this entry when tapped
+        if (entry.recipe_id && String(state.calendarRecipePreview) === String(entry.recipe_id)) {
+          const r = state.recipes.find(x => x.id === state.calendarRecipePreview)
+          if (r) {
+            const prevExpanded = state.expandedRecipe
+            const prevCook = state.cookMode
+            // If cook mode is active for this recipe, show cook inline
+            // expandedRecipe must be set so renderRecipeCard shows body
+            state.expandedRecipe = r.id
+            const cardHtml = renderRecipeCard(r)
+            state.expandedRecipe = prevExpanded
+            html += '<div style="margin:6px 0;border:0.5px solid #e8e8e5;border-radius:10px;overflow:hidden;background:white">' + cardHtml + '</div>'
+          }
+        }
       })
 
       html += '<button class="cal-add-btn" data-cal-date="' + date + '" data-cal-slot="' + slot + '">+ Add</button>'
       html += '</div>'
+
+      // Inline game plan — expands below the slot it belongs to
+      const gp = state.gamePlanModal
+      if (gp && !gp.recipeId && gp.date === date && gp.slot === slot) {
+        html += renderGamePlanCalInline()
+      }
     })
+
+    // Day-level game plan (slot='Day') renders after all slots
+    const gpDay = state.gamePlanModal
+    if (gpDay && !gpDay.recipeId && gpDay.date === date && gpDay.slot === 'Day') {
+      html += renderGamePlanCalInline()
+    }
 
     html += '</div>'
   })
@@ -3054,7 +3079,214 @@ function renderGamePlanInline(r) {
   '</div>'
 }
 
+function renderGamePlanCalInline() {
+  const gp = state.gamePlanModal || {}
+  const { slot, targetTime, date, result, notes, generating, view } = gp
+  const slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
+  const timeVal = targetTime || '7:00 PM'
+  const chatKey = gpChatKey()
+  const chatMessages = state.gamePlanChats[chatKey] || []
+  const chatLoading = state.gamePlanChatLoading || false
+  const hasPriorChat = chatMessages.length > 0
+  const dateLabel = date
+    ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
+    : ''
+
+  const blackHeader = (title, sub, extra) =>
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
+      '<button id="gp-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:700;color:white">' + title + '</div>' +
+        (sub ? '<div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px">' + sub + '</div>' : '') +
+      '</div>' +
+      (extra || '') +
+    '</div>'
+
+  const wrap = (inner) => '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-top:8px;margin-bottom:4px">' + inner + '</div>'
+
+  if (view === 'chat') {
+    const bubbles = chatMessages.map(m =>
+      '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:10px">' +
+        '<div style="max-width:85%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
+          (m.role==='assistant' ? linkifyTimers(esc(m.content).replace(/\n/g,'<br>')) : esc(m.content).replace(/\n/g,'<br>')) +
+        '</div>' +
+      '</div>'
+    ).join('')
+    return wrap(
+      blackHeader('✦ Tweak', slotLabel + ' · ' + dateLabel,
+        '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
+        '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>') +
+      '<div id="gp-chat-messages" style="padding:14px;min-height:120px;max-height:300px;overflow-y:auto">' +
+        (chatMessages.length===0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>' : bubbles) +
+        (chatLoading ? '<div style="text-align:center;padding:10px;color:#6e6e69;font-size:13px">thinking...</div>' : '') +
+      '</div>' +
+      '<div style="padding:10px 14px;border-top:0.5px solid #e8e8e5;display:flex;gap:8px">' +
+        '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none" />' +
+        '<button id="gp-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"' + (chatLoading?' disabled':'') + '>Send</button>' +
+      '</div>'
+    )
+  }
+
+  if (generating) {
+    return wrap(
+      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
+      '<div style="padding:30px 20px;text-align:center">' +
+        '<div style="font-size:20px;margin-bottom:10px">📋</div>' +
+        '<div style="font-size:13px;font-weight:600;color:#1a1a1a">Building your timeline...</div>' +
+        '<div style="font-size:11px;color:#6e6e69;margin-top:4px">Working backwards from ' + esc(timeVal) + '</div>' +
+      '</div>'
+    )
+  }
+
+  if (!result) {
+    const savedNotes = gp.notes || ''
+    return wrap(
+      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
+      '<div style="padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+          '<span style="font-size:13px;font-weight:600;color:#3a3a38;white-space:nowrap">Eat at</span>' +
+          '<input id="gp-dinner-time" value="' + esc(timeVal) + '" style="flex:1;padding:8px 12px;border:1.5px solid #3d52c4;border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700;color:#3d52c4;outline:none" />' +
+        '</div>' +
+        '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. start at 4:30, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:60px;box-sizing:border-box;margin-bottom:10px;line-height:1.5;outline:none">' + esc(savedNotes) + '</textarea>' +
+        '<button id="gp-generate" style="width:100%;padding:10px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Generate Game Plan</button>' +
+      '</div>'
+    )
+  }
+
+  const timeline =
+    '<div style="position:relative;padding-left:18px;margin-bottom:12px">' +
+      '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#3d52c4;opacity:0.2;border-radius:2px"></div>' +
+      result.map((item, i) => {
+        const isLast = i === result.length - 1
+        return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;position:relative">' +
+          '<div style="position:absolute;left:-14px;top:5px;width:8px;height:8px;border-radius:50%;background:' + (isLast?'#1a1a1a':'#3d52c4') + ';border:2px solid white;box-shadow:0 0 0 1.5px ' + (isLast?'#1a1a1a':'#3d52c4') + '"></div>' +
+          '<div style="min-width:55px;font-size:11px;font-weight:700;color:#3d52c4;padding-top:3px;flex-shrink:0">' + esc(item.time) + '</div>' +
+          '<div style="font-size:13px;color:#1a1a1a;line-height:1.5;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+        '</div>'
+      }).join('') +
+    '</div>'
+
+  return wrap(
+    blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal),
+      '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>') +
+    '<div style="padding:14px">' +
+      timeline +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        '<button id="gp-start-cooking" style="width:100%;padding:10px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
+        '<button id="gp-tweak" style="width:100%;padding:10px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
+      '</div>' +
+    '</div>'
+  )
+}
+
+
 function renderGamePlanModal() { return '' }
+function _renderGamePlanModal_unused() {
+  // Only show as a modal when opened from Week tab (no recipeId = not inline in a card)
+  const gp = state.gamePlanModal || {}
+  if (!gp || gp.recipeId) return ''  // inline mode handles it
+  const { slot, targetTime, date, result, notes, generating, view } = gp
+  const slotLabel = slot || 'Dinner'
+  const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+  const chatKey = gpChatKey()
+  const chatMessages = state.gamePlanChats[chatKey] || []
+  const chatLoading = state.gamePlanChatLoading || false
+  const hasPriorChat = chatMessages.length > 0
+  const dateLabel = date
+    ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
+    : new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
+
+  const blackHeader = (title, sub, extra) =>
+    '<div style="background:#1a1a1a;padding:14px 16px;display:flex;align-items:center;gap:10px;border-radius:20px 20px 0 0;flex-shrink:0">' +
+      '<button id="gp-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:14px;font-weight:700;color:white">' + title + '</div>' +
+        '<div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px">' + sub + '</div>' +
+      '</div>' +
+      (extra || '') +
+    '</div>'
+
+  const sheet = (headerHtml, bodyHtml) =>
+    '<div class="modal-bg" id="game-plan-bg" style="align-items:flex-end;z-index:200">' +
+      '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden;border-radius:20px 20px 0 0">' +
+        headerHtml + bodyHtml +
+      '</div>' +
+    '</div>'
+
+  if (view === 'chat') {
+    const bubbles = chatMessages.map(m =>
+      '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:10px">' +
+        '<div style="max-width:85%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
+          (m.role==='assistant' ? linkifyTimers(esc(m.content).replace(/\n/g,'<br>')) : esc(m.content).replace(/\n/g,'<br>')) +
+        '</div>' +
+      '</div>'
+    ).join('')
+    return sheet(
+      blackHeader('✦ Tweak Game Plan', slotLabel + ' · ' + dateLabel,
+        '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
+        '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>'),
+      '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
+        (chatMessages.length===0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>' : bubbles) +
+        (chatLoading ? '<div style="text-align:center;padding:10px;color:#6e6e69;font-size:13px">thinking...</div>' : '') +
+      '</div>' +
+      '<div style="padding:10px 14px;border-top:0.5px solid #e8e8e5;display:flex;gap:8px;flex-shrink:0">' +
+        '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none" />' +
+        '<button id="gp-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"' + (chatLoading?' disabled':'') + '>Send</button>' +
+      '</div>'
+    )
+  }
+
+  if (generating) {
+    return sheet(
+      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, ''),
+      '<div style="padding:40px 20px;text-align:center">' +
+        '<div style="font-size:24px;margin-bottom:12px">📋</div>' +
+        '<div style="font-size:14px;font-weight:600;color:#1a1a1a">Building your timeline...</div>' +
+        '<div style="font-size:12px;color:#6e6e69;margin-top:6px">Working backwards from ' + esc(timeVal) + '</div>' +
+      '</div>'
+    )
+  }
+
+  if (!result) {
+    const savedNotes = gp.notes || ''
+    return sheet(
+      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, ''),
+      '<div style="padding:16px;overflow-y:auto">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+          '<span style="font-size:13px;font-weight:600;color:#3a3a38;white-space:nowrap">Eat at</span>' +
+          '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:9px 12px;border:1.5px solid #3d52c4;border-radius:10px;font-size:15px;font-family:inherit;text-align:center;font-weight:700;color:#3d52c4;outline:none" />' +
+        '</div>' +
+        '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, already made the sauce..." style="width:100%;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px;line-height:1.5;outline:none">' + esc(savedNotes) + '</textarea>' +
+        '<button id="gp-generate" style="width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Generate Game Plan</button>' +
+      '</div>'
+    )
+  }
+
+  const timeline =
+    '<div style="position:relative;padding-left:18px;margin-bottom:14px">' +
+      '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#3d52c4;opacity:0.2;border-radius:2px"></div>' +
+      result.map((item, i) => {
+        const isLast = i === result.length - 1
+        return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
+          '<div style="position:absolute;left:-14px;top:5px;width:8px;height:8px;border-radius:50%;background:' + (isLast?'#1a1a1a':'#3d52c4') + ';border:2px solid white;box-shadow:0 0 0 1.5px ' + (isLast?'#1a1a1a':'#3d52c4') + '"></div>' +
+          '<div style="min-width:58px;font-size:11px;font-weight:700;color:#3d52c4;padding-top:3px;flex-shrink:0">' + esc(item.time) + '</div>' +
+          '<div style="font-size:14px;color:#1a1a1a;line-height:1.5;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+        '</div>'
+      }).join('') +
+    '</div>'
+
+  return sheet(
+    blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal),
+      '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>'),
+    '<div style="padding:16px;overflow-y:auto">' +
+      timeline +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+        '<button id="gp-start-cooking" style="width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
+        '<button id="gp-tweak" style="width:100%;padding:11px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
+      '</div>' +
+    '</div>'
+  )
+}
 
 function renderScanPicker() {
   return '<div class="modal-bg" id="scan-picker-bg">' +
@@ -3875,7 +4107,10 @@ function bindEvents() {
     })
   })
   document.getElementById('cook-mode-close')?.addEventListener('click', () => {
-    state.cookMode = null; render()
+    state.cookMode = null
+    // If we were in calendar inline view, keep the recipe preview open
+    // so user can see the recipe card again after closing cook
+    render()
   })
   document.getElementById('cook-mode-edit-toggle')?.addEventListener('click', () => {
     state.cookMode = { ...state.cookMode, editing: !state.cookMode.editing }; render()
@@ -5145,8 +5380,15 @@ async function estimateCaloriesAI(description) {
     el.addEventListener('click', e => {
       e.stopPropagation()
       if (state.tab === 'calendar') {
-        state.calendarRecipePreview = String(el.dataset.goRecipe)
-        state.expandedRecipe = String(el.dataset.goRecipe)
+        const rid = String(el.dataset.goRecipe)
+        // Toggle — tap same recipe again to close
+        if (state.calendarRecipePreview === rid) {
+          state.calendarRecipePreview = null
+          state.cookMode = null
+        } else {
+          state.calendarRecipePreview = rid
+          state.cookMode = null // reset cook mode when switching recipes
+        }
         render()
       } else {
         state.tab = 'recipes'
@@ -5161,18 +5403,7 @@ async function estimateCaloriesAI(description) {
   })
 
   // Close calendar recipe preview modal
-  document.getElementById('cal-recipe-preview-close')?.addEventListener('click', () => {
-    state.calendarRecipePreview = null
-    state.expandedRecipe = null
-    render()
-  })
-  document.getElementById('cal-recipe-preview-bg')?.addEventListener('click', e => {
-    if (e.target.id === 'cal-recipe-preview-bg') {
-      state.calendarRecipePreview = null
-      state.expandedRecipe = null
-      render()
-    }
-  })
+  // cal-recipe-preview is now inline in calendar — no modal to close
 
   // Add to Week from recipe card
   document.querySelectorAll('[data-add-to-week]').forEach(el => {
