@@ -2738,44 +2738,28 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   var recipeNames = (mealText.match(/=== (.+?) ===/g) || []).map(m => m.replace(/===/g, '').trim())
   console.log('recipeNames:', recipeNames)
   var slotLabel = isWholeDay ? 'the whole day' : slot
-  var prompt = `You are a professional chef planning a cooking session. Output ONE unified list of steps so everything is ready at EXACTLY ${targetTime}.
+  var prompt = `You are a professional chef. A home cook is making ${recipeNames.join(' and ')} and wants to eat at ${targetTime}. Current time is ${currentTime}.
 
-CURRENT TIME RIGHT NOW: ${currentTime} — NO step should be scheduled before this time.
-SERVE AT: ${targetTime} — FIXED. Last step finishes at ${targetTime}. Work BACKWARDS from this time.
-CRITICAL: The first step in your plan cannot start earlier than ${currentTime}.
-DATE: ${mealDate}
-RECIPES: ${recipeNames.join(', ')}
-${notes ? 'USER CONSTRAINTS — these are HARD requirements, not suggestions. The schedule MUST respect every one of these:\n' + notes + '\n\nIMPORTANT: If the user says they can start at a certain time, NO step should appear before that time. If they have a gap (e.g. free now for an hour, then back at 7pm), schedule prep steps during the first window and cooking steps during the second window.' : ''}
+YOUR JOB: Return an ordered list of cooking steps that intelligently interleaves all recipes, using passive time from one dish to work on another.
+
+DO NOT include times in your response — just steps with durations. The app will calculate the actual schedule.
 
 FULL RECIPE DETAILS:
 ${mealText}
 
-INSTRUCTIONS:
-Think like a chef coordinating a kitchen. Plan the entire cooking session as one sequence — not recipe by recipe. Use passive time (oven, simmering, resting) from one dish to do active prep on another.
-
-For example with steak + potatoes + salad:
-1. Start oven (passive time → use it to prep everything)
-2. Make salad dressing while oven heats
-3. Sear steak (passive sear time → prep potatoes)
-4. Put potatoes in steak pan, oven
-5. Rest steak while potatoes finish
-6. Plate together
-
-Return ONLY a JSON array of steps with timing:
+Return ONLY a JSON array:
 [
-  {"step": "Preheat oven to 375°F", "active_min": 1, "passive_min": 18},
-  {"step": "Make Café de Paris dressing — combine anchovies, capers, shallots...", "active_min": 8, "passive_min": 0},
-  {"step": "Sear Denver steak — season, sear in 2 tbsp butter + 2 tbsp olive oil, 2 min per side", "active_min": 6, "passive_min": 0},
-  {"step": "While steak rests, add potatoes cut-side down to same pan, oven 375°F", "active_min": 3, "passive_min": 20},
-  {"step": "Flash steak in oven 2-3 min, then slice", "active_min": 4, "passive_min": 0},
-  {"step": "Assemble salad, plate everything together", "active_min": 4, "passive_min": 0}
+  {"step": "Prep the chicken — slice 3 breasts into 6 cutlets, season with salt and pepper", "active_min": 5, "passive_min": 0},
+  {"step": "Coat cutlets in flour, shake off excess, set aside on sheet pan", "active_min": 3, "passive_min": 0},
+  {"step": "Heat 3 tbsp olive oil in large pan over medium-high, add 3 tbsp butter, cook batch 1 of chicken until golden, 5 min per side", "active_min": 12, "passive_min": 0},
+  {"step": "Cook batch 2 of chicken, 5 min per side, transfer to plate", "active_min": 12, "passive_min": 0}
 ]
 
 Rules:
-- Include exact quantities inline with every step
-- Label which recipe each step is for if not obvious ("For the pasta:" or "For the steak:")
-- Use passive time aggressively — nothing sits idle if another recipe needs attention
-- ALL recipes must be ready by ${targetTime}
+- Each step must include exact quantities inline
+- Label which recipe if not obvious ("For the pasta:", "For the chicken:")
+- Use passive_min for hands-off time (simmering, resting, oven) — during passive time other steps can run
+- NO times, NO scheduling — just ordered steps with durations
 - No markdown, no backticks, ONLY the JSON array\``
 
   let gpResp, gpAttempts = 0
@@ -2825,33 +2809,41 @@ Rules:
 }
 
 function gpParseConstraints(notes) {
-  // Extract start time and gaps from notes string
-  var constraints = { startMins: null, gaps: [] }
+  var constraints = { startMins: null, gapStartMins: null, gapEndMins: null }
   if (!notes) return constraints
   var lower = notes.toLowerCase()
 
-  // Extract start time — "start at 5", "starting at 5pm", "can start at 5:30", "start now"
-  var startMatch = lower.match(/(?:start|starting|begin|free|available|can cook)(?:\s+(?:at|from|now))\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
-  if (!startMatch) startMatch = lower.match(/(?:it(?:'s| is)|right now|currently)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
-  if (!startMatch && lower.includes('start now')) {
-    // Use current time
-    var now = new Date()
-    constraints.startMins = now.getHours() * 60 + now.getMinutes()
+  // Extract start time
+  var startNow = lower.includes('start now') || lower.includes('starting now') || lower.includes('can start now')
+  var startMatch = lower.match(/(?:start|starting|begin|free|available|can cook|can start)(?:\s+(?:at|from))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+  if (!startMatch) startMatch = lower.match(/(?:it(?:'s| is)|right now|currently|now is|time is)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+
+  if (startNow) {
+    var n = new Date()
+    constraints.startMins = n.getHours() * 60 + n.getMinutes()
   } else if (startMatch) {
     var t = startMatch[1].trim()
-    if (!/am|pm/i.test(t)) t += ' PM' // assume PM
+    if (!/am|pm/i.test(t)) t += ' PM'
     constraints.startMins = gpParseTime(t)
   }
 
-  // Extract gaps — "free until X then back at Y", "gap from X to Y", "back at Y"
-  var gapMatch = lower.match(/(?:free|away|unavailable|gone|break)(?:[^.]*?)(?:until|till|to)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)[^.]*?(?:back|return|free again|available|start again)?(?:[^.]*?at\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?))?/i)
-  // Simpler: look for "back at X" or "free again at X"
-  var backMatch = lower.match(/(?:back|return|start again|free again|available again)(?:\s+at)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
-  if (backMatch) {
-    var gapEnd = backMatch[1].trim()
-    if (!/am|pm/i.test(gapEnd)) gapEnd += ' PM'
-    // Gap is from "end of first window" to backMins
-    constraints.gapEndMins = gpParseTime(gapEnd)
+  // Extract gap — "break between 6:30 and 7", "away from 6:30 to 7", "break from 6:30-7"
+  var gapMatch = lower.match(/(?:break|gap|away|unavailable|off|gone|busy)(?:[^.]*?)(?:between|from)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:and|to|-|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
+  if (gapMatch) {
+    var gs = gapMatch[1].trim(), ge = gapMatch[2].trim()
+    if (!/am|pm/i.test(gs)) gs += ' PM'
+    if (!/am|pm/i.test(ge)) ge += ' PM'
+    constraints.gapStartMins = gpParseTime(gs)
+    constraints.gapEndMins = gpParseTime(ge)
+  } else {
+    // "back at 7", "free again at 7" — gap end only, gap start = gapEnd - 30min
+    var backMatch = lower.match(/(?:back|return|free again|available again|start again)(?:\s+at)?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
+    if (backMatch) {
+      var ge2 = backMatch[1].trim()
+      if (!/am|pm/i.test(ge2)) ge2 += ' PM'
+      constraints.gapEndMins = gpParseTime(ge2)
+      constraints.gapStartMins = constraints.gapEndMins - 30
+    }
   }
 
   return constraints
@@ -2860,32 +2852,44 @@ function gpParseConstraints(notes) {
 function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
   var dinnerMins = gpParseTime(targetTime)
   var constraints = gpParseConstraints(notes || '')
-  var startMins = constraints.startMins
+  var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
+
+  // Start time: use constraint, or current time, whichever is later
+  var startMins = constraints.startMins !== null ? constraints.startMins : nowMins
+  if (startMins < nowMins) startMins = nowMins
+
+  // Gap window: gapStartMins to gapEndMins — no steps scheduled during this window
+  var gapStartMins = constraints.gapStartMins || null
   var gapEndMins = constraints.gapEndMins || null
 
-  // Calculate total cook time
-  var totalMins = steps.reduce(function(sum, s) {
-    return sum + (s.active_min || 0) + (s.passive_min || 0)
-  }, 0)
+  // Check if all steps fit between startMins and dinnerMins (excluding gap)
+  var availableMins = dinnerMins - startMins - (gapStartMins && gapEndMins ? gapEndMins - gapStartMins : 0)
+  var totalMins = steps.reduce(function(sum, s) { return sum + (s.active_min || 0) + (s.passive_min || 0) }, 0)
 
-  // Work backwards from dinner to find when we should start
-  var calcStartMins = dinnerMins - totalMins
-
-  // If user gave a start time, use whichever is LATER (respect their constraint)
-  if (startMins !== null && startMins > calcStartMins) {
-    calcStartMins = startMins
+  // If not enough time, push start earlier (but never before now)
+  if (totalMins > availableMins) {
+    startMins = Math.max(nowMins, dinnerMins - totalMins - (gapStartMins && gapEndMins ? gapEndMins - gapStartMins : 0))
   }
 
-  // Build timeline forward from calcStartMins
+  // Place steps forward from startMins, skipping the gap
   var result = []
-  var cursor = calcStartMins
+  var cursor = startMins
 
   for (var i = 0; i < steps.length; i++) {
     var s = steps[i]
     var stepMins = (s.active_min || 0) + (s.passive_min || 0)
+    if (!stepMins) stepMins = 5 // minimum 5 min per step
 
-    // If we're in the gap window, jump to gap end
-    if (gapEndMins && cursor < gapEndMins && cursor + stepMins > calcStartMins + 60) {
+    // If this step would run into the gap, stop before it
+    if (gapStartMins && gapEndMins && cursor < gapStartMins && cursor + stepMins > gapStartMins) {
+      // Add a "pause" note and jump to gap end
+      result.push({ time: gpFormatTime(cursor), step: s.step + ' — then PAUSE. Lid on, lowest heat. Take your break.' })
+      cursor = gapEndMins
+      continue
+    }
+
+    // If we're inside the gap, jump to end
+    if (gapStartMins && gapEndMins && cursor >= gapStartMins && cursor < gapEndMins) {
       cursor = gapEndMins
     }
 
