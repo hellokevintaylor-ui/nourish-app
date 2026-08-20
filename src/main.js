@@ -2671,11 +2671,11 @@ function gpFormatTime(totalMins) {
 
 async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   console.log('generateGamePlan called:', { slot, targetTime, date, recipeId, notesLen: (notes||'').length })
-  const isWholeDay = slot === 'Day'
+  var isWholeDay = slot === 'Day'
 
   // Helper — build full recipe detail, trimming will happen at the end if needed
-  const recipeDetail = (entry, recipe) => {
-    const instructions = recipe?.instructions || ''
+  var recipeDetail = (entry, recipe) => {
+    var instructions = recipe?.instructions || ''
     return '=== ' + (entry.meal_slot ? entry.meal_slot + ': ' : '') + entry.recipe_name + ' ===\n' +
       (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
       (instructions ? 'Instructions:\n' + instructions : '')
@@ -2684,16 +2684,16 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   let mealText = ''
 
   if (isWholeDay) {
-    const allEntries = state.mealPlan.filter(e => e.date === date && e.recipe_id)
-    const details = allEntries.map(entry => {
-      const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
+    var allEntries = state.mealPlan.filter(e => e.date === date && e.recipe_id)
+    var details = allEntries.map(entry => {
+      var recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
       return recipeDetail(entry, recipe)
     })
     mealText = details.join('\n\n')
   } else {
-    const slotEntries = state.mealPlan.filter(e => e.date === date && e.meal_slot === slot && e.recipe_id)
-    const details = slotEntries.map(entry => {
-      const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
+    var slotEntries = state.mealPlan.filter(e => e.date === date && e.meal_slot === slot && e.recipe_id)
+    var details = slotEntries.map(entry => {
+      var recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
       return recipeDetail(entry, recipe)
     })
     mealText = details.join('\n\n')
@@ -2701,35 +2701,35 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
 
   // Safety cap — if total is very large, trim each recipe's instructions proportionally
   if (mealText.length > 6000) {
-    const entries = isWholeDay
+    var entries = isWholeDay
       ? state.mealPlan.filter(e => e.date === date && e.recipe_id)
       : state.mealPlan.filter(e => e.date === date && e.meal_slot === slot && e.recipe_id)
-    const budget = Math.floor(5000 / Math.max(entries.length, 1))
+    var budget = Math.floor(5000 / Math.max(entries.length, 1))
     mealText = entries.map(entry => {
-      const recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
-      const instructions = recipe?.instructions || ''
-      const trimmed = instructions.length > budget ? instructions.slice(0, budget) + '\n...(trimmed)' : instructions
+      var recipe = state.recipes.find(r => String(r.id) === String(entry.recipe_id))
+      var instructions = recipe?.instructions || ''
+      var trimmed = instructions.length > budget ? instructions.slice(0, budget) + '\n...(trimmed)' : instructions
       return '=== ' + (entry.meal_slot ? entry.meal_slot + ': ' : '') + entry.recipe_name + ' ===\n' +
         (recipe?.ingredients ? 'Ingredients:\n' + recipe.ingredients + '\n' : '') +
         (trimmed ? 'Instructions:\n' + trimmed : '')
     }).join('\n\n')
   }
 
-  const now = new Date()
-  const currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  var now = new Date()
+  var currentTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
-  const mealDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'today'
-  const isToday = date === new Date().toISOString().slice(0, 10)
+  var mealDate = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'today'
+  var isToday = date === new Date().toISOString().slice(0, 10)
 
   console.log('mealText length:', mealText.length, 'mealPlan entries:', state.mealPlan.length)
   if (!mealText) {
     console.warn('generateGamePlan: no meal text found for', date, slot)
     return [{ time: targetTime || '7:00 PM', step: 'No recipes found for this slot — add recipes to your meal plan first.' }]
   }
-  const recipeNames = (mealText.match(/=== (.+?) ===/g) || []).map(m => m.replace(/===/g, '').trim())
+  var recipeNames = (mealText.match(/=== (.+?) ===/g) || []).map(m => m.replace(/===/g, '').trim())
   console.log('recipeNames:', recipeNames)
-  const slotLabel = isWholeDay ? 'the whole day' : slot
-  const prompt = `You are a professional chef planning a dinner cooking session. Your job is to output ONE unified list of steps that intelligently interleaves ALL recipes so everything is ready at ${targetTime}.
+  var slotLabel = isWholeDay ? 'the whole day' : slot
+  var prompt = `You are a professional chef planning a dinner cooking session. Your job is to output ONE unified list of steps that intelligently interleaves ALL recipes so everything is ready at ${targetTime}.
 
 DINNER: ${mealDate} at ${targetTime}
 RECIPES BEING MADE: ${recipeNames.join(', ')}
@@ -2796,10 +2796,10 @@ Rules:
   }
   let gpData
   try { gpData = await gpResp.json() } catch(e) { return null }
-  const gpText = (gpData.content?.[0]?.text || '').trim()
+  var gpText = (gpData.content?.[0]?.text || '').trim()
   console.log('Game plan raw response:', gpText.slice(0, 300))
-  const gpClean = gpText.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
-  const gpMatch = gpClean.match(/\[[\s\S]*\]/)
+  var gpClean = gpText.replace(/^```json\n?|^```\n?|```$/gm, '').trim()
+  var gpMatch = gpClean.match(/\[[\s\S]*\]/)
   if (!gpMatch) {
     console.error('No JSON array found:', gpClean.slice(0, 200))
     return null
@@ -2969,14 +2969,14 @@ function renderCookModeInline(r) {
   '</div>'
 }
 function gpChatKey() {
-  const { date, slot } = state.gamePlanModal || {}
+  var { date, slot } = state.gamePlanModal || {}
   return (date || 'today') + '-' + (slot || 'Dinner')
 }
 
 async function saveGamePlanToDb() {
-  const { date, slot, targetTime } = state.gamePlanModal || {}
+  var { date, slot, targetTime } = state.gamePlanModal || {}
   if (!date || !slot) return
-  const chatKey = gpChatKey()
+  var chatKey = gpChatKey()
   await db.saveGamePlan(
     date, slot,
     state.gamePlanResult || null,
@@ -2986,14 +2986,14 @@ async function saveGamePlanToDb() {
 }
 
 function buildGpRecipeContext(slot, date) {
-  const mealDate = date || new Date().toISOString().slice(0,10)
-  const entries = state.mealPlan.filter(e => {
+  var mealDate = date || new Date().toISOString().slice(0,10)
+  var entries = state.mealPlan.filter(e => {
     if (e.date !== mealDate) return false
     if (slot !== 'Day' && e.meal_slot?.toLowerCase() !== slot?.toLowerCase()) return false
     return true
   })
-  const recipes = entries.map(e => {
-    const r = state.recipes.find(x => String(x.id) === String(e.recipe_id))
+  var recipes = entries.map(e => {
+    var r = state.recipes.find(x => String(x.id) === String(e.recipe_id))
     return { name: e.recipe_name || (r?.name) || 'Unknown', recipe: r, entry: e }
   }).filter(x => x.name)
   return recipes
@@ -3001,22 +3001,22 @@ function buildGpRecipeContext(slot, date) {
 
 async function initGamePlanChat() {
   if (!state.gamePlanModal) return
-  const { slot, date } = state.gamePlanModal
-  const chatKey = gpChatKey()
+  var { slot, date } = state.gamePlanModal
+  var chatKey = gpChatKey()
   if (state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0) return
   if (state.gamePlanChatLoading) return
 
-  const recipes = buildGpRecipeContext(slot, date)
-  const defaultTime = slot === 'Lunch' ? '12:30 PM' : '7:00 PM'
-  const targetTime = state.gamePlanModal.targetTime || defaultTime
+  var recipes = buildGpRecipeContext(slot, date)
+  var defaultTime = slot === 'Lunch' ? '12:30 PM' : '7:00 PM'
+  var targetTime = state.gamePlanModal.targetTime || defaultTime
 
   let opening
   if (recipes.length === 0) {
     opening = 'What time do you want to eat?'
   } else {
-    const names = recipes.map(r => r.name).join(' and ')
-    const totalActiveMin = recipes.reduce((sum, r) => sum + (r.recipe?.prepTime?.active_min || 0), 0)
-    const prepHint = totalActiveMin > 0 ? ' (~' + totalActiveMin + ' min of active cooking)' : ''
+    var names = recipes.map(r => r.name).join(' and ')
+    var totalActiveMin = recipes.reduce((sum, r) => sum + (r.recipe?.prepTime?.active_min || 0), 0)
+    var prepHint = totalActiveMin > 0 ? ' (~' + totalActiveMin + ' min of active cooking)' : ''
     opening = 'I see you have ' + names + ' for ' + (slot||'dinner').toLowerCase() + prepHint + '. What time do you want to eat?'
   }
 
@@ -3027,18 +3027,18 @@ async function initGamePlanChat() {
 
 
 function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
-  const { slot, targetTime, date } = gp
-  const slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
-  const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
-  const chatKey = gpChatKey()
-  const chatMessages = state.gamePlanChats[chatKey] || []
-  const chatLoading = state.gamePlanChatLoading || false
-  const generating = gp.generating || false
-  const dateLabel = date
+  var { slot, targetTime, date } = gp
+  var slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
+  var timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+  var chatKey = gpChatKey()
+  var chatMessages = state.gamePlanChats[chatKey] || []
+  var chatLoading = state.gamePlanChatLoading || false
+  var generating = gp.generating || false
+  var dateLabel = date
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
     : new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
 
-  const bubbles = chatMessages.map(m =>
+  var bubbles = chatMessages.map(m =>
     '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:10px">' +
       '<div style="max-width:88%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:' + (m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px') + ';padding:10px 13px;font-size:13px;line-height:1.6">' +
         esc(m.content).replace(/\n/g,'<br>') +
@@ -3046,11 +3046,11 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
     '</div>'
   ).join('')
 
-  const generatingBanner = generating
+  var generatingBanner = generating
     ? '<div style="text-align:center;padding:16px;color:#6e6e69;font-size:13px">📋 Building your timeline...</div>'
     : ''
 
-  const thinkingDots = chatLoading && !generating
+  var thinkingDots = chatLoading && !generating
     ? '<div style="display:flex;gap:4px;padding:8px 12px;background:#f2f2f0;border-radius:16px 16px 16px 4px;width:fit-content;margin-bottom:10px">' +
         '<span style="width:7px;height:7px;background:#6e6e69;border-radius:50%;animation:chatDot 1.2s infinite"></span>' +
         '<span style="width:7px;height:7px;background:#6e6e69;border-radius:50%;animation:chatDot 1.2s infinite;animation-delay:0.2s"></span>' +
@@ -3058,13 +3058,13 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
       '</div>'
     : ''
 
-  const header = blackHeader(
+  var header = blackHeader(
     '📋 Plan ' + slotLabel,
     dateLabel,
     '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Start over</button>'
   )
 
-  const body =
+  var body =
     '<div id="gp-chat-messages" style="padding:14px;min-height:200px;overflow-y:visible">' +
       (chatMessages.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:30px 0">Starting your plan...</div>' : bubbles) +
       thinkingDots +
@@ -3085,66 +3085,66 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
 
 
 function renderGamePlanResult(gp, blackHeader, wrapFn) {
-  const gpEditing = state.gamePlanEditing || false
-  const { slot, targetTime, date, result, view } = gp
-  const slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
-  const timeVal = targetTime || '7:00 PM'
-  const dateLabel = date
+  var gpEditing = state.gamePlanEditing || false
+  var { slot, targetTime, date, result, view } = gp
+  var slotLabel = slot === 'Day' ? 'Day Plan' : (slot || 'Dinner')
+  var timeVal = targetTime || '7:00 PM'
+  var dateLabel = date
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
     : ''
-  const chatKey = gpChatKey()
-  const chatMessages = state.gamePlanChats[chatKey] || []
-  const hasPriorChat = chatMessages.length > 0
-  const gpTab = state.gamePlanTab || 'ingredients'
-  const gpNotes = state.gamePlanNotes || gp.notes || ''
+  var chatKey = gpChatKey()
+  var chatMessages = state.gamePlanChats[chatKey] || []
+  var hasPriorChat = chatMessages.length > 0
+  var gpTab = state.gamePlanTab || 'ingredients'
+  var gpNotes = state.gamePlanNotes || gp.notes || ''
 
   // Gather all ingredients from recipes in this meal slot
-  const mealDate = date || new Date().toISOString().slice(0,10)
-  const entries = state.mealPlan.filter(e => e.date === mealDate && (slot === 'Day' || e.meal_slot === slot) && e.recipe_id)
-  const allIngredients = []
+  var mealDate = date || new Date().toISOString().slice(0,10)
+  var entries = state.mealPlan.filter(e => e.date === mealDate && (slot === 'Day' || e.meal_slot === slot) && e.recipe_id)
+  var allIngredients = []
   entries.forEach(entry => {
-    const r = state.recipes.find(x => x.id === entry.recipe_id)
+    var r = state.recipes.find(x => x.id === entry.recipe_id)
     if (r && r.ingredients) {
-      const lines = r.ingredients.split('\n').map(l => l.trim()).filter(Boolean)
+      var lines = r.ingredients.split('\n').map(l => l.trim()).filter(Boolean)
       lines.forEach(line => allIngredients.push({ recipe: r.name, line }))
     }
   })
 
   // Parse ingredient amounts for plan step chips (same logic as cook mode)
-  const ingAmountRegex = /^([\d¼½¾⅓⅔⅛⅜⅝⅞\/\-\s]+(?:cup|cups|tbsp|tsp|oz|lb|g|kg|ml|l|clove|cloves|can|cans|bunch|sprig|sprigs|slice|slices|piece|pieces|stalk|stalks|head|heads|inch|cm|medium|large|small|whole)?[\s]*)(.+)/i
-  const parsedIngs = allIngredients.map(({ line, recipe }) => {
-    const m = line.match(ingAmountRegex)
+  var ingAmountRegex = /^([\d¼½¾⅓⅔⅛⅜⅝⅞\/\-\s]+(?:cup|cups|tbsp|tsp|oz|lb|g|kg|ml|l|clove|cloves|can|cans|bunch|sprig|sprigs|slice|slices|piece|pieces|stalk|stalks|head|heads|inch|cm|medium|large|small|whole)?[\s]*)(.+)/i
+  var parsedIngs = allIngredients.map(({ line, recipe }) => {
+    var m = line.match(ingAmountRegex)
     if (!m) return { amount: '', name: line.toLowerCase(), full: line, recipe }
     return { amount: m[1].trim(), name: m[2].toLowerCase().trim(), full: line, recipe }
   })
-  const stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each','fresh','dried','ground','large','small','medium','olive','black','white','red','hot','cold','warm','cup','tbsp','tsp','salt','pepper','oil','water','heat','add','mix','stir','cook','bake','roast','boil'])
-  const getChips = (stepText) => {
-    const lower = stepText.toLowerCase()
-    const matches = []
+  var stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each','fresh','dried','ground','large','small','medium','olive','black','white','red','hot','cold','warm','cup','tbsp','tsp','salt','pepper','oil','water','heat','add','mix','stir','cook','bake','roast','boil'])
+  var getChips = (stepText) => {
+    var lower = stepText.toLowerCase()
+    var matches = []
     parsedIngs.forEach(ing => {
       if (!ing.name || !ing.amount) return
       // Get significant words — at least 4 chars, not stop words
-      const words = ing.name.replace(/[^a-z\s]/g,'').split(/\s+/).filter(w => w.length >= 4 && !stopWords.has(w))
+      var words = ing.name.replace(/[^a-z\s]/g,'').split(/\s+/).filter(w => w.length >= 4 && !stopWords.has(w))
       if (words.length === 0) return
       // Require ALL significant words to appear in the step (not just one)
-      const hit = words.every(w => { try { return new RegExp('\\b' + w).test(lower) } catch(e) { return false } })
+      var hit = words.every(w => { try { return new RegExp('\\b' + w).test(lower) } catch(e) { return false } })
       if (hit && !matches.find(m => m === ing.full)) matches.push(ing.full)
     })
     return matches
   }
 
-  const checkedIngs = state.gamePlanCheckedIngs || new Set()
+  var checkedIngs = state.gamePlanCheckedIngs || new Set()
 
-  const tabBtn = (tabId, label) =>
+  var tabBtn = (tabId, label) =>
     '<button class="gp-tab-btn" data-gp-tab="' + tabId + '" style="flex:1;padding:10px;font-size:13px;font-weight:' +
     (gpTab===tabId?'700':'500') + ';color:' + (gpTab===tabId?'#3d52c4':'#6e6e69') +
     ';background:none;border:none;border-bottom:2px solid ' + (gpTab===tabId?'#3d52c4':'transparent') +
     ';cursor:pointer;font-family:inherit">' + label + '</button>'
 
   // ── INGREDIENTS TAB ──
-  const ingredientsTab = allIngredients.length > 0
+  var ingredientsTab = allIngredients.length > 0
     ? allIngredients.map((ing, i) => {
-        const isChecked = checkedIngs.has(i)
+        var isChecked = checkedIngs.has(i)
         return '<div class="gp-ing-row" data-gp-ing="' + i + '" style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid #e8e8e5;cursor:pointer">' +
           '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'#d4d4d0':'#3d52c4') + ';margin-top:8px;flex-shrink:0"></div>' +
           '<div style="flex:1;min-width:0">' +
@@ -3156,15 +3156,15 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
     : '<div style="color:#a8a8a3;font-style:italic;padding:16px 0;font-size:13px">No ingredients found for this meal</div>'
 
   // ── PLAN TAB ──
-  const planTab = result.map((item, i) => {
-    const isLast = i === result.length - 1
-    const chips = getChips(item.step)
-    const chipsHtml = chips.length > 0
+  var planTab = result.map((item, i) => {
+    var isLast = i === result.length - 1
+    var chips = getChips(item.step)
+    var chipsHtml = chips.length > 0
       ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">' +
           chips.map(c => '<span style="font-size:11px;font-weight:500;color:#3a3a38;background:#f2f2f0;border:0.5px solid #d4d4d0;border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
         '</div>'
       : ''
-    const stepBody = gpEditing
+    var stepBody = gpEditing
       ? '<textarea class="gp-step-edit" data-gp-step="' + i + '" style="width:100%;padding:8px 10px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical;min-height:60px;box-sizing:border-box">' + esc(item.step) + '</textarea>'
       : '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' + chipsHtml
     return '<div style="padding:12px 0;border-bottom:' + (isLast?'none':'0.5px solid #e8e8e5') + '">' +
@@ -3176,29 +3176,29 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
   }).join('')
 
   // ── NOTES TAB ──
-  const notesTab =
+  var notesTab =
     '<div style="padding-top:8px">' +
       '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Cooking notes</div>' +
       '<textarea id="gp-notes-edit" placeholder="What worked, what to tweak next time, substitutions..." style="width:100%;min-height:140px;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical;box-sizing:border-box">' + esc(gpNotes) + '</textarea>' +
       '<button id="gp-notes-save" style="margin-top:8px;padding:8px 16px;background:#1a1a1a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Save notes</button>' +
     '</div>'
 
-  const tabContent = gpTab === 'ingredients' ? ingredientsTab : gpTab === 'plan' ? planTab : notesTab
+  var tabContent = gpTab === 'ingredients' ? ingredientsTab : gpTab === 'plan' ? planTab : notesTab
 
-  const header = blackHeader(
+  var header = blackHeader(
     slotLabel + ' Game Plan',
     dateLabel + ' · eat at ' + esc(timeVal),
     '<button id="gp-edit-toggle" style="background:' + (gpEditing?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">' + (gpEditing?'Done':'Edit') + '</button>' +
     '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>'
   )
 
-  const tabs = '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
+  var tabs = '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
     tabBtn('ingredients', 'Ingredients') +
     tabBtn('plan', 'Plan') +
     tabBtn('notes', 'Notes') +
   '</div>'
 
-  const actions = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;padding-top:12px;border-top:0.5px solid #e8e8e5">' +
+  var actions = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;padding-top:12px;border-top:0.5px solid #e8e8e5">' +
     '<button id="gp-start-cooking" style="width:100%;padding:10px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
     '<button id="gp-tweak" style="width:100%;padding:10px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
   '</div>'
@@ -3208,19 +3208,19 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
 
 
 function renderGamePlanInline(r) {
-  const gp = state.gamePlanModal || {}
-  const { slot, targetTime, date, result, notes, generating, view } = gp
-  const slotLabel = slot || 'Dinner'
-  const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
-  const chatKey = gpChatKey()
-  const chatMessages = state.gamePlanChats[chatKey] || []
-  const chatLoading = state.gamePlanChatLoading || false
-  const hasPriorChat = chatMessages.length > 0
-  const dateLabel = date
+  var gp = state.gamePlanModal || {}
+  var { slot, targetTime, date, result, notes, generating, view } = gp
+  var slotLabel = slot || 'Dinner'
+  var timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+  var chatKey = gpChatKey()
+  var chatMessages = state.gamePlanChats[chatKey] || []
+  var chatLoading = state.gamePlanChatLoading || false
+  var hasPriorChat = chatMessages.length > 0
+  var dateLabel = date
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
     : new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
 
-  const blackHeader = (title, sub, extra) =>
+  var blackHeader = (title, sub, extra) =>
     '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
       '<button id="gp-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0">' +
@@ -3239,10 +3239,10 @@ function renderGamePlanInline(r) {
 }
 
 function renderGamePlanCalInline() {
-  const gp = state.gamePlanModal || {}
-  const { result, view } = gp
+  var gp = state.gamePlanModal || {}
+  var { result, view } = gp
 
-  const blackHeader = (title, sub, extra) =>
+  var blackHeader = (title, sub, extra) =>
     '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
       '<button id="gp-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0">' +
@@ -3252,7 +3252,7 @@ function renderGamePlanCalInline() {
       (extra || '') +
     '</div>'
 
-  const wrap = (inner) => '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-top:8px;margin-bottom:4px">' + inner + '</div>'
+  var wrap = (inner) => '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-top:8px;margin-bottom:4px">' + inner + '</div>'
 
   if (!result || view === 'chat' || view === 'planning-chat') {
     return renderGamePlanChatFirst(gp, blackHeader, wrap)
