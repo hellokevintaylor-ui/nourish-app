@@ -5622,22 +5622,24 @@ async function gpGenerateHandler() {
     const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
     state.gamePlanModal = { ...state.gamePlanModal, generating: false }
-    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    const finalResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    state.gamePlanResult = finalResult
+    // Also store result IN the modal so inline renderers can see it
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false }
     const chatKey = date + '-' + slot
     const slotLabel = slot === 'Day' ? 'whole day' : slot
-    const timelineText = (state.gamePlanResult || []).map(item => item.time + ' — ' + item.step).join('\n')
+    const timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
     const seedMessages = []
     if (notes) seedMessages.push({ role: 'user', content: notes })
     seedMessages.push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
     state.gamePlanChats[chatKey] = seedMessages
-    state.gamePlanView = 'chat'
-    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'chat' }
+    state.gamePlanView = 'result'
     saveGamePlanToDb()
     render()
+    // Scroll to the game plan
     setTimeout(() => {
-      const el = document.getElementById('gp-chat-messages')
-      if (el) el.scrollTop = el.scrollHeight
-      document.getElementById('gp-chat-input')?.focus()
+      const el = document.getElementById('gp-start-cooking') || document.getElementById('gp-tweak')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
   }
   document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
@@ -5651,7 +5653,9 @@ async function gpGenerateHandler() {
     render()
     const result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
     state.gamePlanLoading = false
-    state.gamePlanResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    const finalResult2 = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    state.gamePlanResult = finalResult2
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
     // Re-seed chat thread with new timeline
     const chatKey = date + '-' + slot
     const slotLabel = slot === 'Day' ? 'whole day' : slot
