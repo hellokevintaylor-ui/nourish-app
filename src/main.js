@@ -5708,18 +5708,26 @@ async function estimateCaloriesAI(description) {
     }, 50)
   }))
 
-  document.getElementById('gp-start-over')?.addEventListener('click', () => {
+  document.querySelectorAll('#gp-start-over').forEach(btn => btn.addEventListener('click', () => {
     const { date, slot } = state.gamePlanModal || {}
     const chatKey = (date || 'today') + '-' + (slot || 'Dinner')
-    // Clear saved plan so fresh start
     const planKey = date + '-' + slot
+    // Wipe everything
     if (planKey) delete state.savedGamePlans[planKey]
     state.gamePlanChats[chatKey] = []
     state.gamePlanResult = null
-    state.gamePlanView = 'timeline'
+    state.gamePlanView = 'planning-chat'
+    state.gamePlanEditing = false
+    state.gamePlanCheckedIngs = new Set()
     state._lastGamePlan = null
+    // Clear result from modal object too — this is what inline renderers read
+    if (state.gamePlanModal) {
+      state.gamePlanModal = { ...state.gamePlanModal, result: null, view: 'planning-chat', generating: false, notes: '', targetTime: null }
+    }
     render()
-  })
+    // Restart the chat
+    initGamePlanChat()
+  }))
 
   document.getElementById('gp-start-cooking')?.addEventListener('click', () => {
     state.gamePlanView = 'fullscreen'; render()
@@ -5895,6 +5903,10 @@ async function gpGenerateHandler() {
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
+    // Clear saved plan so we don't restore the old one during generation
+    const regenKey = date + '-' + slot
+    delete state.savedGamePlans[regenKey]
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, generating: true }
     state.gamePlanLoading = true
     state.gamePlanResult = null
     render()
@@ -5922,7 +5934,7 @@ async function gpGenerateHandler() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
   }
-  document.getElementById('gp-regenerate')?.addEventListener('click', async () => {
+  document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim() || state.gamePlanModal?.targetTime
     const { slot, date, recipeId, notes } = state.gamePlanModal
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
@@ -5944,14 +5956,16 @@ async function gpGenerateHandler() {
     if (notes) seedMessages.push({ role: 'user', content: notes })
     seedMessages.push({ role: 'assistant', content: 'Here\'s your updated ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
     state.gamePlanChats[chatKey] = seedMessages
-    state.gamePlanView = 'chat'
+    state.gamePlanView = 'result'
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'result', result: finalResult2, generating: false }
+    state.savedGamePlans[regenKey] = { ...state.gamePlanModal }
     saveGamePlanToDb()
     render()
     setTimeout(() => {
-      const el = document.getElementById('gp-chat-messages')
-      if (el) el.scrollTop = el.scrollHeight
+      const el = document.getElementById('gp-start-cooking')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
-  })
+  }))
 
   // ── CHAT HANDLERS ──
   document.getElementById('chat-send')?.addEventListener('click', () => {
