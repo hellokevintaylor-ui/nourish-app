@@ -3047,25 +3047,20 @@ function renderGamePlanInline(r) {
     '</div>'
   }
 
-  const timeline =
-    '<div style="position:relative;padding-left:18px;margin-bottom:14px">' +
-      '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#3d52c4;opacity:0.2;border-radius:2px"></div>' +
-      result.map((item, i) => {
-        const isLast = i === result.length - 1
-        return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
-          '<div style="position:absolute;left:-14px;top:5px;width:8px;height:8px;border-radius:50%;background:' + (isLast?'#1a1a1a':'#3d52c4') + ';border:2px solid white;box-shadow:0 0 0 1.5px ' + (isLast?'#1a1a1a':'#3d52c4') + '"></div>' +
-          '<div style="min-width:58px;font-size:11px;font-weight:700;color:#3d52c4;padding-top:3px;flex-shrink:0">' + esc(item.time) + '</div>' +
-          '<div style="font-size:14px;color:#1a1a1a;line-height:1.5;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-        '</div>'
-      }).join('') +
+  const timeline = result.map((item, i) => {
+    const isLast = i === result.length - 1
+    return '<div style="padding:12px 0;border-bottom:' + (isLast ? 'none' : '0.5px solid #e8e8e5') + '">' +
+      '<div style="font-size:11px;font-weight:700;color:#3d52c4;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">' + esc(item.time) + '</div>' +
+      '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
     '</div>'
+  }).join('')
 
   return '<div style="border-top:0.5px solid #e8e8e5">' +
     blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal),
       '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>') +
-    '<div style="padding:14px">' +
+    '<div style="padding:0 14px 14px">' +
       timeline +
-      '<div style="display:flex;flex-direction:column;gap:8px">' +
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;padding-top:14px;border-top:0.5px solid #e8e8e5">' +
         '<button id="gp-start-cooking" style="width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
         '<button id="gp-tweak" style="width:100%;padding:11px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
       '</div>' +
@@ -3147,25 +3142,20 @@ function renderGamePlanCalInline() {
     )
   }
 
-  const timeline =
-    '<div style="position:relative;padding-left:18px;margin-bottom:12px">' +
-      '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#3d52c4;opacity:0.2;border-radius:2px"></div>' +
-      result.map((item, i) => {
-        const isLast = i === result.length - 1
-        return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;position:relative">' +
-          '<div style="position:absolute;left:-14px;top:5px;width:8px;height:8px;border-radius:50%;background:' + (isLast?'#1a1a1a':'#3d52c4') + ';border:2px solid white;box-shadow:0 0 0 1.5px ' + (isLast?'#1a1a1a':'#3d52c4') + '"></div>' +
-          '<div style="min-width:55px;font-size:11px;font-weight:700;color:#3d52c4;padding-top:3px;flex-shrink:0">' + esc(item.time) + '</div>' +
-          '<div style="font-size:13px;color:#1a1a1a;line-height:1.5;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-        '</div>'
-      }).join('') +
+  const timeline = result.map((item, i) => {
+    const isLast = i === result.length - 1
+    return '<div style="padding:12px 0;border-bottom:' + (isLast ? 'none' : '0.5px solid #e8e8e5') + '">' +
+      '<div style="font-size:11px;font-weight:700;color:#3d52c4;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:5px">' + esc(item.time) + '</div>' +
+      '<div style="font-size:14px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
     '</div>'
+  }).join('')
 
   return wrap(
     blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal),
       '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>') +
-    '<div style="padding:14px">' +
+    '<div style="padding:0 14px 14px">' +
       timeline +
-      '<div style="display:flex;flex-direction:column;gap:6px">' +
+      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:0.5px solid #e8e8e5">' +
         '<button id="gp-start-cooking" style="width:100%;padding:10px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
         '<button id="gp-tweak" style="width:100%;padding:10px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
       '</div>' +
