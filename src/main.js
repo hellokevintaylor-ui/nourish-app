@@ -2180,7 +2180,7 @@ function renderTonightCard() {
   '</div>'
 }
 
-const MEAL_SLOTS = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
+const MEAL_SLOTS = ['Lunch', 'Dinner']
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 
@@ -2366,6 +2366,53 @@ function renderCalendar() {
       })
 
       html += '<button class="cal-add-btn" data-cal-date="' + date + '" data-cal-slot="' + slot + '">+ Add</button>'
+
+      // Inline recipe picker — expands below + Add when active for this slot
+      if (state.calendarSlot && state.calendarSlot.date === date && state.calendarSlot.slot === slot) {
+        const search = state.calendarSearch || ''
+        const tagFilter = state.calendarTagFilter
+        const recipeTags = getTagsForNamespace('recipe')
+        let results = state.recipes
+        if (tagFilter) results = results.filter(r => (r.tags||[]).includes(tagFilter))
+        if (search) results = results.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
+        results = results.slice(0, 20)
+        html += '<div style="margin-top:6px;border:0.5px solid #e8e8e5;border-radius:10px;overflow:hidden;background:white">'
+        html += '<div style="background:#1a1a1a;padding:10px 12px;display:flex;align-items:center;gap:8px">'
+        html += '<span style="flex:1;font-size:13px;font-weight:600;color:white">Add to ' + slot + '</span>'
+        html += '<button id="cal-picker-cancel" style="width:24px;height:24px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:14px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center">×</button>'
+        html += '</div>'
+        html += '<div style="padding:10px 12px">'
+        // Manual entry
+        html += '<div style="display:flex;gap:6px;margin-bottom:10px">'
+        html += '<input id="cal-manual-input" placeholder="e.g. Leftovers, Pasta..." style="flex:1;padding:8px 10px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:13px;font-family:inherit;outline:none" />'
+        html += '<button class="add-btn" id="cal-manual-add" style="white-space:nowrap">Add</button>'
+        html += '</div>'
+        // Search
+        html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" style="margin-bottom:8px" />'
+        // Tag chips
+        if (recipeTags.length > 0) {
+          html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">'
+          html += '<button class="tag-filter-chip ' + (!tagFilter ? 'active' : '') + '" data-cal-tag="">All</button>'
+          recipeTags.forEach(t => {
+            html += '<button class="tag-filter-chip ' + (tagFilter === t.name ? 'active' : '') + '" data-cal-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>'
+          })
+          html += '</div>'
+        }
+        // Results
+        html += '<div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">'
+        if (results.length === 0) {
+          html += '<div style="color:#a8a8a3;font-size:13px;padding:10px 0;text-align:center">No recipes found</div>'
+        } else {
+          results.forEach(r => {
+            const tagChips = (r.tags||[]).map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('')
+            html += '<button class="cal-recipe-option" data-pick-recipe="' + r.id + '" data-pick-name="' + esc(r.name) + '">' +
+              esc(r.name) + (tagChips ? '<div style="margin-top:2px">' + tagChips + '</div>' : '') +
+            '</button>'
+          })
+        }
+        html += '</div></div></div>'
+      }
+
       html += '</div>'
 
       // Inline game plan — expands below the slot it belongs to
@@ -2384,58 +2431,7 @@ function renderCalendar() {
     html += '</div>'
   })
 
-  // Recipe picker modal for calendar
-  if (state.calendarSlot) {
-    const { date, slot } = state.calendarSlot
-    const search = state.calendarSearch || ''
-    const tagFilter = state.calendarTagFilter
-    const recipeTags = getTagsForNamespace('recipe')
-
-    let results = state.recipes
-    if (tagFilter) results = results.filter(r => (r.tags||[]).includes(tagFilter))
-    if (search) results = results.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
-    results = results.slice(0, 12)
-
-    html += '<div class="modal-bg" id="cal-picker-bg">'
-    html += '<div class="modal-sheet">'
-    html += '<div class="modal-title">Add to ' + slot + '</div>'
-    html += '<div class="modal-sub">' + formatDate(date) + '</div>'
-
-    // Manual entry first
-    html += '<div style="display:flex;gap:7px;margin-bottom:14px">'
-    html += '<input id="cal-manual-input" placeholder="e.g. Leftovers, Protein bar..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />'
-    html += '<button class="add-btn" id="cal-manual-add">Add</button>'
-    html += '</div>'
-
-    // Then recipe search
-    html += '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Or search recipes</div>'
-    html += '<input id="cal-search-input" class="cal-search" placeholder="Search recipes..." value="' + esc(search) + '" />'
-
-    // Tag filter chips
-    if (recipeTags.length > 0) {
-      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">'
-      html += '<button class="tag-filter-chip ' + (!tagFilter ? 'active' : '') + '" data-cal-tag="">All</button>'
-      recipeTags.forEach(t => {
-        html += '<button class="tag-filter-chip ' + (tagFilter === t.name ? 'active' : '') + '" data-cal-tag="' + esc(t.name) + '">' + esc(t.name) + '</button>'
-      })
-      html += '</div>'
-    }
-
-    html += '<div class="cal-recipe-list">'
-    if (results.length === 0) {
-      html += '<div class="empty-state" style="padding:20px">No recipes found</div>'
-    } else {
-      results.forEach(r => {
-        const tagChips = (r.tags||[]).map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('')
-        html += '<button class="cal-recipe-option" data-pick-recipe="' + r.id + '" data-pick-name="' + esc(r.name) + '">' +
-          esc(r.name) + (tagChips ? '<div>' + tagChips + '</div>' : '') +
-        '</button>'
-      })
-    }
-    html += '</div>'
-    html += '<div class="modal-btns"><button class="modal-cancel" id="cal-picker-cancel">Cancel</button></div>'
-    html += '</div></div>'
-  }
+  // calendar picker is now inline
 
   html += '</div>'
   return html
@@ -3302,7 +3298,7 @@ function renderScanPicker() {
 
 function renderAddToWeekModal() {
   const m = state.addToWeekModal
-  const slots = ['Breakfast', 'Lunch', 'Dinner', 'Snack']
+  const slots = ['Lunch', 'Dinner']
   // Generate next 7 days
   const days = []
   for (let i = 0; i < 7; i++) {
@@ -5250,7 +5246,6 @@ async function estimateCaloriesAI(description) {
 
   // Close calendar picker
   document.getElementById('cal-picker-cancel')?.addEventListener('click', () => { state.calendarSlot = null; state.calendarTagFilter = null; render() })
-  document.getElementById('cal-picker-bg')?.addEventListener('click', e => { if (e.target.id === 'cal-picker-bg') { state.calendarSlot = null; state.calendarTagFilter = null; render() } })
 
   // Delete meal plan entry
   document.querySelectorAll('[data-del-plan]').forEach(el => {
