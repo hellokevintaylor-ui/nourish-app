@@ -2652,6 +2652,23 @@ function renderChat() {
 }
 
 
+function gpParseTime(t) {
+  const m = (t||'').match(/(\d+):(\d+)\s*(AM|PM)/i)
+  if (!m) return 0
+  let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
+  if (ampm === 'PM' && h !== 12) h += 12
+  if (ampm === 'AM' && h === 12) h = 0
+  return h * 60 + min
+}
+
+function gpFormatTime(totalMins) {
+  const h = Math.floor(((totalMins % (24*60)) + 24*60) % (24*60) / 60)
+  const m = ((totalMins % 60) + 60) % 60
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const hour = h % 12 || 12
+  return hour + ':' + String(m).padStart(2, '0') + ' ' + ampm
+}
+
 async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   console.log('generateGamePlan called:', { slot, targetTime, date, recipeId, notesLen: (notes||'').length })
   const isWholeDay = slot === 'Day'
@@ -2785,24 +2802,8 @@ Rules:
     const steps = JSON.parse(arrayMatch[0])
 
     // Calculate times ourselves working BACKWARD from targetTime
-    const parseTime = (t) => {
-      const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i)
-      if (!m) return 0
-      let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
-      if (ampm === 'PM' && h !== 12) h += 12
-      if (ampm === 'AM' && h === 12) h = 0
-      return h * 60 + min
-    }
-    const formatTime = (totalMins) => {
-      const h = Math.floor(((totalMins % (24*60)) + 24*60) % (24*60) / 60)
-      const m = ((totalMins % 60) + 60) % 60
-      const ampm = h >= 12 ? 'PM' : 'AM'
-      const hour = h % 12 || 12
-      return hour + ':' + String(m).padStart(2, '0') + ' ' + ampm
-    }
-
     // Work backward: dinner time minus total duration of each step from the end
-    const dinnerMins = parseTime(targetTime)
+    const dinnerMins = gpParseTime(targetTime)
     const now = new Date()
     const nowMins = now.getHours() * 60 + now.getMinutes()
     const isTodayMeal = date === now.toISOString().slice(0, 10)
@@ -2818,7 +2819,7 @@ Rules:
       cursor -= total
       // Show actual time — label as "Start now" if it's already past for today's meal
       result.unshift({
-        time: formatTime(cursor),
+        time: gpFormatTime(cursor),
         step: s.step
       })
     }
@@ -5850,15 +5851,15 @@ async function estimateCaloriesAI(description) {
         system = 'You are a friendly cooking assistant helping plan a meal.' +
           ' TARGET: ' + (slot||'Dinner') + ' served at ' + mealTime + ' — this is fixed. The final step of the plan must land at ' + mealTime + '.' +
           (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
-          ' RULES: (1) Ingredients are already on hand — never ask about this. (2) Always work backwards from ' + mealTime + ' so everything is hot and fresh at serving time. (3) The user may have time gaps — e.g. can prep now for an hour, then free again at 5pm. Accept these constraints and factor them in.' +
-          ' Only ask about: when they can start, any cooking windows or gaps, anything already prepped. One or two questions max. Keep it brief and warm.' +
-          ' When you have enough info, say something like \"Great, I have everything I need — say \'generate it\' or tap the button below to build your timeline.\"'
+          ' RULES: (1) Ingredients are already on hand — never ask about this. (2) Always work backwards from ' + mealTime + ' so everything is hot and fresh at serving time. (3) The user may have time gaps — e.g. free now for an hour, then back at 5pm. Accept and factor these in.' +
+          ' FLOW: Ask one or two questions to understand their schedule. Once you have enough info, propose a rough draft timeline in plain conversational English — e.g. "Here\'s what I\'m thinking: chop the veg now 2–3pm, back at 5pm to start the chicken, sauce simmering by 5:30, everything on the table at ' + mealTime + '. Sound right?" — then ask if they want to adjust anything or are ready to generate. Keep the draft brief, no bullet points, just a natural sentence or two.' +
+          ' Only after they confirm or tweak, tell them to say "generate it" or tap the button.'
       }
       const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, system, max_tokens: 300 })
+        body: JSON.stringify({ messages, system, max_tokens: 400 })
       })
       if (!resp.ok) throw new Error('API error ' + resp.status)
       const data = await resp.json()
