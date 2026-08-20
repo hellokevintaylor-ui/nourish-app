@@ -72,6 +72,7 @@ const state = {
   addRecipeModalDraft: { name: '', ingredients: '', instructions: '', notes: '', tags: [] },
   logModal: null,
   gamePlanModal: false,
+  savedGamePlans: {},  // keyed by date-slot, persists plans across open/close
   gamePlanResult: null,
   gamePlanLoading: false,
   gamePlanView: 'timeline',
@@ -4023,30 +4024,29 @@ function bindEvents() {
       const defaultTime = slot === 'Breakfast' ? '8:00 AM' : slot === 'Lunch' ? '12:30 PM' : slot === 'Snack' ? '3:30 PM' : (localStorage.getItem('mep_dinner_time') || '7:00 PM')
       const chatKey = today + '-' + slot
       const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
-      if (hasPriorChat) {
+      const key = today + '-' + slot
+      const saved = state.savedGamePlans[key]
+      if (saved && saved.result) {
+        // Restore saved plan
+        state.gamePlanModal = { ...saved, recipeId: rid }
+        state.gamePlanResult = saved.result
+        state.gamePlanView = saved.view || 'result'
+      } else if (hasPriorChat) {
         state.gamePlanView = 'chat'
         state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid, view: 'chat' }
-        state.expandedRecipe = rid
-        render()
-        setTimeout(() => {
-          const el = document.getElementById('gp-chat-messages')
-          if (el) el.scrollTop = el.scrollHeight
-          const card = document.querySelector('[data-rid="' + rid + '"]')
-          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }, 50)
       } else {
         state.gamePlanResult = null
         state.gamePlanLoading = false
         state.gamePlanView = 'timeline'
         state._lastGamePlan = { slot, date: today }
         state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
-        state.expandedRecipe = rid
-        render()
-        setTimeout(() => {
-          const card = document.querySelector('[data-rid="' + rid + '"]')
-          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }, 50)
       }
+      state.expandedRecipe = rid
+      render()
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + rid + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 50)
     })
   })
 
@@ -5472,12 +5472,20 @@ async function estimateCaloriesAI(description) {
           if (el) el.scrollTop = el.scrollHeight
         }, 50)
       } else {
-        // No prior chat — show the generate screen
-        state.gamePlanResult = null
-        state.gamePlanLoading = false
-        state.gamePlanView = 'timeline'
-        state._lastGamePlan = { slot, date }
-        state.gamePlanModal = { slot, targetTime, date, recipeId }
+        const key = date + '-' + slot
+        const saved = state.savedGamePlans[key]
+        if (saved && saved.result) {
+          // Restore saved plan
+          state.gamePlanModal = { ...saved, recipeId }
+          state.gamePlanResult = saved.result
+          state.gamePlanView = saved.view || 'result'
+        } else {
+          state.gamePlanResult = null
+          state.gamePlanLoading = false
+          state.gamePlanView = 'timeline'
+          state._lastGamePlan = { slot, date }
+          state.gamePlanModal = { slot, targetTime, date, recipeId }
+        }
         render()
       }
     })
@@ -5508,6 +5516,9 @@ async function estimateCaloriesAI(description) {
   document.getElementById('gp-start-over')?.addEventListener('click', () => {
     const { date, slot } = state.gamePlanModal || {}
     const chatKey = (date || 'today') + '-' + (slot || 'Dinner')
+    // Clear saved plan so fresh start
+    const planKey = date + '-' + slot
+    if (planKey) delete state.savedGamePlans[planKey]
     state.gamePlanChats[chatKey] = []
     state.gamePlanResult = null
     state.gamePlanView = 'timeline'
@@ -5599,12 +5610,13 @@ async function estimateCaloriesAI(description) {
     }
   })
   document.getElementById('gp-close')?.addEventListener('click', () => {
+    // Save plan state before closing so it can be restored
+    if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
+      const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      state.savedGamePlans[key] = { ...state.gamePlanModal }
+    }
     state.gamePlanModal = false
-    state.gamePlanResult = null
     render()
-  })
-  document.getElementById('game-plan-bg')?.addEventListener('click', e => {
-    if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; state.gamePlanResult = null; render() }
   })
   document.getElementById('gp-generate')?.addEventListener('click', gpGenerateHandler)
 
@@ -5634,6 +5646,9 @@ async function gpGenerateHandler() {
     seedMessages.push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (dinner at ' + timeVal + '):\n\n' + timelineText + '\n\nWhat tweaks would you like to make?' })
     state.gamePlanChats[chatKey] = seedMessages
     state.gamePlanView = 'result'
+    // Persist plan so it survives close/reopen
+    const planKey = date + '-' + slot
+    state.savedGamePlans[planKey] = { ...state.gamePlanModal }
     saveGamePlanToDb()
     render()
     // Scroll to the game plan
