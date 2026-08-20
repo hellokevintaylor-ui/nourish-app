@@ -74,6 +74,7 @@ const state = {
   gamePlanModal: false,
   savedGamePlans: {},  // keyed by date-slot, persists plans across open/close
   gamePlanTab: 'ingredients',  // active tab in game plan result view
+  gamePlanEditing: false,
   gamePlanCheckedIngs: new Set(),
   gamePlanNotes: '',
   gamePlanResult: null,
@@ -2809,9 +2810,8 @@ Rules:
       const total = (s.active_min || 0) + (s.passive_min || 0)
       cursor -= total
       // Show actual time — label as "Start now" if it's already past for today's meal
-      const isPast = isTodayMeal && cursor < nowMins
       result.unshift({
-        time: isPast ? 'Now' : formatTime(cursor),
+        time: formatTime(cursor),
         step: s.step
       })
     }
@@ -3006,15 +3006,12 @@ async function initGamePlanChat() {
 
   let opening
   if (recipes.length === 0) {
-    opening = 'I\'d like to help you plan your ' + (slot||'meal').toLowerCase() + ' at ' + targetTime + '. What are you making? Or say "generate it" and I\'ll build a plan.'
+    opening = 'What time do you want to eat?'
   } else {
     const names = recipes.map(r => r.name).join(' and ')
     const totalActiveMin = recipes.reduce((sum, r) => sum + (r.recipe?.prepTime?.active_min || 0), 0)
-    const prepHint = totalActiveMin > 0 ? ' (~' + totalActiveMin + ' min active cooking)' : ''
-    opening = 'I\'ll plan ' + names + ' for ' + (slot||'dinner').toLowerCase() + ' at ' + targetTime + prepHint + '. ' +
-      'I\'ll assume you have all ingredients ready and will work backwards so everything is hot and fresh at ' + targetTime + '. ' +
-      'Anything specific to factor in — like a window when you can\'t be in the kitchen, something already prepped, or kids eating earlier? ' +
-      'Otherwise just say "generate it" and I\'ll build your timeline now.'
+    const prepHint = totalActiveMin > 0 ? ' (~' + totalActiveMin + ' min of active cooking)' : ''
+    opening = 'I see you have ' + names + ' for ' + (slot||'dinner').toLowerCase() + prepHint + '. What time do you want to eat?'
   }
 
   state.gamePlanChats[chatKey] = [{ role: 'assistant', content: opening }]
@@ -3113,14 +3110,17 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
     if (!m) return { amount: '', name: line.toLowerCase(), full: line, recipe }
     return { amount: m[1].trim(), name: m[2].toLowerCase().trim(), full: line, recipe }
   })
-  const stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each','fresh','dried','ground','large','small','medium'])
+  const stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each','fresh','dried','ground','large','small','medium','olive','black','white','red','hot','cold','warm','cup','tbsp','tsp','salt','pepper','oil','water','heat','add','mix','stir','cook','bake','roast','boil'])
   const getChips = (stepText) => {
     const lower = stepText.toLowerCase()
     const matches = []
     parsedIngs.forEach(ing => {
       if (!ing.name || !ing.amount) return
-      const words = ing.name.replace(/[^a-z\s]/g,'').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w))
-      const hit = words.some(w => { try { return new RegExp('\\b' + w + '\\b').test(lower) } catch(e) { return false } })
+      // Get significant words — at least 4 chars, not stop words
+      const words = ing.name.replace(/[^a-z\s]/g,'').split(/\s+/).filter(w => w.length >= 4 && !stopWords.has(w))
+      if (words.length === 0) return
+      // Require ALL significant words to appear in the step (not just one)
+      const hit = words.every(w => { try { return new RegExp('\\b' + w).test(lower) } catch(e) { return false } })
       if (hit && !matches.find(m => m === ing.full)) matches.push(ing.full)
     })
     return matches
@@ -3157,12 +3157,14 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
           chips.map(c => '<span style="font-size:11px;font-weight:500;color:#3a3a38;background:#f2f2f0;border:0.5px solid #d4d4d0;border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
         '</div>'
       : ''
+    const stepBody = gpEditing
+      ? '<textarea class="gp-step-edit" data-gp-step="' + i + '" style="width:100%;padding:8px 10px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical;min-height:60px;box-sizing:border-box">' + esc(item.step) + '</textarea>'
+      : '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' + chipsHtml
     return '<div style="padding:12px 0;border-bottom:' + (isLast?'none':'0.5px solid #e8e8e5') + '">' +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-        '<input class="gp-time-input" data-gp-step="' + i + '" value="' + esc(item.time) + '" style="width:72px;font-size:11px;font-weight:700;color:#3d52c4;background:none;border:none;border-bottom:1.5px solid transparent;outline:none;padding:1px 2px;font-family:inherit;text-transform:uppercase;letter-spacing:0.4px;cursor:text" />' +
+        '<input class="gp-time-input" data-gp-step="' + i + '" value="' + esc(item.time) + '" style="width:72px;font-size:11px;font-weight:700;color:#3d52c4;background:none;border:none;border-bottom:1.5px solid ' + (gpEditing?'#3d52c4':'transparent') + ';outline:none;padding:1px 2px;font-family:inherit;text-transform:uppercase;letter-spacing:0.4px;cursor:text" />' +
       '</div>' +
-      '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-      chipsHtml +
+      stepBody +
     '</div>'
   }).join('')
 
@@ -3176,10 +3178,12 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
 
   const tabContent = gpTab === 'ingredients' ? ingredientsTab : gpTab === 'plan' ? planTab : notesTab
 
+  const gpEditing = state.gamePlanEditing || false
   const header = blackHeader(
     slotLabel + ' Game Plan',
     dateLabel + ' · eat at ' + esc(timeVal),
-    '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>'
+    '<button id="gp-edit-toggle" style="background:' + (gpEditing?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">' + (gpEditing?'Done':'Edit') + '</button>' +
+    '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>'
   )
 
   const tabs = '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
@@ -4159,6 +4163,11 @@ function bindEvents() {
   // Game plan generate — use delegation since button can be in multiple inline locations
   document.querySelectorAll('#gp-generate').forEach(btn => btn.addEventListener('click', gpGenerateHandler))
 
+  // Game Plan edit toggle
+  document.getElementById('gp-edit-toggle')?.addEventListener('click', () => {
+    state.gamePlanEditing = !state.gamePlanEditing; render()
+  })
+
   // Game Plan tabs
   document.querySelectorAll('.gp-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -4202,6 +4211,22 @@ function bindEvents() {
     })
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); input.blur() }
+    })
+  })
+
+  // Game Plan step text editing
+  document.querySelectorAll('.gp-step-edit').forEach(ta => {
+    ta.addEventListener('blur', () => {
+      const stepIdx = parseInt(ta.dataset.gpStep)
+      const newText = ta.value.trim()
+      if (state.gamePlanModal && state.gamePlanModal.result && newText) {
+        const result = [...state.gamePlanModal.result]
+        result[stepIdx] = { ...result[stepIdx], step: newText }
+        state.gamePlanModal = { ...state.gamePlanModal, result }
+        state.gamePlanResult = result
+        const key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+        if (key) state.savedGamePlans[key] = { ...state.gamePlanModal }
+      }
     })
   })
 
@@ -5742,6 +5767,20 @@ async function estimateCaloriesAI(description) {
     const isGenerateIntent = generatePhrases.some(p => text.toLowerCase().includes(p))
 
     state.gamePlanChats[chatKey].push({ role: 'user', content: text })
+
+    // Capture meal time if user is answering "what time"
+    const timeMatch = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+    if (timeMatch && state.gamePlanModal && !state.gamePlanModal.result) {
+      const captured = timeMatch[1].trim()
+      // Normalize e.g. "7pm" -> "7:00 PM"
+      const norm = captured.replace(/(\d+)(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
+                           .replace(/(\d+):(\d+)(am|pm)/i, (_, h, m, ap) => h + ':' + m + ' ' + ap.toUpperCase())
+      state.gamePlanModal = { ...state.gamePlanModal, targetTime: norm }
+      if (state.gamePlanModal.date && state.gamePlanModal.slot) {
+        localStorage.setItem('mep_dinner_time', norm)
+      }
+    }
+
     state.gamePlanChatLoading = true
     render()
     setTimeout(() => {
@@ -5751,8 +5790,8 @@ async function estimateCaloriesAI(description) {
 
     if (isGenerateIntent && !state.gamePlanModal?.result) {
       // User wants to generate — extract time from conversation if mentioned
-      const timeMatch = text.match(/(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))/i)
-      const targetTime = timeMatch ? timeMatch[1] : (state.gamePlanModal?.targetTime || '7:00 PM')
+      // Use the stored target time — don't try to parse it from the message
+      const targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
       // Summarize conversation as notes
       const convoNotes = state.gamePlanChats[chatKey].filter(m => m.role === 'user').map(m => m.content).join('. ')
       state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Got it! Building your timeline now...' })
@@ -5787,11 +5826,13 @@ async function estimateCaloriesAI(description) {
           const ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,5).join(', ') : ''
           return r.name + ptStr + (ingPreview ? ' — ' + ingPreview : '')
         }).join('\n')
+        const mealTime = state.gamePlanModal?.targetTime || targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
         system = 'You are a friendly cooking assistant helping plan a meal.' +
+          ' TARGET: ' + (slot||'Dinner') + ' served at ' + mealTime + ' — this is fixed. The final step of the plan must land at ' + mealTime + '.' +
           (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
-          ' ALWAYS ASSUME: (1) the user has all ingredients already, never ask about this. (2) Work backwards from the target meal time so everything is hot and ready at once. ' +
-          ' Only ask about: when they can start cooking, any prep already done, any scheduling constraints like kids eating earlier or a window when they can\'t cook. ' +
-          ' One or two questions max. Keep it brief. When ready, remind them to say "generate it" or tap the button.'
+          ' RULES: (1) Ingredients are already on hand — never ask about this. (2) Always work backwards from ' + mealTime + ' so everything is hot and fresh at serving time. (3) The user may have time gaps — e.g. can prep now for an hour, then free again at 5pm. Accept these constraints and factor them in.' +
+          ' Only ask about: when they can start, any cooking windows or gaps, anything already prepped. One or two questions max. Keep it brief and warm.' +
+          ' When you have enough info, say something like \"Great, I have everything I need — say \'generate it\' or tap the button below to build your timeline.\"'
       }
       const messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
       const resp = await fetch('/api/chat', {
