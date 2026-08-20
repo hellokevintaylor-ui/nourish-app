@@ -1256,24 +1256,30 @@ function renderRecipeCard(r) {
     '</div>'
   )
 
+  // Tag picker without the chip row (chips shown in header already)
+  const tagRowWithPicker = '<div class="tag-row" style="margin-bottom:4px">' + tagChips + tagPicker + '</div>'
+
   const body = '<div class="recipe-body">' +
     // Source link
     (r.clippedFrom ? '<div class="recipe-link" style="margin-bottom:8px"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original ↗</a></div>' : '') +
-    // Tag row
-    '<div class="tag-row" style="margin-bottom:4px">' + tagChips + tagPickerBtn + tagPicker + '</div>' +
+    // Tag chips with picker (no duplicate — header shows them collapsed, expanded shows editable chips)
+    tagRowWithPicker +
     // Prep time
     prepBox +
-    // Action buttons — Cook, + List, Log, + Week, Archive/Restore, Del, Share
-    '<div class="recipe-actions" style="margin-top:12px">' +
-      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="background:var(--black);color:white;border-color:var(--black);flex:1.4;font-size:11px;padding:7px 4px;white-space:nowrap;font-weight:700">Cook</button>' +
-      '<button class="ra-btn ra-shop" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">+ List</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Log</button>' +
-      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px;border-color:var(--accent);color:var(--accent)">+ Week</button>' +
+    // Cook — full width prominent button
+    '<div style="margin-top:12px">' +
+      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="width:100%;background:var(--black);color:white;border-color:var(--black);font-size:14px;padding:13px;font-weight:700;border-radius:10px;letter-spacing:0.2px">Cook</button>' +
+    '</div>' +
+    // Secondary actions — all same grey style
+    '<div class="recipe-actions" style="margin-top:8px">' +
+      '<button class="ra-btn" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">+ List</button>' +
+      '<button class="ra-btn" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Log</button>' +
+      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px">+ Week</button>' +
       (r.archived
-        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--accent)">Restore</button>'
-        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:var(--text-3)">Archive</button>') +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.7;font-size:11px;padding:7px 4px">Del</button>' +
-      '<button class="ra-btn" data-share-recipe="' + r.id + '" style="flex:0.7;font-size:11px;padding:7px 4px">📤</button>' +
+        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Restore</button>'
+        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px">Archive</button>') +
+      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.8;font-size:11px;padding:7px 4px">Del</button>' +
+      '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe" style="flex:0.8;font-size:11px;padding:7px 4px;border-radius:8px;border:1.5px solid var(--border-strong);background:var(--white);cursor:pointer;font-family:inherit;color:var(--text-3)">+ Tag</button>' +
     '</div>' +
   '</div>'
 
