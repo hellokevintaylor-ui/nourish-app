@@ -2738,28 +2738,44 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   var recipeNames = (mealText.match(/=== (.+?) ===/g) || []).map(m => m.replace(/===/g, '').trim())
   console.log('recipeNames:', recipeNames)
   var slotLabel = isWholeDay ? 'the whole day' : slot
-  var prompt = `You are a professional chef. A home cook is making ${recipeNames.join(' and ')} and wants to eat at ${targetTime}. Current time is ${currentTime}.
+  // Extract the planning conversation so Claude can honor the agreed framework
+  var chatKey2 = (date || new Date().toISOString().slice(0,10)) + '-' + (slot || 'Dinner')
+  var planningChat = (state.gamePlanChats[chatKey2] || [])
+    .filter(m => m.role === 'assistant')
+    .map(m => m.content)
+    .join('\n---\n')
+    .slice(0, 2000) // last ~2000 chars of assistant responses = the agreed plan
 
-YOUR JOB: Return an ordered list of cooking steps that intelligently interleaves all recipes, using passive time from one dish to work on another.
+  var prompt = `You are a professional chef generating a detailed step-by-step cooking plan.
 
-DO NOT include times in your response — just steps with durations. The app will calculate the actual schedule.
+SERVE AT: ${targetTime} — this is fixed.
+CURRENT TIME: ${currentTime}
+RECIPES: ${recipeNames.join(', ')}
+
+THE AGREED TIMING FRAMEWORK (from planning chat — you MUST honor these time anchors):
+${planningChat || notes}
 
 FULL RECIPE DETAILS:
 ${mealText}
 
-Return ONLY a JSON array:
+YOUR JOB:
+The user and the AI already agreed on a timing framework above. Your job is to take that framework and fill in the detailed step-by-step cooking steps that fit within it. 
+
+For example if the framework says "morning prep", output the detailed morning prep steps with small durations. If it says "start chicken at 5pm", output chicken steps that begin around that time.
+
+Return a JSON array where each step has a scheduled_time (the actual clock time this step starts, matching the agreed framework) and a duration:
+
 [
-  {"step": "Prep the chicken — slice 3 breasts into 6 cutlets, season with salt and pepper", "active_min": 5, "passive_min": 0},
-  {"step": "Coat cutlets in flour, shake off excess, set aside on sheet pan", "active_min": 3, "passive_min": 0},
-  {"step": "Heat 3 tbsp olive oil in large pan over medium-high, add 3 tbsp butter, cook batch 1 of chicken until golden, 5 min per side", "active_min": 12, "passive_min": 0},
-  {"step": "Cook batch 2 of chicken, 5 min per side, transfer to plate", "active_min": 12, "passive_min": 0}
+  {"step": "Morning prep: Set up 3 bowls — 1 cup flour, 3 beaten eggs, 2 cups panko mixed with 2oz Parmigiano-Reggiano", "scheduled_time": "7:00 AM", "active_min": 5, "passive_min": 0},
+  {"step": "Morning prep: Pound 8 chicken cutlets to 1/4 inch, season with salt and pepper, dredge through flour/egg/panko, lay on parchment-lined baking sheet", "scheduled_time": "7:05 AM", "active_min": 10, "passive_min": 0},
+  {"step": "For Broccoli: Heat oven to 450°F, toss 1.5 lbs broccoli florets with 3 tbsp olive oil, salt, pepper", "scheduled_time": "5:15 PM", "active_min": 5, "passive_min": 20},
+  {"step": "For Chicken: Fill large skillet with 1/4 inch vegetable oil, heat over high until shimmering (~375°F)", "scheduled_time": "5:30 PM", "active_min": 5, "passive_min": 0}
 ]
 
 Rules:
-- Each step must include exact quantities inline
-- Label which recipe if not obvious ("For the pasta:", "For the chicken:")
-- Use passive_min for hands-off time (simmering, resting, oven) — during passive time other steps can run
-- NO times, NO scheduling — just ordered steps with durations
+- scheduled_time must match the agreed framework — don't invent new times
+- Include exact quantities inline with every step
+- Label which recipe for each step
 - No markdown, no backticks, ONLY the JSON array\``
 
   let gpResp, gpAttempts = 0
@@ -2912,18 +2928,29 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
 
   for (var i = 0; i < steps.length; i++) {
     var s = steps[i]
-    var stepMins = (s.active_min || 0) + (s.passive_min || 0)
-    if (!stepMins) stepMins = 5 // minimum 5 min per step
 
-    // If this step would run into the gap, stop before it
+    // If model provided a scheduled_time (from agreed framework), use it directly
+    if (s.scheduled_time) {
+      var scheduledMins = gpParseTime(s.scheduled_time)
+      if (scheduledMins > 0) {
+        cursor = scheduledMins
+        result.push({ time: gpFormatTime(cursor), step: s.step })
+        cursor += (s.active_min || 0) + (s.passive_min || 0)
+        continue
+      }
+    }
+
+    var stepMins = (s.active_min || 0) + (s.passive_min || 0)
+    if (!stepMins) stepMins = 5
+
+    // If this step would run into the gap, pause and jump to gap end
     if (gapStartMins && gapEndMins && cursor < gapStartMins && cursor + stepMins > gapStartMins) {
-      // Add a "pause" note and jump to gap end
       result.push({ time: gpFormatTime(cursor), step: s.step + ' — then PAUSE. Lid on, lowest heat. Take your break.' })
       cursor = gapEndMins
       continue
     }
 
-    // If we're inside the gap, jump to end
+    // If inside gap, jump to end
     if (gapStartMins && gapEndMins && cursor >= gapStartMins && cursor < gapEndMins) {
       cursor = gapEndMins
     }
