@@ -996,7 +996,6 @@ function render() {
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
       ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
-      ${state.gamePlanModal  ? renderGamePlanModal() : ''}
       ${state.calendarRecipePreview ? renderCalendarRecipePreviewModal() : ''}
 
       <!-- SCROLL TO TOP -->
@@ -1187,6 +1186,11 @@ function renderRecipeCard(r) {
   // Cook mode swaps in place of card body
   if (state.cookMode && state.cookMode.recipeId === r.id) {
     return header + renderCookModeInline(r) + '</div>'
+  }
+
+  // Game plan swaps in place of card body
+  if (state.gamePlanModal && state.gamePlanModal.recipeId === r.id) {
+    return header + renderGamePlanInline(r) + '</div>'
   }
 
   const notesSection = state.editingNotes === r.id
@@ -2992,137 +2996,105 @@ async function saveGamePlanToDb() {
   )
 }
 
-function renderGamePlanModal() {
-  const { slot, targetTime, date } = state.gamePlanModal || {}
-  const isWholeDay = slot === 'Day'
-  const slotLabel = isWholeDay ? 'Whole Day' : (slot || 'Meal')
-  const result = state.gamePlanResult
-  const loading = state.gamePlanLoading
+function renderGamePlanInline(r) {
+  const gp = state.gamePlanModal || {}
+  const { slot, targetTime, date, result, notes, generating, view } = gp
+  const slotLabel = slot || 'Dinner'
   const timeVal = targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
-  const view = state.gamePlanView || 'timeline'
   const chatKey = gpChatKey()
   const chatMessages = state.gamePlanChats[chatKey] || []
   const chatLoading = state.gamePlanChatLoading || false
+  const hasPriorChat = chatMessages.length > 0
   const dateLabel = date
     ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
     : new Date().toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})
 
-  // ── CHAT VIEW ──
+  const blackHeader = (title, sub, extra) =>
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
+      '<button id="gp-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:700;color:white">' + title + '</div>' +
+        '<div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px">' + sub + '</div>' +
+      '</div>' +
+      (extra || '') +
+    '</div>'
+
   if (view === 'chat') {
     const bubbles = chatMessages.map(m =>
-      '<div style="display:flex;flex-direction:column;align-items:' + (m.role === 'user' ? 'flex-end' : 'flex-start') + ';margin-bottom:10px">' +
-        '<div style="max-width:85%;background:' + (m.role === 'user' ? 'var(--forest)' : 'var(--cream2)') + ';color:' + (m.role === 'user' ? 'white' : 'var(--ink)') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
-          (m.role === 'assistant' ? linkifyTimers(esc(m.content).replace(/\n/g, '<br>')) : esc(m.content).replace(/\n/g, '<br>')) +
+      '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:10px">' +
+        '<div style="max-width:85%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:14px;padding:10px 13px;font-size:13px;line-height:1.5">' +
+          (m.role==='assistant' ? linkifyTimers(esc(m.content).replace(/\n/g,'<br>')) : esc(m.content).replace(/\n/g,'<br>')) +
         '</div>' +
       '</div>'
     ).join('')
-
-    return '<div class="modal-bg" id="game-plan-bg">' +
-      '<div class="modal-sheet" style="max-height:90vh;display:flex;flex-direction:column;padding:0;overflow:hidden">' +
-        '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--cream3);flex-shrink:0">' +
-          '<button id="gp-back-to-timeline" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--forest);padding:0;line-height:1;font-family:inherit">←</button>' +
-          '<div style="flex:1;display:flex;align-items:center;gap:8px">' +
-            '<div>' +
-              '<div style="font-size:14px;font-weight:700;color:var(--forest)">✦ Game Plan</div>' +
-              '<div style="font-size:11px;color:var(--ink3)">' + slotLabel + ' · ' + dateLabel + '</div>' +
-            '</div>' +
-            '<button id="gp-start-over" style="font-size:11px;color:var(--ink3);background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-family:inherit">↺ Redo</button>' +
-          '</div>' +
-          '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
-        '</div>' +
-        '<div id="gp-chat-messages" style="flex:1;overflow-y:auto;padding:14px 16px;min-height:0">' +
-          (chatMessages.length === 0
-            ? '<div style="color:var(--ink4);font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>'
-            : bubbles) +
-          (chatLoading ? '<div style="text-align:center;padding:10px;color:var(--ink3);font-size:13px">thinking...</div>' : '') +
-        '</div>' +
-        '<div style="padding:10px 12px;border-top:1px solid var(--cream3);display:flex;gap:8px;flex-shrink:0">' +
-          '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:inherit" />' +
-          '<button id="gp-chat-send" style="background:var(--forest);color:white;border:none;border-radius:12px;padding:9px 14px;font-size:16px;cursor:pointer" ' + (chatLoading ? 'disabled' : '') + '>▶</button>' +
-        '</div>' +
+    return '<div style="border-top:0.5px solid #e8e8e5">' +
+      blackHeader('✦ Tweak Game Plan', slotLabel + ' · ' + dateLabel,
+        '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
+        '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>') +
+      '<div id="gp-chat-messages" style="padding:14px;min-height:160px;max-height:360px;overflow-y:auto">' +
+        (chatMessages.length===0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:20px 0">What tweaks would you like to make?</div>' : bubbles) +
+        (chatLoading ? '<div style="text-align:center;padding:10px;color:#6e6e69;font-size:13px">thinking...</div>' : '') +
+      '</div>' +
+      '<div style="padding:10px 14px;border-top:0.5px solid #e8e8e5;display:flex;gap:8px">' +
+        '<input id="gp-chat-input" placeholder="e.g. I can start at 4:30pm..." style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none" />' +
+        '<button id="gp-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"' + (chatLoading?' disabled':'') + '>Send</button>' +
       '</div>' +
     '</div>'
   }
 
-  // ── FULLSCREEN COOK VIEW ──
-  if (view === 'fullscreen' && result) {
-    return '<div style="position:fixed;inset:0;z-index:2000;background:var(--cream);display:flex;flex-direction:column;font-family:inherit">' +
-      '<div style="background:var(--forest);padding:env(safe-area-inset-top, 14px) 16px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0">' +
-        '<button id="gp-exit-fullscreen" style="background:rgba(255,255,255,0.2);border:none;cursor:pointer;font-size:20px;color:white;padding:6px 10px;line-height:1;border-radius:8px;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">×</button>' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:15px;font-weight:700;color:white">' + slotLabel + ' Game Plan</div>' +
-          '<div style="font-size:11px;color:rgba(255,255,255,0.7)">' + dateLabel + ' · ' + esc(timeVal) + '</div>' +
-        '</div>' +
-        '<button id="gp-tweak-from-fullscreen" style="background:rgba(255,255,255,0.15);color:white;border:1.5px solid rgba(255,255,255,0.3);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">✦ Tweak</button>' +
-      '</div>' +
-      '<div style="flex:1;overflow-y:auto;padding:16px">' +
-        result.map((item, i) => {
-          const isLast = i === result.length - 1
-          return '<div style="display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--cream3)">' +
-            '<div style="min-width:65px;font-size:13px;font-weight:700;color:var(--forest);padding-top:3px">' + esc(item.time) + '</div>' +
-            '<div style="font-size:17px;line-height:1.5;color:var(--ink);' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-          '</div>'
-        }).join('') +
+  if (generating) {
+    return '<div style="border-top:0.5px solid #e8e8e5">' +
+      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
+      '<div style="padding:40px 20px;text-align:center">' +
+        '<div style="font-size:24px;margin-bottom:12px">📋</div>' +
+        '<div style="font-size:14px;font-weight:600;color:#1a1a1a">Building your timeline...</div>' +
+        '<div style="font-size:12px;color:#6e6e69;margin-top:6px">Working backwards from ' + esc(timeVal) + '</div>' +
       '</div>' +
     '</div>'
   }
-  let content = ''
-  if (loading) {
-    content = '<div style="text-align:center;padding:30px 0">' +
-      '<div style="font-size:28px;margin-bottom:10px">📋</div>' +
-      '<div style="font-size:14px;font-weight:600;color:var(--forest)">Planning your ' + slotLabel.toLowerCase() + '...</div>' +
-      '<div style="font-size:12px;color:var(--ink3);margin-top:6px">Reading your recipes and building a timeline</div>' +
-      '</div>'
-  } else if (result) {
-    content =
-      '<div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<span style="font-size:12px;color:var(--ink3)">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at</span>' +
-        '<input id="gp-dinner-time" value="' + esc(timeVal) + '" style="width:90px;padding:5px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-size:13px;font-family:inherit;text-align:center" />' +
-        '<button class="add-btn" id="gp-regenerate" style="font-size:12px;padding:5px 12px">↺ Redo</button>' +
+
+  if (!result) {
+    const savedNotes = gp.notes || ''
+    return '<div style="border-top:0.5px solid #e8e8e5">' +
+      blackHeader('Game Plan', slotLabel + ' · ' + dateLabel, '') +
+      '<div style="padding:14px">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+          '<span style="font-size:13px;font-weight:600;color:#3a3a38;white-space:nowrap">Eat at</span>' +
+          '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:9px 12px;border:1.5px solid #3d52c4;border-radius:10px;font-size:15px;font-family:inherit;text-align:center;font-weight:700;color:#3d52c4;outline:none" />' +
+        '</div>' +
+        '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, already made the sauce..." style="width:100%;padding:10px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px;line-height:1.5;outline:none">' + esc(savedNotes) + '</textarea>' +
+        '<button id="gp-generate" style="width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Generate Game Plan</button>' +
       '</div>' +
-      '<div style="position:relative;padding-left:18px">' +
-        '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--forest2);opacity:0.3;border-radius:2px"></div>' +
-        result.map((item, i) => {
-          const isLast = i === result.length - 1
-          return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
-            '<div style="position:absolute;left:-14px;top:4px;width:8px;height:8px;border-radius:50%;background:' + (isLast ? 'var(--forest)' : 'var(--forest2)') + ';border:2px solid white;box-shadow:0 0 0 1.5px var(--forest2)"></div>' +
-            '<div style="min-width:58px;font-size:11px;font-weight:700;color:var(--forest);padding-top:2px">' + esc(item.time) + '</div>' +
-            '<div style="font-size:13px;color:var(--ink);line-height:1.4;' + (isLast ? 'font-weight:700' : '') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
-          '</div>'
-        }).join('') +
-      '</div>'
-  } else {
-    const savedNotes = state.gamePlanModal?.notes || ''
-    content =
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
-        '<span style="font-size:13px;font-weight:600">' + (isWholeDay ? 'Dinner' : slotLabel) + ' at:</span>' +
-        '<input id="gp-dinner-time" value="' + esc(timeVal) + '" placeholder="e.g. 7:00 PM" style="flex:1;padding:8px 12px;border:1.5px solid var(--forest2);border-radius:10px;font-size:14px;font-family:inherit;text-align:center;font-weight:700" />' +
-      '</div>' +
-      '<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;display:flex;align-items:center;gap:5px">' +
-        '📅 ' + dateLabel +
-      '</div>' +
-      '<textarea id="gp-notes" placeholder="Anything to factor in? e.g. I can start at 4:30, skipping the potatoes tonight, kids eat at 6..." style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;resize:none;min-height:72px;box-sizing:border-box;margin-bottom:12px">' + esc(savedNotes) + '</textarea>' +
-      '<button class="modal-save" id="gp-generate" style="width:100%;font-size:14px;padding:14px">📋 Generate Game Plan</button>'
+    '</div>'
   }
 
-  const hasPriorChat = chatMessages.length > 0
+  const timeline =
+    '<div style="position:relative;padding-left:18px;margin-bottom:14px">' +
+      '<div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:#3d52c4;opacity:0.2;border-radius:2px"></div>' +
+      result.map((item, i) => {
+        const isLast = i === result.length - 1
+        return '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;position:relative">' +
+          '<div style="position:absolute;left:-14px;top:5px;width:8px;height:8px;border-radius:50%;background:' + (isLast?'#1a1a1a':'#3d52c4') + ';border:2px solid white;box-shadow:0 0 0 1.5px ' + (isLast?'#1a1a1a':'#3d52c4') + '"></div>' +
+          '<div style="min-width:58px;font-size:11px;font-weight:700;color:#3d52c4;padding-top:3px;flex-shrink:0">' + esc(item.time) + '</div>' +
+          '<div style="font-size:14px;color:#1a1a1a;line-height:1.5;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+        '</div>'
+      }).join('') +
+    '</div>'
 
-  return '<div class="modal-bg" id="game-plan-bg">' +
-    '<div class="modal-sheet" style="max-height:85vh;overflow-y:auto">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">' +
-        '<div class="modal-title" style="margin:0">📋 ' + slotLabel + ' Game Plan</div>' +
-        '<button id="gp-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1;flex-shrink:0">×</button>' +
+  return '<div style="border-top:0.5px solid #e8e8e5">' +
+    blackHeader(slotLabel + ' Game Plan', dateLabel + ' · eat at ' + esc(timeVal),
+      '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Redo</button>') +
+    '<div style="padding:14px">' +
+      timeline +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+        '<button id="gp-start-cooking" style="width:100%;padding:11px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
+        '<button id="gp-tweak" style="width:100%;padding:11px;background:white;color:#3d52c4;border:1.5px solid #3d52c4;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">' + (hasPriorChat?'✦ Continue Tweaking':'✦ Tweak with AI') + '</button>' +
       '</div>' +
-      '<div class="modal-sub" style="margin-bottom:14px">' + dateLabel + '</div>' +
-      content +
-      (result ? '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">' +
-        '<button id="gp-start-cooking" style="background:var(--forest);color:white;width:100%;padding:12px;font-size:14px;font-weight:700;border:none;border-radius:12px;cursor:pointer;font-family:inherit">▶ Start Cooking</button>' +
-        '<button class="modal-save" id="gp-tweak" style="background:white;color:var(--forest);border:2px solid var(--forest);width:100%;padding:12px;font-size:14px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit">' + (hasPriorChat ? '✦ Continue Tweaking' : '✦ Tweak with AI') + '</button>' +
-      '</div>' : '') +
     '</div>' +
   '</div>'
 }
 
+function renderGamePlanModal() { return '' }
 
 function renderScanPicker() {
   return '<div class="modal-bg" id="scan-picker-bg">' +
@@ -3877,11 +3849,14 @@ function bindEvents() {
       const hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
       if (hasPriorChat) {
         state.gamePlanView = 'chat'
-        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid }
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid, view: 'chat' }
+        state.expandedRecipe = rid
         render()
         setTimeout(() => {
           const el = document.getElementById('gp-chat-messages')
           if (el) el.scrollTop = el.scrollHeight
+          const card = document.querySelector('[data-rid="' + rid + '"]')
+          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }, 50)
       } else {
         state.gamePlanResult = null
@@ -3889,7 +3864,12 @@ function bindEvents() {
         state.gamePlanView = 'timeline'
         state._lastGamePlan = { slot, date: today }
         state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid }
+        state.expandedRecipe = rid
         render()
+        setTimeout(() => {
+          const card = document.querySelector('[data-rid="' + rid + '"]')
+          if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 50)
       }
     })
   })
@@ -5442,12 +5422,12 @@ async function estimateCaloriesAI(description) {
     }
   })
   document.getElementById('gp-close')?.addEventListener('click', () => {
-    state.gamePlanModal = { ...state.gamePlanModal, _open: false }
     state.gamePlanModal = false
+    state.gamePlanResult = null
     render()
   })
   document.getElementById('game-plan-bg')?.addEventListener('click', e => {
-    if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; render() }
+    if (e.target.id === 'game-plan-bg') { state.gamePlanModal = false; state.gamePlanResult = null; render() }
   })
   document.getElementById('gp-generate')?.addEventListener('click', async () => {
     const timeVal = document.getElementById('gp-dinner-time')?.value?.trim()
