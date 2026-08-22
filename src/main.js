@@ -992,11 +992,6 @@ function render() {
       </div>
 
       <!-- MODALS -->
-      ${state.pasteModal    ? renderPasteModal()    : ''}
-      ${state.clipUrlModal  ? renderClipUrlModal()  : ''}
-      ${state.addToWeekModal ? renderAddToWeekModal() : ''}
-      ${state.scanPickerOpen ? renderScanPicker() : ''}
-      ${state.logModal      ? renderLogModal()      : ''}
       ${state.tagOrganizerModal ? renderTagOrganizerModal() : ''}
 
       <!-- SCROLL TO TOP -->
@@ -1200,6 +1195,16 @@ function renderRecipeCard(r) {
     return header + renderShopReviewInline(r) + '</div>'
   }
 
+  // Add to Week swaps in place of card body
+  if (state.addToWeekModal && String(state.addToWeekModal.recipeId) === String(r.id)) {
+    return header + renderAddToWeekInline(r) + '</div>'
+  }
+
+  // Log swaps in place of card body
+  if (state.logModal && String(state.logModal.recipeId) === String(r.id)) {
+    return header + renderLogInline(r) + '</div>'
+  }
+
   // Expanded: prep time box + Cook button + action row only
   // No ingredients or instructions shown here — those are in Cook mode
 
@@ -1346,6 +1351,29 @@ function renderRecipes() {
   return `
     <div class="tab-content">
       ${renderTonightCard()}
+      ${state.scanPickerOpen ? `
+        <div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-bottom:12px">
+          <div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">
+            <button id="scan-picker-cancel" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center">×</button>
+            <div style="flex:1;font-size:13px;font-weight:700;color:white">Scan Recipe</div>
+          </div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+            <button id="scan-use-camera" style="width:100%;padding:12px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">📷 Take Photo</button>
+            <button id="scan-use-library" style="width:100%;padding:12px;background:white;color:#3a3a38;border:1.5px solid #d4d4d0;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">🖼 Choose from Library</button>
+          </div>
+        </div>` : ''}
+      ${state.clipUrlModal ? `
+        <div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-bottom:12px">
+          <div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">
+            <button id="clip-url-cancel" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center">×</button>
+            <div style="flex:1;font-size:13px;font-weight:700;color:white">Clip from URL</div>
+            <button id="clip-url-go" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Fetch</button>
+          </div>
+          <div style="padding:14px">
+            <input id="clip-url-input" placeholder="https://..." style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:monospace;outline:none;box-sizing:border-box" />
+          </div>
+        </div>` : ''}
+      ${state.pasteModal ? renderPasteModalInline() : ''}
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
         <div style="display:flex;gap:6px">
@@ -3523,6 +3551,65 @@ function renderScanPicker() {
   '</div>'
 }
 
+
+function renderAddToWeekInline(r) {
+  const m = state.addToWeekModal
+  if (!m) return ''
+  const slots = ['Lunch', 'Dinner']
+  const days = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i)
+    const iso = d.toISOString().slice(0, 10)
+    const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    days.push({ iso, label })
+  }
+  const selectedDay = m.selectedDay || days[0].iso
+  return '<div style="border-top:0.5px solid #e8e8e5">' +
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
+      '<button id="add-week-cancel" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '<div style="flex:1;font-size:13px;font-weight:700;color:white">Add to Week</div>' +
+      '<button id="add-week-save" style="background:' + (m.selectedSlot ? '#3d52c4' : '#6e6e69') + ';color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit"' + (!m.selectedSlot ? ' disabled' : '') + '>Add' + (m.selectedSlot ? ' to ' + m.selectedSlot : '') + '</button>' +
+    '</div>' +
+    '<div style="padding:14px">' +
+      '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Day</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">' +
+        days.map(d => '<button class="tag-filter-chip ' + (selectedDay === d.iso ? 'active' : '') + '" data-week-day="' + d.iso + '">' + d.label + '</button>').join('') +
+      '</div>' +
+      '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Meal</div>' +
+      '<div style="display:flex;gap:7px">' +
+        slots.map(s => '<button class="tag-filter-chip ' + (m.selectedSlot === s ? 'active' : '') + '" data-week-slot="' + s + '">' + s + '</button>').join('') +
+      '</div>' +
+    '</div>' +
+  '</div>'
+}
+
+
+function renderLogInline(r) {
+  const m = state.logModal
+  if (!m) return ''
+  const estimating = m.estimating || false
+  return '<div style="border-top:0.5px solid #e8e8e5">' +
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
+      '<button id="lm-cancel" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '<div style="flex:1;font-size:13px;font-weight:700;color:white">Log a serving</div>' +
+      '<button id="lm-save" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Log it</button>' +
+    '</div>' +
+    '<div style="padding:14px;display:flex;flex-direction:column;gap:8px">' +
+      '<input id="lm-portion" placeholder="How much? (e.g. 1 serving, half portion)" value="' + esc(m.portion || '') + '" style="padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none" />' +
+      '<input id="lm-notes" placeholder="Any changes? (e.g. no cheese, extra chicken)" value="' + esc(m.notes || '') + '" style="padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none" />' +
+      '<div style="display:flex;gap:8px">' +
+        (estimating
+          ? '<div style="flex:1;font-size:13px;color:#6e6e69;font-style:italic;padding:9px">Estimating calories...</div>'
+          : '<input id="lm-cals" type="number" placeholder="Calories (auto-filled)" value="' + (m.calories || '') + '" style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none" />' +
+            '<button id="lm-estimate" style="padding:9px 14px;background:white;border:1.5px solid #d4d4d0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:#3a3a38">Estimate</button>'
+        ) +
+      '</div>' +
+      (m.estimateMsg ? '<div style="font-size:12px;color:#6e6e69;padding:4px 0">' + esc(m.estimateMsg) + '</div>' : '') +
+      (m.breakdown ? '<div style="font-size:12px;color:#3a3a38;line-height:1.5">' + esc(m.breakdown) + '</div>' : '') +
+    '</div>' +
+  '</div>'
+}
+
 function renderAddToWeekModal() {
   const m = state.addToWeekModal
   const slots = ['Lunch', 'Dinner']
@@ -3573,6 +3660,55 @@ function renderClipUrlModal() {
   '</div>'
 }
 
+
+
+function renderPasteModalInline() {
+  if (state.shareLoading) {
+    return '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-bottom:12px;text-align:center;padding:40px 20px">' +
+      '<div style="font-size:32px;margin-bottom:12px">🍲</div>' +
+      '<div style="font-size:15px;font-weight:600;color:#1a1a1a">Reading recipe...</div>' +
+      '<div style="font-size:13px;color:#6e6e69;margin-top:6px">Fetching from the page you shared</div>' +
+    '</div>'
+  }
+  const r = state.sharedRecipe
+  const title = r ? 'Save Clipped Recipe' : 'Paste a Recipe'
+  const sub = r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'
+  const nameVal = r ? esc(r.name || '') : ''
+  const warning = r && r.warning ? '<div style="background:#fff5f2;border:1px solid #ffcdc4;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#c0392b">[!] ' + esc(r.warning) + '</div>' : ''
+  const bodyFields = r
+    ? '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Ingredients</div>' +
+      '<textarea id="paste-ingredients" style="width:100%;min-height:90px;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;margin-bottom:8px" placeholder="One ingredient per line...">' + esc((state.pasteModalDraft && state.pasteModalDraft.ingredients) || (r && r.ingredients) || '') + '</textarea>' +
+      '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Instructions</div>' +
+      '<textarea id="paste-instructions" style="width:100%;min-height:70px;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box" placeholder="Step by step...">' + esc((state.pasteModalDraft && state.pasteModalDraft.instructions) || (r && r.instructions) || '') + '</textarea>'
+    : '<textarea id="paste-text" style="width:100%;min-height:140px;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box" placeholder="Paste the recipe text — ingredients, instructions, however messy. Edit before saving.">' + esc((state.pasteModalDraft && state.pasteModalDraft.text) || '') + '</textarea>'
+  const recipeTags = getTagsForNamespace('recipe')
+  const tagSection = recipeTags.length > 0
+    ? '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;margin-top:10px">Tags</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">' +
+        recipeTags.map(t =>
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:#f9f9f8;border:1.5px solid #e8e8e5;border-radius:8px;padding:7px 10px">' +
+          '<input type="checkbox" class="paste-tag-check" data-tag="' + esc(t.name) + '" style="accent-color:#3d52c4;flex-shrink:0;width:16px;height:16px" />' +
+          '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(t.name) + '</span></label>'
+        ).join('') +
+      '</div>'
+    : ''
+  return '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-bottom:12px">' +
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
+      '<button id="paste-cancel" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center">×</button>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:700;color:white">' + title + '</div>' +
+        (sub ? '<div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:1px">' + sub + '</div>' : '') +
+      '</div>' +
+      '<button id="paste-save" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Save</button>' +
+    '</div>' +
+    '<div style="padding:14px">' +
+      warning +
+      '<input id="paste-name" placeholder="Recipe name" value="' + ((state.pasteModalDraft && state.pasteModalDraft.name) || nameVal) + '" style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:8px" />' +
+      bodyFields +
+      tagSection +
+    '</div>' +
+  '</div>'
+}
 
 function renderPasteModal() {
   if (state.shareLoading) {
@@ -5227,13 +5363,16 @@ async function estimateCaloriesAI(description) {
     el.addEventListener('click', e => {
       e.stopPropagation()
       var r = state.recipes.find(x => String(x.id) === String(el.dataset.logRecipe))
-      if (r) { state.logModal = { recipeId: r.id, recipeName: r.name }; render() }
+      if (r) { state.logModal = { recipeId: r.id, recipeName: r.name }
+      state.expandedRecipe = r.id
+      render()
+      setTimeout(() => { const card = document.querySelector('[data-rid="' + r.id + '"]'); if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 80) }
     })
   })
-  document.getElementById('lm-cancel')?.addEventListener('click', () => { state.logModal = null; render() })
+  document.querySelectorAll('#lm-cancel').forEach(btn => btn.addEventListener('click', () => { state.logModal = null; render() }))
 
   // Estimate button in log modal
-  document.getElementById('lm-estimate')?.addEventListener('click', async () => {
+  document.querySelectorAll('#lm-estimate').forEach(btn => btn.addEventListener('click', async () => {
     if (!state.logModal) return
     var portion = document.getElementById('lm-portion')?.value?.trim()
     var notes = document.getElementById('lm-notes')?.value?.trim()
@@ -5264,7 +5403,7 @@ async function estimateCaloriesAI(description) {
     }
   })
 
-  document.getElementById('lm-save')?.addEventListener('click', async () => {
+  document.querySelectorAll('#lm-save').forEach(btn => btn.addEventListener('click', async () => {
     var portionEl = document.getElementById('lm-portion')
     var calsEl = document.getElementById('lm-cals')
     var notesEl = document.getElementById('lm-notes')
@@ -5321,9 +5460,9 @@ async function estimateCaloriesAI(description) {
       document.getElementById('clip-url-input')?.focus()
     }, 100)
   })
-  document.getElementById('clip-url-cancel')?.addEventListener('click', () => { state.clipUrlModal = false; render() })
+  document.querySelectorAll('#clip-url-cancel').forEach(btn => btn.addEventListener('click', () => { state.clipUrlModal = false; render() }))
   document.getElementById('clip-url-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'clip-url-modal-bg') { state.clipUrlModal = false; render() } })
-  document.getElementById('clip-url-go')?.addEventListener('click', async () => {
+  document.querySelectorAll('#clip-url-go').forEach(btn => btn.addEventListener('click', async () => {
     var url = document.getElementById('clip-url-input')?.value?.trim()
     if (!url || !url.startsWith('http')) return
     state.clipUrlModal = false; state.pasteModal = true; state.shareLoading = true; render()
@@ -5441,7 +5580,7 @@ async function estimateCaloriesAI(description) {
 
   document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; render() })
   document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
-  document.getElementById('paste-save')?.addEventListener('click', async () => {
+  document.querySelectorAll('#paste-save').forEach(btn => btn.addEventListener('click', async () => {
     var name = document.getElementById('paste-name')?.value?.trim()
     if (!name) return
     let ingredients = '', instructions = ''
@@ -5807,9 +5946,9 @@ async function estimateCaloriesAI(description) {
       if (state.addToWeekModal) { state.addToWeekModal.selectedSlot = el.dataset.weekSlot; render() }
     })
   })
-  document.getElementById('add-week-cancel')?.addEventListener('click', () => { state.addToWeekModal = null; render() })
+  document.querySelectorAll('#add-week-cancel').forEach(btn => btn.addEventListener('click', () => { state.addToWeekModal = null; render() }))
   document.getElementById('add-week-bg')?.addEventListener('click', e => { if (e.target.id === 'add-week-bg') { state.addToWeekModal = null; render() } })
-  document.getElementById('add-week-save')?.addEventListener('click', async () => {
+  document.querySelectorAll('#add-week-save').forEach(btn => btn.addEventListener('click', async () => {
     var m = state.addToWeekModal
     if (!m || !m.selectedSlot) return
     var saved = await db.saveMealPlanEntry(m.selectedDay, m.selectedSlot, m.recipeId, m.recipeName)
