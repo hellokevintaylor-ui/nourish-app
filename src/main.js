@@ -4429,7 +4429,7 @@ function bindEvents() {
       }
     }
     state.shopReview = null; state.tab = 'shop'; render()
-  })
+  }))
 
   document.querySelectorAll('[data-plan-recipe]').forEach(el => {
     el.addEventListener('click', e => {
@@ -5392,7 +5392,7 @@ async function estimateCaloriesAI(description) {
       estimateMsg: 'Estimated ' + calories + ' kcal. You can adjust before saving.' }
     render()
     document.getElementById('lm-cals')?.focus()
-  })
+  }))
 
   document.getElementById('log-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'log-modal-bg') { state.logModal = null; render() } })
 
@@ -5424,7 +5424,7 @@ async function estimateCaloriesAI(description) {
       state.log.push(saved)
     }
     state.logModal = null; state.tab = 'log'; render()
-  })
+  }))
 
   // Paste modal
   document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
@@ -5474,7 +5474,7 @@ async function estimateCaloriesAI(description) {
     } catch(e) {
       state.shareLoading = false; state.sharedRecipe = null; render()
     }
-  })
+  }))
   document.getElementById('clip-url-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('clip-url-go')?.click() })
 
   // Clipboard banner
@@ -5610,7 +5610,7 @@ async function estimateCaloriesAI(description) {
       })
     }
     state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; state.tab = 'recipes'; render()
-  })
+  }))
 
   // Chat handled by chat handlers below
 
@@ -5958,7 +5958,7 @@ async function estimateCaloriesAI(description) {
     }
     state.addToWeekModal = null
     render()
-  })
+  }))
 
   // Manual text entry in calendar picker
   document.getElementById('cal-manual-add')?.addEventListener('click', async () => {
