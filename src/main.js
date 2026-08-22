@@ -994,7 +994,6 @@ function render() {
       <!-- MODALS -->
       ${state.pasteModal    ? renderPasteModal()    : ''}
       ${state.clipUrlModal  ? renderClipUrlModal()  : ''}
-      ${state.shopReview    ? renderShopReview()    : ''}
       ${state.addToWeekModal ? renderAddToWeekModal() : ''}
       ${state.scanPickerOpen ? renderScanPicker() : ''}
       ${state.logModal      ? renderLogModal()      : ''}
@@ -1194,6 +1193,11 @@ function renderRecipeCard(r) {
   // Game plan swaps in place of card body
   if (state.gamePlanModal && state.gamePlanModal.recipeId === r.id) {
     return header + renderGamePlanInline(r) + '</div>'
+  }
+
+  // Shop review swaps in place of card body
+  if (state.shopReview && String(state.shopReview.recipeId) === String(r.id)) {
+    return header + renderShopReviewInline(r) + '</div>'
   }
 
   // Expanded: prep time box + Cook button + action row only
@@ -3610,6 +3614,45 @@ function renderPasteModal() {
     '</div></div>'
 }
 
+function renderShopReviewInline(r) {
+  const s = state.shopReview
+  if (!s) return ''
+  const locationTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
+  const itemsHtml = s.items.map(function(item, idx) {
+    const inPantry = item.inPantry
+    const itemTags = item.tags || []
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:0.5px solid #e8e8e5">' +
+      '<input type="checkbox" class="shop-review-check" data-idx="' + idx + '" ' + (!inPantry && item.checked ? 'checked' : '') + (inPantry ? 'disabled' : '') + ' style="margin-top:3px;accent-color:#3d52c4;flex-shrink:0;width:16px;height:16px" />' +
+      '<div style="flex:1;min-width:0">' +
+        (inPantry
+          ? '<div style="font-size:13px;color:#a8a8a3;text-decoration:line-through">' + esc(item.name) + '</div><div style="font-size:11px;color:#a8a8a3">Already in pantry</div>'
+          : '<input class="shop-review-name-input" data-review-idx="' + idx + '" value="' + esc(item.name) + '" style="width:100%;padding:4px 8px;border:1.5px solid #d4d4d0;border-radius:6px;font-size:13px;font-family:inherit;outline:none;background:#f9f9f8;color:#1a1a1a" />' +
+            (item.pantryQty ? '<div style="font-size:11px;color:#6e6e69;margin-top:2px">You have: ' + esc(item.pantryQty) + '</div>' : '') +
+            (locationTags.length > 0
+              ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">' +
+                  locationTags.map(t =>
+                    '<button class="shop-review-tag-btn ' + (itemTags.includes(t.name) ? 'active' : '') + '" data-review-tag-idx="' + idx + '" data-review-tag="' + esc(t.name) + '" style="font-size:10px;padding:2px 7px;border-radius:5px;border:1.5px solid ' + (itemTags.includes(t.name) ? '#3d52c4' : '#d4d4d0') + ';background:' + (itemTags.includes(t.name) ? '#3d52c4' : 'white') + ';color:' + (itemTags.includes(t.name) ? 'white' : '#6e6e69') + ';cursor:pointer;font-family:inherit">' + esc(t.name) + '</button>'
+                  ).join('') +
+                '</div>'
+              : '')
+        ) +
+      '</div>' +
+      (!inPantry ? '<button class="shop-review-pantry-btn" data-pantry-idx="' + idx + '" style="flex-shrink:0;font-size:10px;padding:3px 8px;border:1.5px solid #d4d4d0;border-radius:6px;background:white;cursor:pointer;font-family:inherit;color:#6e6e69">Got it</button>' : '') +
+    '</div>'
+  }).join('')
+
+  return '<div style="border-top:0.5px solid #e8e8e5">' +
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
+      '<button id="shop-review-cancel" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '<div style="flex:1;font-size:13px;font-weight:700;color:white">What do you need?</div>' +
+      '<button id="shop-review-add" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Add to List</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:#6e6e69;padding:8px 14px 4px">Check items to add. Edit name or tag store location.</div>' +
+    '<div style="padding:0 14px 14px">' + itemsHtml + '</div>' +
+  '</div>'
+}
+
+
 function renderShopReview() {
   const s = state.shopReview
   const locationTags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
@@ -4173,7 +4216,13 @@ function bindEvents() {
         })
         return { name, pantryQty: match ? (match.qty || '✓ in pantry') : null, checked: !match }
       })
-      state.shopReview = { recipeId: r.id, recipeName: r.name, items }; render()
+      state.shopReview = { recipeId: r.id, recipeName: r.name, items }
+      state.expandedRecipe = r.id
+      render()
+      setTimeout(() => {
+        const card = document.querySelector('[data-rid="' + r.id + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 80)
     })
   })
 
@@ -4225,9 +4274,9 @@ function bindEvents() {
       }
     })
   })
-  document.getElementById('shop-review-cancel')?.addEventListener('click', () => { state.shopReview = null; render() })
+  document.querySelectorAll('#shop-review-cancel').forEach(btn => btn.addEventListener('click', () => { state.shopReview = null; render() }))
   document.getElementById('shop-review-bg')?.addEventListener('click', e => { if (e.target.id === 'shop-review-bg') { state.shopReview = null; render() } })
-  document.getElementById('shop-review-add')?.addEventListener('click', async () => {
+  document.querySelectorAll('#shop-review-add').forEach(btn => btn.addEventListener('click', async () => {
     if (!state.shopReview) return
     document.querySelectorAll('.shop-review-name-input').forEach(el => {
       var idx = parseInt(el.dataset.reviewIdx)
