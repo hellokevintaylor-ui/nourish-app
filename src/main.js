@@ -2697,6 +2697,7 @@ function gpNormalizeTime(t) {
 function gpSaveCurrent() {
   if (!state.gamePlanModal || !state.gamePlanModal.date) return
   var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+  console.log('gpSaveCurrent: saving key=', key, 'hasResult=', !!state.gamePlanModal.result)
   state.savedGamePlans[key] = {
     ...state.gamePlanModal,
     view: 'result',
@@ -6410,7 +6411,7 @@ async function estimateCaloriesAI(description) {
       if (text) { e.target.value = ''; sendGpChatMessage(text) }
     }
   }))
-  document.getElementById('gp-close')?.addEventListener('click', () => {
+  document.querySelectorAll('#gp-close').forEach(btn => btn.addEventListener('click', () => {
     if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
       var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       // Always save the latest result and view
@@ -6426,7 +6427,7 @@ async function estimateCaloriesAI(description) {
     }
     state.gamePlanModal = false
     render()
-  })
+  }))  
   document.getElementById('gp-generate')?.addEventListener('click', gpGenerateHandler)
 
 async function gpGenerateHandler() {
@@ -6472,10 +6473,7 @@ async function gpGenerateHandler() {
     if (!state.gamePlanChats[regenChatKey2]) state.gamePlanChats[regenChatKey2] = []
     state.gamePlanChats[regenChatKey2].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
     state.gamePlanView = 'result'
-    // Persist plan so it survives close/reopen
-    var planKey = date + '-' + slot
-    state.savedGamePlans[planKey] = { ...state.gamePlanModal }
-    saveGamePlanToDb()
+    gpSaveCurrent()
     render()
     // Scroll to the game plan
     setTimeout(() => {
