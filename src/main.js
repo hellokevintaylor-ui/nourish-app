@@ -4319,7 +4319,27 @@ function bindEvents() {
   document.querySelectorAll('.recipe-card-header').forEach(el => {
     el.addEventListener('click', () => {
       var rid = el.closest('.recipe-card').dataset.rid
-      state.expandedRecipe = state.expandedRecipe === rid ? null : rid
+      var isCollapsing = state.expandedRecipe === rid
+      if (isCollapsing) {
+        // Save game plan and shop review state before collapsing
+        if (state.gamePlanModal && state.gamePlanModal.recipeId === rid) {
+          gpSaveCurrent()
+          state.gamePlanModal = false
+        }
+        if (state.shopReview && String(state.shopReview.recipeId) === String(rid)) {
+          state.shopReview = null
+        }
+        if (state.addToWeekModal && String(state.addToWeekModal.recipeId) === String(rid)) {
+          state.addToWeekModal = null
+        }
+        if (state.logModal && String(state.logModal.recipeId) === String(rid)) {
+          state.logModal = null
+        }
+        state.cookMode = null
+        state.expandedRecipe = null
+      } else {
+        state.expandedRecipe = rid
+      }
       render()
     })
   })
