@@ -3330,7 +3330,7 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
 
   // ── INGREDIENTS TAB ──
   // Use state.gamePlanIngredients if available (editable copy), else allIngredients
-  var editableIngs = state.gamePlanIngredients || allIngredients
+  var editableIngs = (state.gamePlanIngredients && state.gamePlanIngredients.length > 0) ? state.gamePlanIngredients : allIngredients
   var ingredientsTab = editableIngs.length > 0
     ? editableIngs.map((ing, i) => {
         var isChecked = checkedIngs.has(i)
@@ -4555,7 +4555,25 @@ function bindEvents() {
 
   // Game Plan edit toggle
   document.getElementById('gp-edit-toggle')?.addEventListener('click', () => {
-    state.gamePlanEditing = !state.gamePlanEditing; render()
+    state.gamePlanEditing = !state.gamePlanEditing
+    // Initialize editable ingredient list from meal plan on first edit
+    if (state.gamePlanEditing && !state.gamePlanIngredients) {
+      var gpMod = state.gamePlanModal || {}
+      var gpDate = gpMod.date || new Date().toISOString().slice(0,10)
+      var gpSlot = gpMod.slot || 'Dinner'
+      var gpEntries = state.mealPlan.filter(e => e.date === gpDate && (gpSlot === 'Day' || e.meal_slot === gpSlot) && e.recipe_id)
+      var gpAllIngs = []
+      gpEntries.forEach(function(entry) {
+        var r = state.recipes.find(function(x) { return x.id === entry.recipe_id })
+        if (r && r.ingredients) {
+          r.ingredients.split('\n').map(function(l) { return l.trim() }).filter(Boolean).forEach(function(line) {
+            gpAllIngs.push({ line: line, recipe: r.name })
+          })
+        }
+      })
+      state.gamePlanIngredients = gpAllIngs
+    }
+    render()
   })
 
   // Game Plan tabs
@@ -4673,7 +4691,8 @@ function bindEvents() {
   // ── INGREDIENTS: delete ──
   document.querySelectorAll('.gp-ing-del').forEach(btn => btn.addEventListener('click', () => {
     var idx = parseInt(btn.dataset.ingIdx)
-    var ings = state.gamePlanIngredients ? [...state.gamePlanIngredients] : []
+    if (!state.gamePlanIngredients || !state.gamePlanIngredients.length) return
+    var ings = [...state.gamePlanIngredients]
     ings.splice(idx, 1)
     state.gamePlanIngredients = ings
     gpSaveCurrent()
