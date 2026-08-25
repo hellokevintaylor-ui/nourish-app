@@ -4517,6 +4517,7 @@ function bindEvents() {
       var hasPriorChat = state.gamePlanChats[chatKey] && state.gamePlanChats[chatKey].length > 0
       var key = today + '-' + slot
       var saved = state.savedGamePlans[key]
+      console.log('Plan button: key=', key, 'saved=', !!saved, 'saved.result=', !!(saved&&saved.result), 'allKeys=', Object.keys(state.savedGamePlans))
       if (saved && saved.result) {
         // Restore saved plan
         console.log('Restoring saved plan, key=', key, 'result steps=', saved.result.length)
@@ -4566,7 +4567,6 @@ function bindEvents() {
   })
 
   // Game plan generate — use delegation since button can be in multiple inline locations
-  document.querySelectorAll('#gp-generate').forEach(btn => btn.addEventListener('click', gpGenerateHandler))
 
   // Eat-at time field in chat view
   document.getElementById('gp-eat-time')?.addEventListener('change', function() {
@@ -6614,6 +6614,17 @@ async function gpGenerateHandler() {
 
 // ── START ─────────────────────────────────────────────────────────────────────
 init()
+
+// ── ONE-TIME EVENT DELEGATION ──
+// These buttons are re-rendered on every render() so we can't bind in bindEvents
+// Instead use document-level delegation set up once at startup
+document.addEventListener('click', function gpDelegation(e) {
+  // Game plan generate
+  if (e.target.closest('#gp-generate')) {
+    gpGenerateHandler()
+    return
+  }
+})
 
 // Re-fetch from Supabase when user switches back to this tab
 document.addEventListener('visibilitychange', async () => {
