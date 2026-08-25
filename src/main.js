@@ -6416,7 +6416,7 @@ async function estimateCaloriesAI(description) {
       }
     })
   })
-  document.querySelectorAll('#gp-tweak').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-tweak').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
     var { slot: twkSlot, targetTime: twkTime, result: twkModalResult } = state.gamePlanModal || {}
     var twkResult = twkModalResult || state.gamePlanResult
     if (!twkResult) return
@@ -6442,7 +6442,7 @@ async function estimateCaloriesAI(description) {
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
-  }))
+  })})
 
   document.querySelectorAll('#gp-start-over').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
     var { date: soDate, slot: soSlot } = state.gamePlanModal || {}
@@ -6495,11 +6495,11 @@ async function estimateCaloriesAI(description) {
     }, 50)
   })
 
-  document.querySelectorAll('#gp-back-to-timeline').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-back-to-timeline').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
     state.gamePlanView = 'result'
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'result' }
     render()
-  }))
+  })})
 
   // Send message in game plan chat
   async function sendGpChatMessage(text) {
@@ -6626,19 +6626,19 @@ async function estimateCaloriesAI(description) {
     saveGamePlanToDb()
   }
 
-  document.querySelectorAll('#gp-chat-send').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-chat-send').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
     var input = document.getElementById('gp-chat-input')
     var text = input?.value?.trim()
     if (text) { input.value = ''; sendGpChatMessage(text) }
-  }))
-  document.querySelectorAll('#gp-chat-input').forEach(inp => inp.addEventListener('keydown', e => {
+  })})
+  document.querySelectorAll('#gp-chat-input').forEach(inp => { if (inp._b) return; inp._b=1; inp.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       var text = e.target.value?.trim()
       if (text) { e.target.value = ''; sendGpChatMessage(text) }
     }
-  }))
-  document.querySelectorAll('#gp-close').forEach(btn => btn.addEventListener('click', () => {
+  })})
+  document.querySelectorAll('#gp-close').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
     if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
       var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       // Always save the latest result and view
@@ -6654,5 +6654,5 @@ async function estimateCaloriesAI(description) {
     }
     state.gamePlanModal = false
     render()
-  }))
+  })})
 }
