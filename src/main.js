@@ -3974,7 +3974,7 @@ async function gpGenerateHandler() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
   }
-  document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
+  document.querySelectorAll('#gp-regenerate').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', async () => {
     if (!state.gamePlanModal) return
     var { slot, date, recipeId, targetTime: storedTime, notes } = state.gamePlanModal
     var timeVal = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
@@ -4005,7 +4005,7 @@ async function gpGenerateHandler() {
       var el = document.getElementById('gp-start-cooking')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
-  }))
+  })})
 
   // ── CHAT HANDLERS ──
   document.getElementById('chat-send')?.addEventListener('click', () => {
@@ -6444,7 +6444,7 @@ async function estimateCaloriesAI(description) {
     }, 50)
   }))
 
-  document.querySelectorAll('#gp-start-over').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-start-over').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
     var { date: soDate, slot: soSlot } = state.gamePlanModal || {}
     var chatKey = (soDate || 'today') + '-' + (soSlot || 'Dinner')
     var planKey = soDate + '-' + soSlot
@@ -6464,7 +6464,7 @@ async function estimateCaloriesAI(description) {
     render()
     // Restart the chat
     initGamePlanChat()
-  }))
+  })})
 
   document.getElementById('gp-start-cooking')?.addEventListener('click', () => {
     state.gamePlanView = 'fullscreen'; render()
