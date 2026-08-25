@@ -308,6 +308,18 @@ async function init() {
       if (gp.chat_messages && gp.chat_messages.length > 0) {
         state.gamePlanChats[key] = gp.chat_messages
       }
+      // Populate savedGamePlans so restore logic works across devices/reloads
+      if (gp.timeline && gp.timeline.length > 0) {
+        state.savedGamePlans[key] = {
+          date: gp.date,
+          slot: gp.slot,
+          targetTime: gp.target_time,
+          result: gp.timeline,
+          view: 'result',
+          notes: '',
+          generating: false
+        }
+      }
       if (!state._lastGamePlan || new Date(gp.updated_at) > new Date(state._lastGamePlan._updated || 0)) {
         state._lastGamePlan = { slot: gp.slot, date: gp.date, targetTime: gp.target_time, _updated: gp.updated_at }
         if (gp.timeline) state.gamePlanResult = gp.timeline
@@ -2829,6 +2841,8 @@ CRITICAL RULES:
 - Include exact quantities in every step
 - Label which recipe for each step
 - Return ONLY a valid JSON array, no explanation, no markdown
+- ONLY include steps that are explicitly in the recipe instructions above — do NOT add steps that aren't in the recipe (no searing, no extra browning, no additional techniques unless the recipe says to do them)
+- Do NOT improvise or add "chef's touches" — follow the recipe exactly as written
 
 [
   {"step": "Morning prep: Pound 8 chicken cutlets to 1/4 inch, season with salt and pepper", "scheduled_time": "7:00 AM", "active_min": 8, "passive_min": 0},
