@@ -3914,6 +3914,7 @@ function renderLogModal() {
 
 // ── EVENTS ────────────────────────────────────────────────────────────────────
 var _gpGenerating = false
+var _gpGen = 0  // increments each render, listeners check they're current
 async function gpGenerateHandler() {
     if (_gpGenerating) { console.warn('gpGenerateHandler: already running, ignoring duplicate call'); return }
     if (!state.gamePlanModal) return
@@ -3974,7 +3975,8 @@ async function gpGenerateHandler() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
   }
-  document.querySelectorAll('#gp-regenerate').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', async () => {
+  document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
+    if (_gpGen !== myGen) return
     if (!state.gamePlanModal) return
     var { slot, date, recipeId, targetTime: storedTime, notes } = state.gamePlanModal
     var timeVal = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
@@ -4005,7 +4007,7 @@ async function gpGenerateHandler() {
       var el = document.getElementById('gp-start-cooking')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
-  })})
+  }))
 
   // ── CHAT HANDLERS ──
   document.getElementById('chat-send')?.addEventListener('click', () => {
@@ -4114,6 +4116,8 @@ document.addEventListener('visibilitychange', async () => {
   }
 })
 function bindEvents() {
+  _gpGen++
+  var myGen = _gpGen
   // ── TIMER HANDLERS ──
   document.querySelectorAll('.timer-link[data-timer-seconds]').forEach(el => {
     el.addEventListener('click', e => {
@@ -6416,7 +6420,8 @@ async function estimateCaloriesAI(description) {
       }
     })
   })
-  document.querySelectorAll('#gp-tweak').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-tweak').forEach(btn => btn.addEventListener('click', () => {
+    if (_gpGen !== myGen) return
     var { slot: twkSlot, targetTime: twkTime, result: twkModalResult } = state.gamePlanModal || {}
     var twkResult = twkModalResult || state.gamePlanResult
     if (!twkResult) return
@@ -6442,9 +6447,10 @@ async function estimateCaloriesAI(description) {
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
-  })})
+  }))
 
-  document.querySelectorAll('#gp-start-over').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-start-over').forEach(btn => btn.addEventListener('click', () => {
+    if (_gpGen !== myGen) return
     var { date: soDate, slot: soSlot } = state.gamePlanModal || {}
     var chatKey = (soDate || 'today') + '-' + (soSlot || 'Dinner')
     var planKey = soDate + '-' + soSlot
@@ -6464,7 +6470,7 @@ async function estimateCaloriesAI(description) {
     render()
     // Restart the chat
     initGamePlanChat()
-  })})
+  }))
 
   document.getElementById('gp-start-cooking')?.addEventListener('click', () => {
     state.gamePlanView = 'fullscreen'; render()
@@ -6495,11 +6501,12 @@ async function estimateCaloriesAI(description) {
     }, 50)
   })
 
-  document.querySelectorAll('#gp-back-to-timeline').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-back-to-timeline').forEach(btn => btn.addEventListener('click', () => {
+    if (_gpGen !== myGen) return
     state.gamePlanView = 'result'
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'result' }
     render()
-  })})
+  }))
 
   // Send message in game plan chat
   async function sendGpChatMessage(text) {
@@ -6626,19 +6633,22 @@ async function estimateCaloriesAI(description) {
     saveGamePlanToDb()
   }
 
-  document.querySelectorAll('#gp-chat-send').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
+  document.querySelectorAll('#gp-chat-send').forEach(btn => btn.addEventListener('click', () => {
+    if (_gpGen !== myGen) return
     var input = document.getElementById('gp-chat-input')
     var text = input?.value?.trim()
     if (text) { input.value = ''; sendGpChatMessage(text) }
-  })})
-  document.querySelectorAll('#gp-chat-input').forEach(inp => { if (inp._b) return; inp._b=1; inp.addEventListener('keydown', e => {
+  }))
+  document.querySelectorAll('#gp-chat-input').forEach(inp => inp.addEventListener('keydown', e => {
+    if (_gpGen !== myGen) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       var text = e.target.value?.trim()
       if (text) { e.target.value = ''; sendGpChatMessage(text) }
     }
-  })})
-  document.querySelectorAll('#gp-close').forEach(btn => { if (btn._b) return; btn._b=1; btn.addEventListener('click', () => {
+  }))
+  document.querySelectorAll('#gp-close').forEach(btn => btn.addEventListener('click', () => {
+    if (_gpGen !== myGen) return
     if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
       var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
       // Always save the latest result and view
@@ -6654,5 +6664,5 @@ async function estimateCaloriesAI(description) {
     }
     state.gamePlanModal = false
     render()
-  })})
+  }))
 }
