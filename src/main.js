@@ -4079,10 +4079,84 @@ init()
 // Instead use document-level delegation set up once at startup
 
 document.addEventListener('click', function gpDelegation(e) {
-  // Game plan generate — use the module-scoped function via a global ref set at init
-  if (e.target.closest('#gp-generate')) {
-    if (typeof gpGenerateHandler === 'function') gpGenerateHandler()
+  var t = e.target
+  if (t.closest('#gp-generate')) { gpGenerateHandler(); return }
+  if (t.closest('#gp-regenerate')) {
+    if (!state.gamePlanModal) return
+    var { slot, date, recipeId, targetTime: storedTime, notes: gpNotes2 } = state.gamePlanModal
+    var timeVal2 = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    var rKey = date + '-' + slot
+    delete state.savedGamePlans[rKey]
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal2, result: null, generating: true }
+    state.gamePlanResult = null; render()
+    var rNotes = 'TARGET MEAL TIME: ' + timeVal2 + '.\n' + (gpNotes2 || '')
+    generateGamePlan(slot, timeVal2, date, recipeId, rNotes).then(function(res) {
+      var fin = res || [{ time: '?', step: 'Could not generate.' }]
+      state.gamePlanResult = fin
+      state.gamePlanModal = { ...state.gamePlanModal, result: fin, view: 'result', generating: false }
+      state.savedGamePlans[rKey] = { ...state.gamePlanModal }
+      saveGamePlanToDb(); render()
+    })
     return
+  }
+  if (t.closest('#gp-start-over')) {
+    var gpM = state.gamePlanModal || {}
+    var sKey = (gpM.date||'today') + '-' + (gpM.slot||'Dinner')
+    delete state.savedGamePlans[sKey]
+    state.gamePlanChats[sKey] = []
+    state.gamePlanResult = null; state.gamePlanView = 'planning-chat'
+    state.gamePlanEditing = false; state.gamePlanCheckedIngs = new Set()
+    state.gamePlanIngredients = null; state._lastGamePlan = null
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, view: 'planning-chat', generating: false, notes: '', targetTime: null }
+    render(); initGamePlanChat()
+    return
+  }
+  if (t.closest('#gp-tweak')) {
+    var { slot: twkSlot, targetTime: twkTime, result: twkRes } = state.gamePlanModal || {}
+    var twkResult = twkRes || state.gamePlanResult
+    if (!twkResult) return
+    var twkKey = gpChatKey()
+    if (!state.gamePlanChats[twkKey] || !state.gamePlanChats[twkKey].length) {
+      var twkLabel = twkSlot === 'Day' ? 'whole day' : (twkSlot || 'meal')
+      var twkTimeline = twkResult.map(i => i.time + ' — ' + i.step).join('\n')
+      state.gamePlanChats[twkKey] = [{ role: 'assistant', content: 'Here\'s your ' + twkLabel + ' plan (eat at ' + (twkTime||'7:00 PM') + '):\n\n' + twkTimeline + '\n\nWhat tweaks would you like to make?' }]
+    }
+    state.gamePlanView = 'chat'
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'chat' }
+    if (state.gamePlanModal?.date && state.gamePlanModal?.slot) {
+      state.savedGamePlans[state.gamePlanModal.date + '-' + state.gamePlanModal.slot] = { ...state.gamePlanModal }
+    }
+    render()
+    setTimeout(() => { var el = document.getElementById('gp-chat-messages'); if (el) el.scrollTop = el.scrollHeight; document.getElementById('gp-chat-input')?.focus() }, 50)
+    return
+  }
+  if (t.closest('#gp-back-to-timeline')) {
+    state.gamePlanView = 'result'
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'result' }
+    render(); return
+  }
+  if (t.closest('#gp-close')) {
+    if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
+      var cKey = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+      var toSave = { ...state.gamePlanModal }
+      if (toSave.result) toSave.view = 'result'
+      toSave._notes = state.gamePlanNotes; toSave._tab = state.gamePlanTab
+      state.savedGamePlans[cKey] = toSave; saveGamePlanToDb()
+    }
+    state.gamePlanModal = false; render(); return
+  }
+  if (t.closest('#gp-chat-send')) {
+    var inp = document.getElementById('gp-chat-input')
+    var txt = inp?.value?.trim()
+    if (txt) { inp.value = ''; sendGpChatMessage(txt) }
+    return
+  }
+})
+document.addEventListener('keydown', function gpKeyDelegation(e) {
+  if (e.target.id === 'gp-chat-input' && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    var txt = e.target.value?.trim()
+    if (txt) { e.target.value = ''; sendGpChatMessage(txt) }
   }
 })
 
@@ -4116,6 +4190,130 @@ document.addEventListener('visibilitychange', async () => {
     }
   }
 })
+async function sendGpChatMessage(text) {
+  if (!text.trim() || state.gamePlanChatLoading) return
+  var chatKey = gpChatKey()
+  if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
+
+  // Detect generate intent
+  var generatePhrases = ['generate it', 'generate the plan', 'looks good', 'go ahead', 'build it', 'make it', 'yes generate', 'do it', 'generate now', 'create the plan', 'build the plan']
+  var isGenerateIntent = generatePhrases.some(p => text.toLowerCase().includes(p))
+
+  state.gamePlanChats[chatKey].push({ role: 'user', content: text })
+
+  // Capture meal time if user is answering "what time"
+  // Try to capture time from message — handles "8pm", "8:30pm", "8:30 PM", "8" (assume PM for dinner)
+  var timeMatch = text.match(/\b(\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))/i)
+  if (!timeMatch) {
+    // bare number like "8" or "8 o'clock" — only if context is clearly about eating time
+    var bareMatch = text.match(/\beat\s+(\d{1,2})\b|\b(\d{1,2})\s*o.?clock/i)
+    if (bareMatch) timeMatch = [null, (bareMatch[1]||bareMatch[2])]
+  }
+  if (timeMatch && state.gamePlanModal && !state.gamePlanModal.result) {
+    var captured = (timeMatch[1]||'').trim()
+    var norm = captured
+    if (/^\d{1,2}$/.test(norm)) {
+      // bare number — assume PM
+      var h = parseInt(norm)
+      norm = (h < 12 ? h : h) + ':00 PM'
+    } else {
+      norm = norm.replace(/(\d+):(\d+)\s*(am|pm)/i, (_, h, m, ap) => h + ':' + m + ' ' + ap.toUpperCase())
+                 .replace(/(\d+)\s*(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
+      // If no AM/PM specified, assume PM for dinner context
+      if (!/AM|PM/.test(norm)) norm = norm.trim() + ' PM'
+    }
+    console.log('Captured meal time:', captured, '->', norm)
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: gpNormalizeTime(norm) }
+    if (state.gamePlanModal.date && state.gamePlanModal.slot) {
+      localStorage.setItem('mep_dinner_time', norm)
+    }
+  }
+
+  state.gamePlanChatLoading = true
+  render()
+  setTimeout(() => {
+    var el = document.getElementById('gp-chat-messages')
+    if (el) el.scrollTop = el.scrollHeight
+  }, 50)
+
+  if (isGenerateIntent && !state.gamePlanModal?.result) {
+    // User wants to generate — extract time from conversation if mentioned
+    // Use the stored target time — don't try to parse it from the message
+    var targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    // Summarize conversation as notes
+    var convoHistory = state.gamePlanChats[chatKey].map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
+    var convoNotes = 'TARGET MEAL TIME: ' + targetTime + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + convoHistory
+    state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Got it! Building your timeline now...' })
+    state.gamePlanChatLoading = false
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
+    render()
+    var { slot: gpSlot, date: gpDate, recipeId: gpRid } = state.gamePlanModal
+    let gpResult = null
+    try {
+      gpResult = await generateGamePlan(gpSlot, targetTime, gpDate, gpRid, convoNotes)
+    } catch(e) {
+      console.error('gp generate error:', e)
+    }
+    var finalResult = gpResult || [{ time: '?', step: 'Could not generate — check connection and try again.' }]
+    state.gamePlanResult = finalResult
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false, targetTime }
+    var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+    state.savedGamePlans[key] = { ...state.gamePlanModal }
+    state.gamePlanTab = 'ingredients'
+    state.gamePlanCheckedIngs = new Set()
+    saveGamePlanToDb()
+    render()
+    return
+  }
+
+  try {
+    var { slot, targetTime, result, date: gpDate } = state.gamePlanModal || {}
+    var hasResult = !!result
+    let system
+    if (hasResult) {
+      system = 'You are a cooking timeline assistant. The user has a generated cooking plan and may want to fix timing or adjust steps. If the timing looks wrong, acknowledge it and tell them to tap the ↺ Redo button (top right of the black header) to regenerate with corrected constraints. For tweaks to specific steps, suggest the change directly. Be brief and practical.'
+    } else {
+      var gpRecipes = buildGpRecipeContext(slot, gpDate)
+      var recipeCtx = gpRecipes.map(r => {
+        var pt = r.recipe?.prepTime
+        var ptStr = pt ? ' (' + pt.active_min + ' min active' + (pt.passive_min > 0 ? ', ' + pt.passive_min + ' min passive' : '') + ')' : ''
+        var ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,5).join(', ') : ''
+        return r.name + ptStr + (ingPreview ? ' — ' + ingPreview : '')
+      }).join('\n')
+      var mealTime = state.gamePlanModal?.targetTime || targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
+      var nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+      system = 'You are a friendly cooking assistant helping plan a meal.' +
+        ' CURRENT TIME: ' + nowStr + '.' +
+        ' TARGET: ' + (slot||'Dinner') + ' served at ' + mealTime + ' — this is fixed. The final step of the plan must land at ' + mealTime + '.' +
+        (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
+        ' RULES: (1) Ingredients are already on hand — never ask about this. (2) Always work backwards from ' + mealTime + ' so everything is hot and fresh at serving time. (3) The user may have time gaps — e.g. free now for an hour, then back at 5pm. Accept and factor these in.' +
+        ' FLOW: Ask one or two questions to understand their schedule. Once you have enough info, propose a rough draft timeline in plain conversational English — e.g. "Here\'s what I\'m thinking: chop the veg now 2–3pm, back at 5pm to start the chicken, sauce simmering by 5:30, everything on the table at ' + mealTime + '. Sound right?" — then ask if they want to adjust anything or are ready to generate. Keep the draft brief, no bullet points, just a natural sentence or two.' +
+        ' Only after they confirm or tweak, tell them to say "generate it" or tap the button.'
+    }
+    var messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
+    var resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, system, max_tokens: 400 })
+    })
+    if (!resp.ok) throw new Error('API error ' + resp.status)
+    var data = await resp.json()
+    var reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
+    state.gamePlanChats[chatKey].push({ role: 'assistant', content: reply })
+  } catch(e) {
+    console.error('gp chat error:', e)
+    state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Something went wrong (' + e.message + ') — try again.' })
+  }
+  state.gamePlanChatLoading = false
+  render()
+  setTimeout(() => {
+    var el = document.getElementById('gp-chat-messages')
+    if (el) el.scrollTop = el.scrollHeight
+    document.getElementById('gp-chat-input')?.focus()
+  }, 50)
+  saveGamePlanToDb()
+}
+
 function bindEvents() {
   if (_gpAC) _gpAC.abort()
   _gpAC = new AbortController()
@@ -6513,129 +6711,7 @@ async function estimateCaloriesAI(description) {
   }, {signal: _s}))
 
   // Send message in game plan chat
-  async function sendGpChatMessage(text) {
-    if (!text.trim() || state.gamePlanChatLoading) return
-    var chatKey = gpChatKey()
-    if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
 
-    // Detect generate intent
-    var generatePhrases = ['generate it', 'generate the plan', 'looks good', 'go ahead', 'build it', 'make it', 'yes generate', 'do it', 'generate now', 'create the plan', 'build the plan']
-    var isGenerateIntent = generatePhrases.some(p => text.toLowerCase().includes(p))
-
-    state.gamePlanChats[chatKey].push({ role: 'user', content: text })
-
-    // Capture meal time if user is answering "what time"
-    // Try to capture time from message — handles "8pm", "8:30pm", "8:30 PM", "8" (assume PM for dinner)
-    var timeMatch = text.match(/\b(\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))/i)
-    if (!timeMatch) {
-      // bare number like "8" or "8 o'clock" — only if context is clearly about eating time
-      var bareMatch = text.match(/\beat\s+(\d{1,2})\b|\b(\d{1,2})\s*o.?clock/i)
-      if (bareMatch) timeMatch = [null, (bareMatch[1]||bareMatch[2])]
-    }
-    if (timeMatch && state.gamePlanModal && !state.gamePlanModal.result) {
-      var captured = (timeMatch[1]||'').trim()
-      var norm = captured
-      if (/^\d{1,2}$/.test(norm)) {
-        // bare number — assume PM
-        var h = parseInt(norm)
-        norm = (h < 12 ? h : h) + ':00 PM'
-      } else {
-        norm = norm.replace(/(\d+):(\d+)\s*(am|pm)/i, (_, h, m, ap) => h + ':' + m + ' ' + ap.toUpperCase())
-                   .replace(/(\d+)\s*(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
-        // If no AM/PM specified, assume PM for dinner context
-        if (!/AM|PM/.test(norm)) norm = norm.trim() + ' PM'
-      }
-      console.log('Captured meal time:', captured, '->', norm)
-      state.gamePlanModal = { ...state.gamePlanModal, targetTime: gpNormalizeTime(norm) }
-      if (state.gamePlanModal.date && state.gamePlanModal.slot) {
-        localStorage.setItem('mep_dinner_time', norm)
-      }
-    }
-
-    state.gamePlanChatLoading = true
-    render()
-    setTimeout(() => {
-      var el = document.getElementById('gp-chat-messages')
-      if (el) el.scrollTop = el.scrollHeight
-    }, 50)
-
-    if (isGenerateIntent && !state.gamePlanModal?.result) {
-      // User wants to generate — extract time from conversation if mentioned
-      // Use the stored target time — don't try to parse it from the message
-      var targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
-      // Summarize conversation as notes
-      var convoHistory = state.gamePlanChats[chatKey].map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
-      var convoNotes = 'TARGET MEAL TIME: ' + targetTime + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + convoHistory
-      state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Got it! Building your timeline now...' })
-      state.gamePlanChatLoading = false
-      state.gamePlanModal = { ...state.gamePlanModal, targetTime, notes: convoNotes, generating: true }
-      render()
-      var { slot: gpSlot, date: gpDate, recipeId: gpRid } = state.gamePlanModal
-      let gpResult = null
-      try {
-        gpResult = await generateGamePlan(gpSlot, targetTime, gpDate, gpRid, convoNotes)
-      } catch(e) {
-        console.error('gp generate error:', e)
-      }
-      var finalResult = gpResult || [{ time: '?', step: 'Could not generate — check connection and try again.' }]
-      state.gamePlanResult = finalResult
-      if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false, targetTime }
-      var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
-      state.savedGamePlans[key] = { ...state.gamePlanModal }
-      state.gamePlanTab = 'ingredients'
-      state.gamePlanCheckedIngs = new Set()
-      saveGamePlanToDb()
-      render()
-      return
-    }
-
-    try {
-      var { slot, targetTime, result, date: gpDate } = state.gamePlanModal || {}
-      var hasResult = !!result
-      let system
-      if (hasResult) {
-        system = 'You are a cooking timeline assistant. The user has a generated cooking plan and may want to fix timing or adjust steps. If the timing looks wrong, acknowledge it and tell them to tap the ↺ Redo button (top right of the black header) to regenerate with corrected constraints. For tweaks to specific steps, suggest the change directly. Be brief and practical.'
-      } else {
-        var gpRecipes = buildGpRecipeContext(slot, gpDate)
-        var recipeCtx = gpRecipes.map(r => {
-          var pt = r.recipe?.prepTime
-          var ptStr = pt ? ' (' + pt.active_min + ' min active' + (pt.passive_min > 0 ? ', ' + pt.passive_min + ' min passive' : '') + ')' : ''
-          var ingPreview = r.recipe?.ingredients ? r.recipe.ingredients.split('\n').slice(0,5).join(', ') : ''
-          return r.name + ptStr + (ingPreview ? ' — ' + ingPreview : '')
-        }).join('\n')
-        var mealTime = state.gamePlanModal?.targetTime || targetTime || (slot === 'Lunch' ? '12:30 PM' : '7:00 PM')
-        var nowStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-        system = 'You are a friendly cooking assistant helping plan a meal.' +
-          ' CURRENT TIME: ' + nowStr + '.' +
-          ' TARGET: ' + (slot||'Dinner') + ' served at ' + mealTime + ' — this is fixed. The final step of the plan must land at ' + mealTime + '.' +
-          (recipeCtx ? ' RECIPES: ' + recipeCtx + '.' : '') +
-          ' RULES: (1) Ingredients are already on hand — never ask about this. (2) Always work backwards from ' + mealTime + ' so everything is hot and fresh at serving time. (3) The user may have time gaps — e.g. free now for an hour, then back at 5pm. Accept and factor these in.' +
-          ' FLOW: Ask one or two questions to understand their schedule. Once you have enough info, propose a rough draft timeline in plain conversational English — e.g. "Here\'s what I\'m thinking: chop the veg now 2–3pm, back at 5pm to start the chicken, sauce simmering by 5:30, everything on the table at ' + mealTime + '. Sound right?" — then ask if they want to adjust anything or are ready to generate. Keep the draft brief, no bullet points, just a natural sentence or two.' +
-          ' Only after they confirm or tweak, tell them to say "generate it" or tap the button.'
-      }
-      var messages = state.gamePlanChats[chatKey].map(m => ({ role: m.role, content: m.content }))
-      var resp = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, system, max_tokens: 400 })
-      })
-      if (!resp.ok) throw new Error('API error ' + resp.status)
-      var data = await resp.json()
-      var reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
-      state.gamePlanChats[chatKey].push({ role: 'assistant', content: reply })
-    } catch(e) {
-      console.error('gp chat error:', e)
-      state.gamePlanChats[chatKey].push({ role: 'assistant', content: 'Something went wrong (' + e.message + ') — try again.' })
-    }
-    state.gamePlanChatLoading = false
-    render()
-    setTimeout(() => {
-      var el = document.getElementById('gp-chat-messages')
-      if (el) el.scrollTop = el.scrollHeight
-      document.getElementById('gp-chat-input')?.focus()
-    }, 50)
-    saveGamePlanToDb()
-  }
 
   document.querySelectorAll('#gp-chat-send').forEach(btn => btn.addEventListener('click', () => {
     if (_gpGen !== myGen) return
