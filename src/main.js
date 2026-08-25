@@ -3913,6 +3913,206 @@ function renderLogModal() {
 }
 
 // ── EVENTS ────────────────────────────────────────────────────────────────────
+var _gpGenerating = false
+async function gpGenerateHandler() {
+    if (_gpGenerating) { console.warn('gpGenerateHandler: already running, ignoring duplicate call'); return }
+    if (!state.gamePlanModal) return
+    _gpGenerating = true
+    var { slot, date, recipeId } = state.gamePlanModal
+    // Don't regenerate if we already have a result — user must explicitly use ↺ Redo
+    if (state.gamePlanModal.result && !state.gamePlanModal.generating) {
+      console.warn('gpGenerateHandler: result exists, not regenerating')
+      _gpGenerating = false
+      return
+    }
+    // Time: from input if it exists, otherwise from state
+    var timeInput = document.getElementById('gp-eat-time')?.value?.trim() || document.getElementById('gp-dinner-time')?.value?.trim()
+    var timeVal = gpNormalizeTime(timeInput) || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    // Notes: from input if exists, otherwise summarize chat conversation
+    var notesInput = document.getElementById('gp-notes')?.value?.trim()
+    var gpGenChatKey = date + '-' + slot
+    var chatHistory = state.gamePlanChats[gpGenChatKey] || []
+    var chatNotes = chatHistory.map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
+    var baseNotes = notesInput || chatNotes || state.gamePlanModal.notes || ''
+    var notes = 'TARGET MEAL TIME: ' + timeVal + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + baseNotes
+    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
+    state._lastGamePlan = { slot, date, targetTime: timeVal }
+    // Clear saved plan so we don't restore the old one during generation
+    var regenKey = date + '-' + slot
+    delete state.savedGamePlans[regenKey]
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, generating: true }
+    state.gamePlanLoading = true
+    state.gamePlanResult = null
+    render()
+    let result = null
+    try {
+      result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
+    } catch(e) {
+      console.error('generateGamePlan error:', e)
+    } finally {
+      state.gamePlanLoading = false
+      _gpGenerating = false
+      if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, generating: false }
+    }
+    var finalResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    state.gamePlanResult = finalResult
+    // Also store result IN the modal so inline renderers can see it
+    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false }
+    var slotLabel = slot === 'Day' ? 'whole day' : slot
+    var timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
+    // Preserve existing chat history, just add the result as an assistant message
+    var regenChatKey2 = (date || 'today') + '-' + (slot || 'Dinner')
+    if (!state.gamePlanChats[regenChatKey2]) state.gamePlanChats[regenChatKey2] = []
+    state.gamePlanChats[regenChatKey2].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
+    state.gamePlanView = 'result'
+    gpSaveCurrent()
+    render()
+    // Scroll to the game plan
+    setTimeout(() => {
+      var el = document.getElementById('gp-start-cooking') || document.getElementById('gp-tweak')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 50)
+  }
+  document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
+    if (!state.gamePlanModal) return
+    var { slot, date, recipeId, targetTime: storedTime, notes } = state.gamePlanModal
+    var timeVal = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    var regenKey = date + '-' + slot
+    var regenChatKey = regenKey
+    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
+    // Clear saved so old plan doesn't leak back
+    delete state.savedGamePlans[regenKey]
+    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, result: null, generating: true }
+    state.gamePlanResult = null
+    state._lastGamePlan = { slot, date, targetTime: timeVal }
+    render()
+    var regenNotes = 'TARGET MEAL TIME: ' + timeVal + '. ' + (notes || '')
+    var regenResult = await generateGamePlan(slot, timeVal, date, recipeId, regenNotes)
+    var finalResult2 = regenResult || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
+    state.gamePlanResult = finalResult2
+    state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
+    // Add new result to chat history
+    if (!state.gamePlanChats[regenChatKey]) state.gamePlanChats[regenChatKey] = []
+    var slotLabel = slot === 'Day' ? 'whole day' : slot
+    var timelineText = finalResult2.map(item => item.time + ' — ' + item.step).join('\n')
+    state.gamePlanChats[regenChatKey].push({ role: 'assistant', content: 'Here\'s your updated plan (eat at ' + timeVal + '):\n\n' + timelineText })
+    state.gamePlanView = 'result'
+    state.savedGamePlans[regenKey] = { ...state.gamePlanModal }
+    saveGamePlanToDb()
+    render()
+    setTimeout(() => {
+      var el = document.getElementById('gp-start-cooking')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 50)
+  }))
+
+  // ── CHAT HANDLERS ──
+  document.getElementById('chat-send')?.addEventListener('click', () => {
+    var input = document.getElementById('chat-input')
+    var msg = input?.value?.trim()
+    if (msg) { input.value = ''; sendChatMessage(msg) }
+  })
+  document.getElementById('chat-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      var msg = e.target.value?.trim()
+      if (msg) { e.target.value = ''; sendChatMessage(msg) }
+    }
+  })
+  document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
+    el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
+  })
+  document.getElementById('chat-clear-context')?.addEventListener('click', () => {
+    state.chatRecipeContext = null; render()
+  })
+
+  // Back arrow and recipe name link — both jump back to the recipe card
+  var goToRecipeFromChat = () => {
+    if (!state.chatRecipeContext) return
+    var rid = String(state.chatRecipeContext.id)
+    state.tab = 'recipes'
+    state.expandedRecipe = rid
+    localStorage.setItem('mep_tab', 'recipes')
+    render()
+    setTimeout(() => {
+      var card = document.querySelector('[data-rid="' + rid + '"]')
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }
+  document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
+  document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
+  document.getElementById('chat-clear')?.addEventListener('click', () => {
+    var rid = state.chatRecipeContext?.id
+    if (rid) {
+      state.recipeChatMessages[rid] = []
+      db.saveRecipeChat(rid, [])
+    } else {
+      state.chatMessages = []
+    }
+    render()
+  })
+
+  // Tappable recipe links inside AI chat bubbles
+  document.querySelectorAll('.chat-recipe-link[data-go-recipe]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.tab = 'recipes'
+      state.expandedRecipe = String(el.dataset.goRecipe)
+      localStorage.setItem('mep_tab', 'recipes')
+      render()
+      setTimeout(() => {
+        var card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    })
+  })
+
+
+// ── START ─────────────────────────────────────────────────────────────────────
+init()
+
+// ── ONE-TIME EVENT DELEGATION ──
+// These buttons are re-rendered on every render() so we can't bind in bindEvents
+// Instead use document-level delegation set up once at startup
+
+document.addEventListener('click', function gpDelegation(e) {
+  // Game plan generate — use the module-scoped function via a global ref set at init
+  if (e.target.closest('#gp-generate')) {
+    if (typeof gpGenerateHandler === 'function') gpGenerateHandler()
+    return
+  }
+})
+
+// Re-fetch from Supabase when user switches back to this tab
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
+    state.recipes = recipes.map(normalizeRecipe)
+    state.allTags = allTags || []
+
+    // Purge checked items older than 1 hour on tab focus too
+    purgeStaleCheckedItems()
+
+    // Don't re-render if a text-entry modal is open — would wipe typed text
+    // (drafts are saved per-keystroke in state.*ModalDraft instead)
+    if (!state.pasteModal && !state.addRecipeModal) render()
+
+    // Check clipboard for a recipe URL
+    try {
+      var text = await navigator.clipboard.readText()
+      var trimmed = (text || '').trim()
+      var isUrl = trimmed.startsWith('http') && trimmed.length < 500
+      var alreadyShown = state._lastClipboardUrl === trimmed
+      if (isUrl && !alreadyShown && !state.pasteModal && !state.shareLoading) {
+        state._lastClipboardUrl = trimmed
+        state.clipboardBanner = trimmed
+        render()
+      }
+    } catch (e) {
+      // Clipboard permission denied - that is fine
+    }
+  }
+})
 function bindEvents() {
   // ── TIMER HANDLERS ──
   document.querySelectorAll('.timer-link[data-timer-seconds]').forEach(el => {
@@ -6455,204 +6655,5 @@ async function estimateCaloriesAI(description) {
     }
     state.gamePlanModal = false
     render()
-  }))  
-
-var _gpGenerating = false
-async function gpGenerateHandler() {
-    if (_gpGenerating) { console.warn('gpGenerateHandler: already running, ignoring duplicate call'); return }
-    if (!state.gamePlanModal) return
-    _gpGenerating = true
-    var { slot, date, recipeId } = state.gamePlanModal
-    // Don't regenerate if we already have a result — user must explicitly use ↺ Redo
-    if (state.gamePlanModal.result && !state.gamePlanModal.generating) {
-      console.warn('gpGenerateHandler: result exists, not regenerating')
-      _gpGenerating = false
-      return
-    }
-    // Time: from input if it exists, otherwise from state
-    var timeInput = document.getElementById('gp-eat-time')?.value?.trim() || document.getElementById('gp-dinner-time')?.value?.trim()
-    var timeVal = gpNormalizeTime(timeInput) || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
-    // Notes: from input if exists, otherwise summarize chat conversation
-    var notesInput = document.getElementById('gp-notes')?.value?.trim()
-    var gpGenChatKey = date + '-' + slot
-    var chatHistory = state.gamePlanChats[gpGenChatKey] || []
-    var chatNotes = chatHistory.map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
-    var baseNotes = notesInput || chatNotes || state.gamePlanModal.notes || ''
-    var notes = 'TARGET MEAL TIME: ' + timeVal + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + baseNotes
-    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
-    state._lastGamePlan = { slot, date, targetTime: timeVal }
-    // Clear saved plan so we don't restore the old one during generation
-    var regenKey = date + '-' + slot
-    delete state.savedGamePlans[regenKey]
-    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, generating: true }
-    state.gamePlanLoading = true
-    state.gamePlanResult = null
-    render()
-    let result = null
-    try {
-      result = await generateGamePlan(slot, timeVal, date, recipeId, notes)
-    } catch(e) {
-      console.error('generateGamePlan error:', e)
-    } finally {
-      state.gamePlanLoading = false
-      _gpGenerating = false
-      if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, generating: false }
-    }
-    var finalResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
-    state.gamePlanResult = finalResult
-    // Also store result IN the modal so inline renderers can see it
-    if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: finalResult, view: 'result', generating: false }
-    var slotLabel = slot === 'Day' ? 'whole day' : slot
-    var timelineText = finalResult.map(item => item.time + ' — ' + item.step).join('\n')
-    // Preserve existing chat history, just add the result as an assistant message
-    var regenChatKey2 = (date || 'today') + '-' + (slot || 'Dinner')
-    if (!state.gamePlanChats[regenChatKey2]) state.gamePlanChats[regenChatKey2] = []
-    state.gamePlanChats[regenChatKey2].push({ role: 'assistant', content: 'Here\'s your ' + slotLabel + ' plan (eat at ' + timeVal + '):\n\n' + timelineText + '\n\nSwitching to the plan view now — use ✦ Tweak to come back and adjust anything.' })
-    state.gamePlanView = 'result'
-    gpSaveCurrent()
-    render()
-    // Scroll to the game plan
-    setTimeout(() => {
-      var el = document.getElementById('gp-start-cooking') || document.getElementById('gp-tweak')
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }, 50)
-  }
-  document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
-    if (!state.gamePlanModal) return
-    var { slot, date, recipeId, targetTime: storedTime, notes } = state.gamePlanModal
-    var timeVal = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
-    var regenKey = date + '-' + slot
-    var regenChatKey = regenKey
-    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
-    // Clear saved so old plan doesn't leak back
-    delete state.savedGamePlans[regenKey]
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, result: null, generating: true }
-    state.gamePlanResult = null
-    state._lastGamePlan = { slot, date, targetTime: timeVal }
-    render()
-    var regenNotes = 'TARGET MEAL TIME: ' + timeVal + '. ' + (notes || '')
-    var regenResult = await generateGamePlan(slot, timeVal, date, recipeId, regenNotes)
-    var finalResult2 = regenResult || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
-    state.gamePlanResult = finalResult2
-    state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
-    // Add new result to chat history
-    if (!state.gamePlanChats[regenChatKey]) state.gamePlanChats[regenChatKey] = []
-    var slotLabel = slot === 'Day' ? 'whole day' : slot
-    var timelineText = finalResult2.map(item => item.time + ' — ' + item.step).join('\n')
-    state.gamePlanChats[regenChatKey].push({ role: 'assistant', content: 'Here\'s your updated plan (eat at ' + timeVal + '):\n\n' + timelineText })
-    state.gamePlanView = 'result'
-    state.savedGamePlans[regenKey] = { ...state.gamePlanModal }
-    saveGamePlanToDb()
-    render()
-    setTimeout(() => {
-      var el = document.getElementById('gp-start-cooking')
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }, 50)
   }))
-
-  // ── CHAT HANDLERS ──
-  document.getElementById('chat-send')?.addEventListener('click', () => {
-    var input = document.getElementById('chat-input')
-    var msg = input?.value?.trim()
-    if (msg) { input.value = ''; sendChatMessage(msg) }
-  })
-  document.getElementById('chat-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      var msg = e.target.value?.trim()
-      if (msg) { e.target.value = ''; sendChatMessage(msg) }
-    }
-  })
-  document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
-    el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
-  })
-  document.getElementById('chat-clear-context')?.addEventListener('click', () => {
-    state.chatRecipeContext = null; render()
-  })
-
-  // Back arrow and recipe name link — both jump back to the recipe card
-  var goToRecipeFromChat = () => {
-    if (!state.chatRecipeContext) return
-    var rid = String(state.chatRecipeContext.id)
-    state.tab = 'recipes'
-    state.expandedRecipe = rid
-    localStorage.setItem('mep_tab', 'recipes')
-    render()
-    setTimeout(() => {
-      var card = document.querySelector('[data-rid="' + rid + '"]')
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 80)
-  }
-  document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
-  document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
-  document.getElementById('chat-clear')?.addEventListener('click', () => {
-    var rid = state.chatRecipeContext?.id
-    if (rid) {
-      state.recipeChatMessages[rid] = []
-      db.saveRecipeChat(rid, [])
-    } else {
-      state.chatMessages = []
-    }
-    render()
-  })
-
-  // Tappable recipe links inside AI chat bubbles
-  document.querySelectorAll('.chat-recipe-link[data-go-recipe]').forEach(el => {
-    el.addEventListener('click', () => {
-      state.tab = 'recipes'
-      state.expandedRecipe = String(el.dataset.goRecipe)
-      localStorage.setItem('mep_tab', 'recipes')
-      render()
-      setTimeout(() => {
-        var card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
-    })
-  })
 }
-
-// ── START ─────────────────────────────────────────────────────────────────────
-init()
-
-// ── ONE-TIME EVENT DELEGATION ──
-// These buttons are re-rendered on every render() so we can't bind in bindEvents
-// Instead use document-level delegation set up once at startup
-document.addEventListener('click', function gpDelegation(e) {
-  // Game plan generate
-  if (e.target.closest('#gp-generate')) {
-    gpGenerateHandler()
-    return
-  }
-})
-
-// Re-fetch from Supabase when user switches back to this tab
-document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible') {
-    const [recipes, allTags] = await Promise.all([db.fetchRecipes(), db.fetchTags()])
-    state.recipes = recipes.map(normalizeRecipe)
-    state.allTags = allTags || []
-
-    // Purge checked items older than 1 hour on tab focus too
-    purgeStaleCheckedItems()
-
-    // Don't re-render if a text-entry modal is open — would wipe typed text
-    // (drafts are saved per-keystroke in state.*ModalDraft instead)
-    if (!state.pasteModal && !state.addRecipeModal) render()
-
-    // Check clipboard for a recipe URL
-    try {
-      var text = await navigator.clipboard.readText()
-      var trimmed = (text || '').trim()
-      var isUrl = trimmed.startsWith('http') && trimmed.length < 500
-      var alreadyShown = state._lastClipboardUrl === trimmed
-      if (isUrl && !alreadyShown && !state.pasteModal && !state.shareLoading) {
-        state._lastClipboardUrl = trimmed
-        state.clipboardBanner = trimmed
-        render()
-      }
-    } catch (e) {
-      // Clipboard permission denied - that is fine
-    }
-  }
-})
