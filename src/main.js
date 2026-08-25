@@ -2850,7 +2850,8 @@ CRITICAL RULES:
     console.error('JSON parse error:', e)
     return null
   }
-  return gpBuildTimeline(gpSteps, targetTime, isWholeDay, slot, notes)
+  console.log('Calling gpBuildTimeline with targetTime:', targetTime)
+  return gpBuildTimeline(gpSteps, gpNormalizeTime(targetTime) || targetTime, isWholeDay, slot, notes)
 }
 
 function gpParseConstraints(notes, dinnerMins) {
@@ -2988,7 +2989,10 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
     cursor += stepMins
   }
 
-  result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served 🍽️' })
+  // Use targetTime directly — it's the eat-at time set by the user
+  var servedLabel = isWholeDay ? 'Dinner' : (slot === 'Lunch' ? 'Lunch' : 'Dinner')
+  console.log('gpBuildTimeline: targetTime=', targetTime, 'cursor at end=', cursor, 'dinnerMins=', dinnerMins)
+  result.push({ time: targetTime, step: servedLabel + ' is served — enjoy! 🍽️' })
   return result
 }
 
@@ -4445,9 +4449,11 @@ function bindEvents() {
       var saved = state.savedGamePlans[key]
       if (saved && saved.result) {
         // Restore saved plan
-        state.gamePlanModal = { ...saved, recipeId: rid }
+        state.gamePlanModal = { ...saved, recipeId: rid, view: 'result' }
         state.gamePlanResult = saved.result
-        state.gamePlanView = saved.view || 'result'
+        state.gamePlanView = 'result'
+        if (saved._notes) state.gamePlanNotes = saved._notes
+        if (saved._tab) state.gamePlanTab = saved._tab
       } else if (hasPriorChat) {
         state.gamePlanView = 'chat'
         state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid, view: 'chat' }
@@ -4612,8 +4618,11 @@ function bindEvents() {
       var key = today + '-' + slot
       var saved = state.savedGamePlans[key]
       if (saved && saved.result) {
-        state.gamePlanModal = { ...saved }
+        state.gamePlanModal = { ...saved, view: 'result' }
         state.gamePlanResult = saved.result
+        state.gamePlanView = 'result'
+        if (saved._notes) state.gamePlanNotes = saved._notes
+        if (saved._tab) state.gamePlanTab = saved._tab
       } else {
         state.gamePlanResult = null
         state.gamePlanModal = { date: today, slot, targetTime: defaultTime, result: null, notes: '', generating: false, view: 'planning-chat' }
@@ -6010,9 +6019,11 @@ async function estimateCaloriesAI(description) {
         var saved = state.savedGamePlans[key]
         if (saved && saved.result) {
           // Restore saved plan
-          state.gamePlanModal = { ...saved, recipeId }
+          state.gamePlanModal = { ...saved, recipeId, view: 'result' }
           state.gamePlanResult = saved.result
-          state.gamePlanView = saved.view || 'result'
+          state.gamePlanView = 'result'
+          if (saved._notes) state.gamePlanNotes = saved._notes
+          if (saved._tab) state.gamePlanTab = saved._tab
         } else {
           state.gamePlanResult = null
           state.gamePlanLoading = false
@@ -6246,10 +6257,18 @@ async function estimateCaloriesAI(description) {
     }
   }))
   document.getElementById('gp-close')?.addEventListener('click', () => {
-    // Save plan state before closing so it can be restored
     if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
       var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
-      state.savedGamePlans[key] = { ...state.gamePlanModal }
+      // Always save the latest result and view
+      var toSave = { ...state.gamePlanModal }
+      // If result exists, force view to 'result' so it restores to the plan view
+      if (toSave.result) toSave.view = 'result'
+      // Also save the current gamePlanNotes and gamePlanCheckedIngs
+      toSave._notes = state.gamePlanNotes
+      toSave._tab = state.gamePlanTab
+      state.savedGamePlans[key] = toSave
+      // Persist to DB too
+      saveGamePlanToDb()
     }
     state.gamePlanModal = false
     render()
