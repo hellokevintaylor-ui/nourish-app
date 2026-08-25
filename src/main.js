@@ -2734,6 +2734,7 @@ function gpFormatTime(totalMins) {
 
 async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   console.log('generateGamePlan called:', { slot, targetTime, date, recipeId, notesLen: (notes||'').length })
+  console.trace('generateGamePlan stack')
   var isWholeDay = slot === 'Day'
 
   // Helper — build full recipe detail, trimming will happen at the end if needed
