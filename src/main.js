@@ -1187,7 +1187,13 @@ function renderRecipeCard(r) {
   }
 
   // Game plan swaps in place of card body
-  if (state.gamePlanModal && state.gamePlanModal.recipeId === r.id) {
+  // Match by recipeId OR by this recipe being in today's dinner slot
+  var gpModal = state.gamePlanModal
+  var gpMatchesCard = gpModal && (
+    String(gpModal.recipeId) === String(r.id) ||
+    ((!gpModal.recipeId || gpModal.recipeId === '') && state.expandedRecipe === r.id && gpModal.date && gpModal.slot)
+  )
+  if (gpMatchesCard) {
     return header + renderGamePlanInline(r) + '</div>'
   }
 
@@ -4321,8 +4327,8 @@ function bindEvents() {
       var rid = el.closest('.recipe-card').dataset.rid
       var isCollapsing = state.expandedRecipe === rid
       if (isCollapsing) {
-        // Save game plan and shop review state before collapsing
-        if (state.gamePlanModal && state.gamePlanModal.recipeId === rid) {
+        // Save game plan state before collapsing
+        if (state.gamePlanModal) {
           gpSaveCurrent()
           state.gamePlanModal = false
         }
@@ -4513,7 +4519,7 @@ function bindEvents() {
       if (saved && saved.result) {
         // Restore saved plan
         console.log('Restoring saved plan, key=', key, 'result steps=', saved.result.length)
-        state.gamePlanModal = { ...saved, recipeId: rid, view: 'result' }
+        state.gamePlanModal = { ...saved, recipeId: saved.recipeId || rid, view: 'result' }
         state.gamePlanResult = saved.result
         state.gamePlanView = 'result'
         if (saved._notes) state.gamePlanNotes = saved._notes
