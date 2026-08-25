@@ -4083,20 +4083,27 @@ document.addEventListener('click', function gpDelegation(e) {
   if (t.closest('#gp-generate')) { gpGenerateHandler(); return }
   if (t.closest('#gp-regenerate')) {
     if (!state.gamePlanModal) return
-    var { slot, date, recipeId, targetTime: storedTime, notes: gpNotes2 } = state.gamePlanModal
-    var timeVal2 = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    var { slot, date, result: currentResult } = state.gamePlanModal
     var rKey = date + '-' + slot
-    delete state.savedGamePlans[rKey]
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal2, result: null, generating: true }
-    state.gamePlanResult = null; render()
-    var rNotes = 'TARGET MEAL TIME: ' + timeVal2 + '.\n' + (gpNotes2 || '')
-    generateGamePlan(slot, timeVal2, date, recipeId, rNotes).then(function(res) {
-      var fin = res || [{ time: '?', step: 'Could not generate.' }]
-      state.gamePlanResult = fin
-      state.gamePlanModal = { ...state.gamePlanModal, result: fin, view: 'result', generating: false }
-      state.savedGamePlans[rKey] = { ...state.gamePlanModal }
-      saveGamePlanToDb(); render()
-    })
+    var chatKey = gpChatKey()
+    if (!state.gamePlanChats[chatKey]) state.gamePlanChats[chatKey] = []
+    // Inject the current edited plan into the chat so Claude sees it
+    if (currentResult && currentResult.length) {
+      var editedTimeline = currentResult.map(function(i) { return i.time + ' — ' + i.step }).join('\n')
+      state.gamePlanChats[chatKey].push({
+        role: 'assistant',
+        content: 'Here is the current plan after my edits:\n\n' + editedTimeline + '\n\nWhat would you like to change? Tell me and I\'ll regenerate with your updates. When ready, say "generate it".'
+      })
+    }
+    // Clear result, go back to chat
+    state.gamePlanModal = { ...state.gamePlanModal, result: null, view: 'planning-chat', generating: false }
+    state.gamePlanResult = null
+    render()
+    setTimeout(() => {
+      var el = document.getElementById('gp-chat-messages')
+      if (el) el.scrollTop = el.scrollHeight
+      document.getElementById('gp-chat-input')?.focus()
+    }, 50)
     return
   }
   if (t.closest('#gp-start-over')) {
