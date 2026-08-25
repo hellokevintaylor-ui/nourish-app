@@ -2803,15 +2803,22 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
 
   var prompt = `You are a professional chef generating a detailed step-by-step cooking timeline.
 
+╔══════════════════════════════════════╗
+║  EAT TIME: ${targetTime} — FIXED. NEVER CHANGE THIS.  ║
+╚══════════════════════════════════════╝
+
+The meal must be served at ${targetTime}. This is set by the user and cannot be changed regardless of anything else in this prompt.
+
 MEAL DATE: ${mealDate}
-SERVE AT: ${targetTime} on ${mealDate}
 RECIPES: ${recipeNames.join(', ')}
 
-PLANNING CONVERSATION (the timing framework already agreed on — honor these time anchors exactly):
+PLANNING CONVERSATION (use this for scheduling constraints like start times, gaps, and prep windows — but IGNORE any eat/serve times mentioned here, use ${targetTime} only):
 ${planningChat || notes}
 
 FULL RECIPE DETAILS:
 ${mealText}
+
+REMINDER: Serve at ${targetTime}. Not 4:30. Not 6:00. ${targetTime}.
 
 YOUR JOB: Fill in the detailed steps that match the agreed timing framework. The plan may span multiple time windows (e.g. morning prep + afternoon cooking). Use the exact scheduled_time from the agreed framework.
 
@@ -4210,30 +4217,28 @@ async function sendGpChatMessage(text) {
 
   // Capture meal time if user is answering "what time"
   // Try to capture time from message — handles "8pm", "8:30pm", "8:30 PM", "8" (assume PM for dinner)
-  var timeMatch = text.match(/\b(\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm))/i)
-  if (!timeMatch) {
-    // bare number like "8" or "8 o'clock" — only if context is clearly about eating time
-    var bareMatch = text.match(/\beat\s+(\d{1,2})\b|\b(\d{1,2})\s*o.?clock/i)
-    if (bareMatch) timeMatch = [null, (bareMatch[1]||bareMatch[2])]
+  // Only capture eat time if user is explicitly setting it with "eat/serve/dinner at X"
+  // Never grab start times, gap times, or incidental time mentions
+  var eatTimeMatch = text.match(/(?:eat|serve|dinner|lunch|meal|want to eat|eating)\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+  if (!eatTimeMatch) {
+    // Also accept bare time as first message (when no targetTime set yet)
+    if (!state.gamePlanModal?.targetTime || state.gamePlanModal.targetTime === localStorage.getItem('mep_dinner_time')) {
+      var bareMatch2 = text.match(/^\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[.!]?\s*$/i)
+      if (bareMatch2) eatTimeMatch = [null, bareMatch2[1]]
+    }
   }
-  if (timeMatch && state.gamePlanModal && !state.gamePlanModal.result) {
-    var captured = (timeMatch[1]||'').trim()
+  if (eatTimeMatch && state.gamePlanModal && !state.gamePlanModal.result) {
+    var captured = (eatTimeMatch[1]||'').trim()
     var norm = captured
     if (/^\d{1,2}$/.test(norm)) {
-      // bare number — assume PM
-      var h = parseInt(norm)
-      norm = (h < 12 ? h : h) + ':00 PM'
+      var h = parseInt(norm); norm = h + ':00 PM'
     } else {
       norm = norm.replace(/(\d+):(\d+)\s*(am|pm)/i, (_, h, m, ap) => h + ':' + m + ' ' + ap.toUpperCase())
                  .replace(/(\d+)\s*(am|pm)/i, (_, h, ap) => h + ':00 ' + ap.toUpperCase())
-      // If no AM/PM specified, assume PM for dinner context
       if (!/AM|PM/.test(norm)) norm = norm.trim() + ' PM'
     }
-    console.log('Captured meal time:', captured, '->', norm)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: gpNormalizeTime(norm) }
-    if (state.gamePlanModal.date && state.gamePlanModal.slot) {
-      localStorage.setItem('mep_dinner_time', norm)
-    }
+    localStorage.setItem('mep_dinner_time', norm)
   }
 
   state.gamePlanChatLoading = true
