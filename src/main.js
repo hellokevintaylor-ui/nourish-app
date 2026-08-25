@@ -75,6 +75,7 @@ const state = {
   savedGamePlans: {},  // keyed by date-slot, persists plans across open/close
   gamePlanTab: 'ingredients',  // active tab in game plan result view
   gamePlanEditing: false,
+  gamePlanIngredients: null,  // editable copy of ingredients
   gamePlanCheckedIngs: new Set(),
   gamePlanNotes: '',
   gamePlanResult: null,
@@ -2693,6 +2694,20 @@ function gpNormalizeTime(t) {
 }
 
 
+function gpSaveCurrent() {
+  if (!state.gamePlanModal || !state.gamePlanModal.date) return
+  var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
+  state.savedGamePlans[key] = {
+    ...state.gamePlanModal,
+    view: 'result',
+    _notes: state.gamePlanNotes,
+    _tab: state.gamePlanTab,
+    _ingredients: state.gamePlanIngredients
+  }
+  saveGamePlanToDb()
+}
+
+
 function gpParseTime(t) {
   const m = (t||'').match(/(\d+):(\d+)\s*(AM|PM)/i)
   if (!m) return 0
@@ -3314,9 +3329,17 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
     ';cursor:pointer;font-family:inherit">' + label + '</button>'
 
   // ── INGREDIENTS TAB ──
-  var ingredientsTab = allIngredients.length > 0
-    ? allIngredients.map((ing, i) => {
+  // Use state.gamePlanIngredients if available (editable copy), else allIngredients
+  var editableIngs = state.gamePlanIngredients || allIngredients
+  var ingredientsTab = editableIngs.length > 0
+    ? editableIngs.map((ing, i) => {
         var isChecked = checkedIngs.has(i)
+        if (gpEditing) {
+          return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid #e8e8e5">' +
+            '<input class="gp-ing-edit" data-ing-idx="' + i + '" value="' + esc(ing.line) + '" style="flex:1;padding:7px 10px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#f9f9f8;color:#1a1a1a" />' +
+            '<button class="gp-ing-del" data-ing-idx="' + i + '" style="width:26px;height:26px;background:white;border:1.5px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:14px;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0">×</button>' +
+          '</div>'
+        }
         return '<div class="gp-ing-row" data-gp-ing="' + i + '" style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:0.5px solid #e8e8e5;cursor:pointer">' +
           '<div style="width:6px;height:6px;border-radius:50%;background:' + (isChecked?'#d4d4d0':'#3d52c4') + ';margin-top:8px;flex-shrink:0"></div>' +
           '<div style="flex:1;min-width:0">' +
@@ -3326,6 +3349,9 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
         '</div>'
       }).join('')
     : '<div style="color:#a8a8a3;font-style:italic;padding:16px 0;font-size:13px">No ingredients found for this meal</div>'
+  if (gpEditing) {
+    ingredientsTab += '<button id="gp-add-ing" style="width:100%;margin-top:10px;padding:9px;background:white;border:1.5px dashed #d4d4d0;border-radius:10px;font-size:13px;font-weight:600;color:#6e6e69;cursor:pointer;font-family:inherit">+ Add ingredient</button>'
+  }
 
   // ── PLAN TAB ──
   var planTab = result.map((item, i) => {
@@ -3336,16 +3362,32 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
           chips.map(c => '<span style="font-size:11px;font-weight:500;color:#3a3a38;background:#f2f2f0;border:0.5px solid #d4d4d0;border-radius:4px;padding:3px 8px">' + esc(c) + '</span>').join('') +
         '</div>'
       : ''
-    var stepBody = gpEditing
-      ? '<textarea class="gp-step-edit" data-gp-step="' + i + '" style="width:100%;padding:8px 10px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical;min-height:60px;box-sizing:border-box">' + esc(item.step) + '</textarea>'
-      : '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' + chipsHtml
+    if (gpEditing) {
+      return '<div style="padding:10px 0;border-bottom:0.5px solid #e8e8e5;display:flex;gap:8px;align-items:flex-start">' +
+        // Reorder buttons
+        '<div style="display:flex;flex-direction:column;gap:2px;padding-top:4px;flex-shrink:0">' +
+          '<button class="gp-step-up" data-step-idx="' + i + '" style="width:22px;height:22px;background:#f2f2f0;border:0.5px solid #d4d4d0;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;font-family:inherit" ' + (i===0?'disabled style="opacity:0.3"':'') + '>↑</button>' +
+          '<button class="gp-step-down" data-step-idx="' + i + '" style="width:22px;height:22px;background:#f2f2f0;border:0.5px solid #d4d4d0;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;font-family:inherit" ' + (isLast?'disabled style="opacity:0.3"':'') + '>↓</button>' +
+        '</div>' +
+        // Content
+        '<div style="flex:1;min-width:0">' +
+          '<input class="gp-time-input" data-gp-step="' + i + '" value="' + esc(item.time) + '" style="width:72px;font-size:11px;font-weight:700;color:#3d52c4;border:none;border-bottom:1.5px solid #3d52c4;outline:none;padding:1px 2px;font-family:inherit;text-transform:uppercase;letter-spacing:0.4px;background:none;margin-bottom:5px" />' +
+          '<textarea class="gp-step-edit" data-gp-step="' + i + '" style="width:100%;padding:8px 10px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:14px;font-family:inherit;line-height:1.6;background:#f9f9f8;color:#1a1a1a;outline:none;resize:vertical;min-height:60px;box-sizing:border-box">' + esc(item.step) + '</textarea>' +
+        '</div>' +
+        // Delete
+        '<button class="gp-step-del" data-step-idx="' + i + '" style="width:26px;height:26px;background:white;border:1.5px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:14px;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;margin-top:4px">×</button>' +
+      '</div>'
+    }
     return '<div style="padding:12px 0;border-bottom:' + (isLast?'none':'0.5px solid #e8e8e5') + '">' +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-        '<input class="gp-time-input" data-gp-step="' + i + '" value="' + esc(item.time) + '" style="width:72px;font-size:11px;font-weight:700;color:#3d52c4;background:none;border:none;border-bottom:1.5px solid ' + (gpEditing?'#3d52c4':'transparent') + ';outline:none;padding:1px 2px;font-family:inherit;text-transform:uppercase;letter-spacing:0.4px;cursor:text" />' +
+        '<input class="gp-time-input" data-gp-step="' + i + '" value="' + esc(item.time) + '" style="width:72px;font-size:11px;font-weight:700;color:#3d52c4;background:none;border:none;border-bottom:1.5px solid transparent;outline:none;padding:1px 2px;font-family:inherit;text-transform:uppercase;letter-spacing:0.4px;cursor:text" />' +
       '</div>' +
-      stepBody +
+      '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' + chipsHtml +
     '</div>'
   }).join('')
+  if (gpEditing) {
+    planTab += '<button id="gp-add-step" style="width:100%;margin-top:10px;padding:9px;background:white;border:1.5px dashed #d4d4d0;border-radius:10px;font-size:13px;font-weight:600;color:#6e6e69;cursor:pointer;font-family:inherit">+ Add step</button>'
+  }
 
   // ── NOTES TAB ──
   var notesTab =
@@ -4454,6 +4496,7 @@ function bindEvents() {
         state.gamePlanView = 'result'
         if (saved._notes) state.gamePlanNotes = saved._notes
         if (saved._tab) state.gamePlanTab = saved._tab
+        if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
       } else if (hasPriorChat) {
         state.gamePlanView = 'chat'
         state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid, view: 'chat' }
@@ -4561,7 +4604,96 @@ function bindEvents() {
     })
   })
 
-  // Game Plan step text editing
+  // ── PLAN STEP: reorder up ──
+  document.querySelectorAll('.gp-step-up').forEach(btn => btn.addEventListener('click', () => {
+    var idx = parseInt(btn.dataset.stepIdx)
+    if (!state.gamePlanModal || !state.gamePlanModal.result || idx === 0) return
+    var result = [...state.gamePlanModal.result]
+    var tmp = result[idx - 1]; result[idx - 1] = result[idx]; result[idx] = tmp
+    state.gamePlanModal = { ...state.gamePlanModal, result }
+    state.gamePlanResult = result
+    gpSaveCurrent()
+    render()
+  }))
+
+  // ── PLAN STEP: reorder down ──
+  document.querySelectorAll('.gp-step-down').forEach(btn => btn.addEventListener('click', () => {
+    var idx = parseInt(btn.dataset.stepIdx)
+    if (!state.gamePlanModal || !state.gamePlanModal.result) return
+    var result = [...state.gamePlanModal.result]
+    if (idx >= result.length - 1) return
+    var tmp = result[idx + 1]; result[idx + 1] = result[idx]; result[idx] = tmp
+    state.gamePlanModal = { ...state.gamePlanModal, result }
+    state.gamePlanResult = result
+    gpSaveCurrent()
+    render()
+  }))
+
+  // ── PLAN STEP: delete ──
+  document.querySelectorAll('.gp-step-del').forEach(btn => btn.addEventListener('click', () => {
+    var idx = parseInt(btn.dataset.stepIdx)
+    if (!state.gamePlanModal || !state.gamePlanModal.result) return
+    var result = state.gamePlanModal.result.filter((_, i) => i !== idx)
+    state.gamePlanModal = { ...state.gamePlanModal, result }
+    state.gamePlanResult = result
+    gpSaveCurrent()
+    render()
+  }))
+
+  // ── PLAN STEP: add new ──
+  document.getElementById('gp-add-step')?.addEventListener('click', () => {
+    if (!state.gamePlanModal || !state.gamePlanModal.result) return
+    var result = [...state.gamePlanModal.result]
+    var lastTime = result.length > 0 ? result[result.length - 1].time : ''
+    result.push({ time: lastTime, step: 'New step' })
+    state.gamePlanModal = { ...state.gamePlanModal, result }
+    state.gamePlanResult = result
+    gpSaveCurrent()
+    render()
+    setTimeout(() => {
+      var textareas = document.querySelectorAll('.gp-step-edit')
+      if (textareas.length) { var last = textareas[textareas.length - 1]; last.focus(); last.select() }
+    }, 50)
+  })
+
+  // ── INGREDIENTS: save edits on blur ──
+  document.querySelectorAll('.gp-ing-edit').forEach(input => {
+    input.addEventListener('blur', () => {
+      var idx = parseInt(input.dataset.ingIdx)
+      var ings = state.gamePlanIngredients ? [...state.gamePlanIngredients] : []
+      if (ings[idx]) {
+        ings[idx] = { ...ings[idx], line: input.value.trim() }
+        state.gamePlanIngredients = ings
+        gpSaveCurrent()
+      }
+    })
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur() } })
+  })
+
+  // ── INGREDIENTS: delete ──
+  document.querySelectorAll('.gp-ing-del').forEach(btn => btn.addEventListener('click', () => {
+    var idx = parseInt(btn.dataset.ingIdx)
+    var ings = state.gamePlanIngredients ? [...state.gamePlanIngredients] : []
+    ings.splice(idx, 1)
+    state.gamePlanIngredients = ings
+    gpSaveCurrent()
+    render()
+  }))
+
+  // ── INGREDIENTS: add new ──
+  document.getElementById('gp-add-ing')?.addEventListener('click', () => {
+    var ings = state.gamePlanIngredients ? [...state.gamePlanIngredients] : []
+    ings.push({ line: '', recipe: '' })
+    state.gamePlanIngredients = ings
+    gpSaveCurrent()
+    render()
+    setTimeout(() => {
+      var inputs = document.querySelectorAll('.gp-ing-edit')
+      if (inputs.length) { var last = inputs[inputs.length - 1]; last.focus() }
+    }, 50)
+  })
+
+  // ── PLAN STEP: text editing ──
   document.querySelectorAll('.gp-step-edit').forEach(ta => {
     ta.addEventListener('blur', () => {
       var stepIdx = parseInt(ta.dataset.gpStep)
@@ -4623,6 +4755,7 @@ function bindEvents() {
         state.gamePlanView = 'result'
         if (saved._notes) state.gamePlanNotes = saved._notes
         if (saved._tab) state.gamePlanTab = saved._tab
+        if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
       } else {
         state.gamePlanResult = null
         state.gamePlanModal = { date: today, slot, targetTime: defaultTime, result: null, notes: '', generating: false, view: 'planning-chat' }
@@ -6024,6 +6157,7 @@ async function estimateCaloriesAI(description) {
           state.gamePlanView = 'result'
           if (saved._notes) state.gamePlanNotes = saved._notes
           if (saved._tab) state.gamePlanTab = saved._tab
+          if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
         } else {
           state.gamePlanResult = null
           state.gamePlanLoading = false
@@ -6074,6 +6208,7 @@ async function estimateCaloriesAI(description) {
     state.gamePlanView = 'planning-chat'
     state.gamePlanEditing = false
     state.gamePlanCheckedIngs = new Set()
+    state.gamePlanIngredients = null
     state._lastGamePlan = null
     // Clear result from modal object too — this is what inline renderers read
     if (state.gamePlanModal) {
