@@ -4492,6 +4492,7 @@ function bindEvents() {
       var saved = state.savedGamePlans[key]
       if (saved && saved.result) {
         // Restore saved plan
+        console.log('Restoring saved plan, key=', key, 'result steps=', saved.result.length)
         state.gamePlanModal = { ...saved, recipeId: rid, view: 'result' }
         state.gamePlanResult = saved.result
         state.gamePlanView = 'result'
@@ -6429,9 +6430,18 @@ async function estimateCaloriesAI(description) {
     render()
   }))  
 
+var _gpGenerating = false
 async function gpGenerateHandler() {
+    if (_gpGenerating) { console.warn('gpGenerateHandler: already running, ignoring duplicate call'); return }
     if (!state.gamePlanModal) return
+    _gpGenerating = true
     var { slot, date, recipeId } = state.gamePlanModal
+    // Don't regenerate if we already have a result — user must explicitly use ↺ Redo
+    if (state.gamePlanModal.result && !state.gamePlanModal.generating) {
+      console.warn('gpGenerateHandler: result exists, not regenerating')
+      _gpGenerating = false
+      return
+    }
     // Time: from input if it exists, otherwise from state
     var timeInput = document.getElementById('gp-eat-time')?.value?.trim() || document.getElementById('gp-dinner-time')?.value?.trim()
     var timeVal = gpNormalizeTime(timeInput) || state.gamePlanModal.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
@@ -6459,6 +6469,7 @@ async function gpGenerateHandler() {
       console.error('generateGamePlan error:', e)
     } finally {
       state.gamePlanLoading = false
+      _gpGenerating = false
       if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, generating: false }
     }
     var finalResult = result || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
