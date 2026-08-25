@@ -4719,8 +4719,8 @@ function bindEvents() {
       var saved = state.savedGamePlans[key]
       console.log('Plan button: key=', key, 'saved=', !!saved, 'saved.result=', !!(saved&&saved.result), 'allKeys=', Object.keys(state.savedGamePlans))
       if (saved && saved.result) {
-        // Restore saved plan
-        console.log('Restoring saved plan, key=', key, 'result steps=', saved.result.length)
+        // Restore saved plan — always takes priority over chat history
+        console.log('Recipe: restoring saved plan, key=', key, 'result steps=', saved.result.length)
         state.gamePlanModal = { ...saved, recipeId: saved.recipeId || rid, view: 'result' }
         state.gamePlanResult = saved.result
         state.gamePlanView = 'result'
@@ -4728,8 +4728,8 @@ function bindEvents() {
         if (saved._tab) state.gamePlanTab = saved._tab
         if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
       } else if (hasPriorChat) {
-        state.gamePlanView = 'chat'
-        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid, view: 'chat' }
+        state.gamePlanView = 'planning-chat'
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid, view: 'planning-chat' }
       } else {
         state.gamePlanResult = null
         state.gamePlanLoading = false
@@ -6386,33 +6386,32 @@ async function estimateCaloriesAI(description) {
       var hasPriorChat = state.gamePlanChats[calGpKey] && state.gamePlanChats[calGpKey].length > 0
       var hasPriorResult = state._lastGamePlan?.slot === slot && state._lastGamePlan?.date === date && state.gamePlanResult
 
-      if (hasPriorChat) {
-        // Has a saved chat — go straight to it
+      var key = date + '-' + slot
+      var saved = state.savedGamePlans[key]
+      if (saved && saved.result) {
+        // Restore saved plan — always takes priority over chat history
+        console.log('Calendar: restoring saved plan key=', key, 'steps=', saved.result.length)
+        state.gamePlanModal = { ...saved, recipeId, view: 'result' }
+        state.gamePlanResult = saved.result
+        state.gamePlanView = 'result'
+        if (saved._notes) state.gamePlanNotes = saved._notes
+        if (saved._tab) state.gamePlanTab = saved._tab
+        if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
+        render()
+      } else if (hasPriorChat) {
         state.gamePlanView = 'chat'
-        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || targetTime, date, recipeId }
+        state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || targetTime, date, recipeId, view: 'planning-chat' }
         render()
         setTimeout(() => {
           var el = document.getElementById('gp-chat-messages')
           if (el) el.scrollTop = el.scrollHeight
         }, 50)
       } else {
-        var key = date + '-' + slot
-        var saved = state.savedGamePlans[key]
-        if (saved && saved.result) {
-          // Restore saved plan
-          state.gamePlanModal = { ...saved, recipeId, view: 'result' }
-          state.gamePlanResult = saved.result
-          state.gamePlanView = 'result'
-          if (saved._notes) state.gamePlanNotes = saved._notes
-          if (saved._tab) state.gamePlanTab = saved._tab
-          if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
-        } else {
-          state.gamePlanResult = null
-          state.gamePlanLoading = false
-          state.gamePlanView = 'planning-chat'
-          state._lastGamePlan = { slot, date }
-          state.gamePlanModal = { slot, targetTime, date, recipeId, view: 'planning-chat' }
-        }
+        state.gamePlanResult = null
+        state.gamePlanLoading = false
+        state.gamePlanView = 'planning-chat'
+        state._lastGamePlan = { slot, date }
+        state.gamePlanModal = { slot, targetTime, date, recipeId, view: 'planning-chat' }
         render()
       }
     })
