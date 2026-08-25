@@ -6428,7 +6428,6 @@ async function estimateCaloriesAI(description) {
     state.gamePlanModal = false
     render()
   }))  
-  document.getElementById('gp-generate')?.addEventListener('click', gpGenerateHandler)
 
 async function gpGenerateHandler() {
     if (!state.gamePlanModal) return
