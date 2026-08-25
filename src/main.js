@@ -3914,6 +3914,7 @@ function renderLogModal() {
 
 // ── EVENTS ────────────────────────────────────────────────────────────────────
 var _gpGenerating = false
+var _gpAC = null  // AbortController for game plan listeners
 var _gpGen = 0  // increments each render, listeners check they're current
 async function gpGenerateHandler() {
     if (_gpGenerating) { console.warn('gpGenerateHandler: already running, ignoring duplicate call'); return }
@@ -4007,7 +4008,7 @@ async function gpGenerateHandler() {
       var el = document.getElementById('gp-start-cooking')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
-  }))
+  }, {signal: _s}))
 
   // ── CHAT HANDLERS ──
   document.getElementById('chat-send')?.addEventListener('click', () => {
@@ -4116,6 +4117,9 @@ document.addEventListener('visibilitychange', async () => {
   }
 })
 function bindEvents() {
+  if (_gpAC) _gpAC.abort()
+  _gpAC = new AbortController()
+  var _s = _gpAC.signal
   _gpGen++
   var myGen = _gpGen
   // ── TIMER HANDLERS ──
@@ -6447,7 +6451,7 @@ async function estimateCaloriesAI(description) {
       if (el) el.scrollTop = el.scrollHeight
       document.getElementById('gp-chat-input')?.focus()
     }, 50)
-  }))
+  }, {signal: _s}))
 
   document.querySelectorAll('#gp-start-over').forEach(btn => btn.addEventListener('click', () => {
     if (_gpGen !== myGen) return
@@ -6470,7 +6474,7 @@ async function estimateCaloriesAI(description) {
     render()
     // Restart the chat
     initGamePlanChat()
-  }))
+  }, {signal: _s}))
 
   document.getElementById('gp-start-cooking')?.addEventListener('click', () => {
     state.gamePlanView = 'fullscreen'; render()
@@ -6506,7 +6510,7 @@ async function estimateCaloriesAI(description) {
     state.gamePlanView = 'result'
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, view: 'result' }
     render()
-  }))
+  }, {signal: _s}))
 
   // Send message in game plan chat
   async function sendGpChatMessage(text) {
@@ -6638,7 +6642,7 @@ async function estimateCaloriesAI(description) {
     var input = document.getElementById('gp-chat-input')
     var text = input?.value?.trim()
     if (text) { input.value = ''; sendGpChatMessage(text) }
-  }))
+  }, {signal: _s}))
   document.querySelectorAll('#gp-chat-input').forEach(inp => inp.addEventListener('keydown', e => {
     if (_gpGen !== myGen) return
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -6646,7 +6650,7 @@ async function estimateCaloriesAI(description) {
       var text = e.target.value?.trim()
       if (text) { e.target.value = ''; sendGpChatMessage(text) }
     }
-  }))
+  }, {signal: _s}))
   document.querySelectorAll('#gp-close').forEach(btn => btn.addEventListener('click', () => {
     if (_gpGen !== myGen) return
     if (state.gamePlanModal && state.gamePlanModal.date && state.gamePlanModal.slot) {
@@ -6664,5 +6668,5 @@ async function estimateCaloriesAI(description) {
     }
     state.gamePlanModal = false
     render()
-  }))
+  }, {signal: _s}))
 }
