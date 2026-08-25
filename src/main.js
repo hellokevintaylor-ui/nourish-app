@@ -77,6 +77,7 @@ const state = {
   gamePlanEditing: false,
   gamePlanIngredients: null,  // editable copy of ingredients
   gamePlanCheckedIngs: new Set(),
+  gamePlanCheckedSteps: new Set(),
   gamePlanNotes: '',
   gamePlanResult: null,
   gamePlanLoading: false,
@@ -3407,11 +3408,16 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
         '<button class="gp-step-del" data-step-idx="' + i + '" style="width:26px;height:26px;background:white;border:1.5px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:14px;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;margin-top:4px">×</button>' +
       '</div>'
     }
-    return '<div style="padding:12px 0;border-bottom:' + (isLast?'none':'0.5px solid #e8e8e5') + '">' +
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-        '<input class="gp-time-input" data-gp-step="' + i + '" value="' + esc(item.time) + '" style="width:72px;font-size:11px;font-weight:700;color:#3d52c4;background:none;border:none;border-bottom:1.5px solid transparent;outline:none;padding:1px 2px;font-family:inherit;text-transform:uppercase;letter-spacing:0.4px;cursor:text" />' +
+    var stepChecked = (state.gamePlanCheckedSteps || new Set()).has(i)
+    return '<div class="gp-plan-step" data-gp-plan-idx="' + i + '" style="padding:12px 0;border-bottom:' + (isLast?'none':'0.5px solid #e8e8e5') + ';cursor:pointer;display:flex;align-items:flex-start;gap:12px">' +
+      '<div style="flex-shrink:0;margin-top:4px">' +
+        '<div style="width:7px;height:7px;border-radius:50%;background:' + (stepChecked?'#d4d4d0':'#3d52c4') + ';margin-top:6px"></div>' +
       '</div>' +
-      '<div style="font-size:15px;line-height:1.7;color:#1a1a1a;' + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' + chipsHtml +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:11px;font-weight:700;color:' + (stepChecked?'#a8a8a3':'#3d52c4') + ';text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">' + esc(item.time) + '</div>' +
+        '<div style="font-size:15px;line-height:1.7;color:' + (stepChecked?'#a8a8a3':'#1a1a1a') + ';' + (stepChecked?'text-decoration:line-through;':'') + (isLast?'font-weight:700':'') + '">' + linkifyTimers(esc(item.step)) + '</div>' +
+        (stepChecked ? '' : chipsHtml) +
+      '</div>' +
     '</div>'
   }).join('')
   if (gpEditing) {
@@ -4172,6 +4178,15 @@ document.addEventListener('click', function gpDelegation(e) {
       state.savedGamePlans[cKey] = toSave; saveGamePlanToDb()
     }
     state.gamePlanModal = false; render(); return
+  }
+  if (t.closest('.gp-plan-step')) {
+    var stepEl = t.closest('.gp-plan-step')
+    var idx = parseInt(stepEl.dataset.gpPlanIdx)
+    var checked = state.gamePlanCheckedSteps || new Set()
+    if (checked.has(idx)) checked.delete(idx); else checked.add(idx)
+    state.gamePlanCheckedSteps = checked
+    render()
+    return
   }
   if (t.closest('#gp-chat-send')) {
     var inp = document.getElementById('gp-chat-input')
