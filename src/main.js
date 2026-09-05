@@ -49,6 +49,7 @@ const state = {
   logBreakdownId: null,
   chatRecipeContext: null,
   recipeChatMessages: {},   // keyed by recipe id, persistent per-recipe chat threads
+  cookAskOpen: false,  // inline Ask AI panel in cook mode
   editingLogId: null,
   scaleModal: null,
   estimatingPrepId: null,
@@ -1404,7 +1405,7 @@ function renderRecipes() {
           <button class="add-btn" id="organize-tags-btn" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Tags</button>
         </div>
       </div>
-      <input type="file" id="scan-file-input" accept="image/*" capture="environment" style="display:none" />
+      <input type="file" id="scan-file-input" accept="image/*" multiple style="display:none" />
       ${renderSearchBar('recipe-search', state.recipeSearch || '', 'Search recipes...')}
       ${state.allTags.some(t => t.namespace === 'recipe') ? renderTagFilterChips('recipe', 'Meal') : ''}
 
@@ -3161,13 +3162,37 @@ function renderCookModeInline(r) {
 
   const bodyContent = activeTab === 'ingredients' ? ingredientsView : activeTab === 'instructions' ? instructionsView : notesView
 
+  // Inline Ask AI chat
+  var askMessages = state.recipeChatMessages[r.id] || []
+  var askLoading = state.cookAskLoading || false
+  var askHtml = ''
+  if (state.cookAskOpen) {
+    var bubbles = askMessages.map(m =>
+      '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:8px">' +
+        '<div style="max-width:88%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:' + (m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px') + ';padding:9px 12px;font-size:13px;line-height:1.5">' +
+          esc(m.content).replace(/\n/g,'<br>') +
+        '</div>' +
+      '</div>'
+    ).join('')
+    askHtml = '<div style="border-top:0.5px solid #e8e8e5;background:#fafafa">' +
+      '<div style="padding:12px 14px;max-height:260px;overflow-y:auto" id="cook-ask-messages">' +
+        (askMessages.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:16px 0">Ask anything about this recipe</div>' : bubbles) +
+        (askLoading ? '<div style="color:#6e6e69;font-size:13px;font-style:italic;padding:4px 0">thinking...</div>' : '') +
+      '</div>' +
+      '<div style="padding:8px 14px 12px;display:flex;gap:8px">' +
+        '<input id="cook-ask-input" placeholder="e.g. Can I substitute the butter?" style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none;-webkit-appearance:none" />' +
+        '<button id="cook-ask-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Send</button>' +
+      '</div>' +
+    '</div>'
+  }
+
   return '<div style="border-top:0.5px solid #e8e8e5">' +
     '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
       '<button id="cook-mode-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
       '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)">Cooking</div>' +
       '<button id="cook-mode-edit-toggle" style="background:' + (isEditing?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">' + (isEditing?'Done':'Edit') + '</button>' +
       '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px;margin-left:2px">📋 Plan</button>' +
-      '<button data-ask="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:2px">Ask AI</button>' +
+      '<button id="cook-ask-toggle" data-rid="' + r.id + '" style="background:' + (state.cookAskOpen?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:2px">Ask AI</button>' +
     '</div>' +
     '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
       tabBtn('ingredients', 'Ingredients') +
@@ -3175,6 +3200,7 @@ function renderCookModeInline(r) {
       tabBtn('notes', 'Notes') +
     '</div>' +
     '<div style="padding:0 14px 16px">' + bodyContent + '</div>' +
+    askHtml +
   '</div>'
 }
 function gpChatKey() {
@@ -4690,24 +4716,47 @@ function bindEvents() {
     if (input) { input.removeAttribute('capture'); input.click() }
   })
   document.getElementById('scan-file-input')?.addEventListener('change', async e => {
-    var file = e.target.files?.[0]
-    if (!file) return
+    var files = Array.from(e.target.files || [])
+    if (!files.length) return
     state.pasteModal = true
     state.shareLoading = true
     render()
     try {
-      var base64 = await new Promise((resolve, reject) => {
+      // Convert all files to base64
+      var images = await Promise.all(files.map(file => new Promise((resolve, reject) => {
         var reader = new FileReader()
-        reader.onload = () => resolve(reader.result.split(',')[1])
+        reader.onload = () => resolve({ data: reader.result.split(',')[1], mediaType: file.type })
         reader.onerror = reject
         reader.readAsDataURL(file)
-      })
-      var resp = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64, mediaType: file.type })
-      })
-      var recipe = await resp.json()
+      })))
+      // If multiple images, send them all; API will combine into one recipe
+      var resp, recipe
+      if (images.length === 1) {
+        resp = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: images[0].data, mediaType: images[0].mediaType })
+        })
+        recipe = await resp.json()
+      } else {
+        // Multiple images: send to chat API with all images
+        resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            max_tokens: 2000,
+            messages: [{ role: 'user', content: [
+              ...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
+              { type: 'text', text: 'These are multiple photos of one recipe. Extract the complete recipe and return it as JSON: {"name": "...", "ingredients": "one per line", "instructions": "numbered steps", "warning": null}. Combine all text from all photos into one complete recipe. No extra text, just the JSON.' }
+            ]}],
+            system: 'You extract recipes from images and return clean JSON.'
+          })
+        })
+        var data = await resp.json()
+        var text = data.content?.[0]?.text || '{}'
+        var clean = text.replace(/```json|```/g, '').trim()
+        recipe = JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0] || '{}')
+      }
       if (recipe.error) throw new Error(recipe.error)
       state.shareLoading = false
       state.sharedRecipe = { ...recipe, source: 'Scanned from photo' }
@@ -5446,6 +5495,72 @@ function bindEvents() {
     })
   })
 
+  // cook-ask-toggle: open/close inline Ask AI
+  document.getElementById('cook-ask-toggle')?.addEventListener('click', async () => {
+    state.cookAskOpen = !state.cookAskOpen
+    var rid = document.getElementById('cook-ask-toggle')?.dataset.rid
+    if (state.cookAskOpen && rid) {
+      // Load chat history
+      if (!state.recipeChatMessages[rid] || state.recipeChatMessages[rid].length === 0) {
+        var saved = await db.fetchRecipeChat(rid)
+        if (saved && saved.length > 0) state.recipeChatMessages[rid] = saved
+      }
+      render()
+      setTimeout(() => {
+        document.getElementById('cook-ask-input')?.focus()
+        var msgs = document.getElementById('cook-ask-messages')
+        if (msgs) msgs.scrollTop = msgs.scrollHeight
+      }, 100)
+    } else {
+      render()
+    }
+  })
+
+  // cook-ask-send
+  document.getElementById('cook-ask-send')?.addEventListener('click', () => {
+    var inp = document.getElementById('cook-ask-input')
+    var text = inp?.value?.trim()
+    if (!text) return
+    inp.value = ''
+    var rid = state.cookMode?.recipeId
+    if (!rid) return
+    if (!state.recipeChatMessages[rid]) state.recipeChatMessages[rid] = []
+    state.recipeChatMessages[rid].push({ role: 'user', content: text })
+    state.cookAskLoading = true
+    render()
+    setTimeout(() => { var m = document.getElementById('cook-ask-messages'); if (m) m.scrollTop = m.scrollHeight }, 50)
+    var r = state.recipes.find(x => x.id === rid)
+    var ctx = r ? ('Recipe: ' + r.name + '\nIngredients: ' + (r.ingredients||'') + '\nInstructions: ' + (r.instructions||'')) : ''
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: 'You are a helpful cooking assistant. Answer questions about this specific recipe concisely.\n\n' + ctx,
+        messages: state.recipeChatMessages[rid].map(m => ({ role: m.role, content: m.content })),
+        max_tokens: 400
+      })
+    }).then(r => r.json()).then(data => {
+      var reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
+      state.recipeChatMessages[rid].push({ role: 'assistant', content: reply })
+      state.cookAskLoading = false
+      db.saveRecipeChat(rid, state.recipeChatMessages[rid])
+      render()
+      setTimeout(() => { var m = document.getElementById('cook-ask-messages'); if (m) m.scrollTop = m.scrollHeight }, 50)
+    }).catch(() => {
+      state.recipeChatMessages[rid].push({ role: 'assistant', content: 'Something went wrong — try again.' })
+      state.cookAskLoading = false
+      render()
+    })
+  })
+
+  // cook-ask-input keydown (Enter to send)
+  document.getElementById('cook-ask-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      document.getElementById('cook-ask-send')?.click()
+    }
+  })
+
   document.querySelectorAll('[data-ask]').forEach(el => {
     el.addEventListener('click', async e => {
       e.stopPropagation()
@@ -5454,7 +5569,6 @@ function bindEvents() {
       state.chatRecipeContext = r
       state.tab = 'chat'
       localStorage.setItem('mep_tab', 'chat')
-      // Load persisted chat from Supabase if not already in memory
       if (!state.recipeChatMessages[r.id] || state.recipeChatMessages[r.id].length === 0) {
         var saved = await db.fetchRecipeChat(r.id)
         if (saved && saved.length > 0) state.recipeChatMessages[r.id] = saved
@@ -5899,6 +6013,7 @@ async function estimateCaloriesAI(description) {
     })
   })
   document.querySelectorAll('.scale-btn[data-scale]').forEach(el => {
+    if (el._b) return; el._b = 1
     el.addEventListener('click', async e => {
       e.stopPropagation()
       var rid = el.dataset.recipeId
@@ -5908,7 +6023,14 @@ async function estimateCaloriesAI(description) {
       state.scaleModal = { recipeId: rid, label: scale, loading: true, ingredients: '' }
       render()
       try {
-        var multiplier = scale === '½x' ? '0.5' : scale === '2x' ? '2' : '3'
+        // 1x = reset to original
+      if (scale === '1x') {
+        state.scaleModal = null
+        state.cookMode = { ...state.cookMode, scaledIngredients: null, scaleLabel: null }
+        render()
+        return
+      }
+      var multiplier = scale === '½x' ? '0.5' : scale === '2x' ? '2' : '3'
         var resp = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -5923,6 +6045,7 @@ async function estimateCaloriesAI(description) {
         var data = await resp.json()
         var scaled = data.content?.[0]?.text?.trim() || ''
         state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: scaled }
+        state.cookMode = { ...state.cookMode, scaledIngredients: scaled, scaleLabel: scale }
       } catch(e) {
         state.scaleModal = { recipeId: rid, label: scale, loading: false, ingredients: 'Error scaling — try again.' }
       }
