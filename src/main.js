@@ -4064,18 +4064,7 @@ async function gpGenerateHandler() {
   }, {signal: _s}))
 
   // ── CHAT HANDLERS ──
-  document.getElementById('chat-send')?.addEventListener('click', () => {
-    var input = document.getElementById('chat-input')
-    var msg = input?.value?.trim()
-    if (msg) { input.value = ''; sendChatMessage(msg) }
-  })
-  document.getElementById('chat-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      var msg = e.target.value?.trim()
-      if (msg) { e.target.value = ''; sendChatMessage(msg) }
-    }
-  })
+  // chat-send and chat-input handled via document delegation below
   document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
     el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
   })
@@ -4226,6 +4215,23 @@ document.addEventListener('keydown', function gpKeyDelegation(e) {
     e.preventDefault()
     var txt = e.target.value?.trim()
     if (txt) { e.target.value = ''; sendGpChatMessage(txt) }
+  }
+  if (e.target.id === 'chat-input' && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    var msg = e.target.value?.trim()
+    if (msg) { e.target.value = ''; sendChatMessage(msg) }
+  }
+  if (e.target.id === 'cook-ask-input' && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    document.getElementById('cook-ask-send')?.click()
+  }
+})
+
+document.addEventListener('click', function chatDelegation(e) {
+  if (e.target.id === 'chat-send' || e.target.closest('#chat-send')) {
+    var input = document.getElementById('chat-input')
+    var msg = input?.value?.trim()
+    if (msg) { input.value = ''; sendChatMessage(msg) }
   }
 })
 
