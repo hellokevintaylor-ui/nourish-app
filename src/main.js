@@ -3998,10 +3998,11 @@ async function gpGenerateHandler() {
     var baseNotes = notesInput || chatNotes || state.gamePlanModal.notes || ''
 
     // If regenerating from tweak chat AND we have an edited plan, inject it as the baseline
-    var currentResult = state.gamePlanModal.result
+    var currentResult = state.gamePlanModal.result || state.gamePlanResult
+    console.log('Generate: currentResult steps=', currentResult?.length, 'view=', state.gamePlanModal.view)
     var isInChatView = state.gamePlanModal.view === 'chat' || state.gamePlanModal.view === 'planning-chat'
     var editedPlanContext = ''
-    if (isInChatView && currentResult && currentResult.length) {
+    if (currentResult && currentResult.length) {  // always inject if we have a result
       var editedTimeline = currentResult.map(function(i) { return i.time + ' — ' + i.step }).join('\n')
       editedPlanContext = 'CURRENT EDITED PLAN — THIS IS THE USER\'S WORKING VERSION. You MUST use this as the baseline. Return these exact steps with these exact times UNLESS the conversation below explicitly asks to change a specific step. Do not rewrite, reorder, or replace steps that were not mentioned in the conversation.\n\n' + editedTimeline + '\n\nONLY modify steps that the conversation below explicitly discusses. Leave all other steps exactly as shown above.\n\n'
     }
