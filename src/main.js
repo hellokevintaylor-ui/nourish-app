@@ -3469,7 +3469,7 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
   var header = blackHeader(
     slotLabel + ' Game Plan',
     dateLabel + ' · eat at ' + esc(timeVal),
-    '<button id="gp-edit-toggle" style="background:' + (gpEditing?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">' + (gpEditing?'Done':'Edit') + '</button>' +
+    '<button id="gp-edit-toggle" style="background:' + (gpEditing?'#3d52c4':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid ' + (gpEditing?'#3d52c4':'rgba(255,255,255,0.2)') + ';border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">' + (gpEditing?'💾 Save':'Edit') + '</button>' +
     '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>'
   )
 
@@ -5102,7 +5102,32 @@ function bindEvents() {
 
   // Game Plan edit toggle
   document.getElementById('gp-edit-toggle')?.addEventListener('click', () => {
+    var wasEditing = state.gamePlanEditing
     state.gamePlanEditing = !state.gamePlanEditing
+    // When saving (toggling off edit mode), explicitly commit the current result
+    if (wasEditing && state.gamePlanModal && state.gamePlanModal.result) {
+      // Save step text edits from any open textareas before saving
+      document.querySelectorAll('.gp-step-edit').forEach(function(ta) {
+        var idx = parseInt(ta.dataset.gpStep)
+        var newText = ta.value.trim()
+        if (newText && state.gamePlanModal.result[idx]) {
+          state.gamePlanModal.result[idx] = { ...state.gamePlanModal.result[idx], step: newText }
+        }
+      })
+      document.querySelectorAll('.gp-time-input').forEach(function(inp) {
+        var idx = parseInt(inp.dataset.gpStep)
+        var newTime = inp.value.trim()
+        if (newTime && state.gamePlanModal.result[idx]) {
+          state.gamePlanModal.result[idx] = { ...state.gamePlanModal.result[idx], time: newTime }
+        }
+      })
+      state.gamePlanResult = state.gamePlanModal.result
+      gpSaveCurrent()
+      // Visual feedback
+      var btn = document.getElementById('gp-edit-toggle')
+      if (btn) { btn.textContent = 'Saved ✓'; btn.style.background = '#22c55e'; setTimeout(function() { render() }, 800) }
+      return
+    }
     // Initialize editable ingredient list from meal plan on first edit
     if (state.gamePlanEditing && !state.gamePlanIngredients) {
       var gpMod = state.gamePlanModal || {}
