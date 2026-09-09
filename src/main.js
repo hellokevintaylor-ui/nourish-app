@@ -3994,7 +3994,9 @@ async function gpGenerateHandler() {
     var notesInput = document.getElementById('gp-notes')?.value?.trim()
     var gpGenChatKey = date + '-' + slot
     var chatHistory = state.gamePlanChats[gpGenChatKey] || []
-    var chatNotes = chatHistory.map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
+    // Only last 6 USER messages — skip assistant messages to keep prompt focused
+    var recentUserMsgs = chatHistory.filter(function(m) { return m.role === 'user' }).slice(-6)
+    var chatNotes = recentUserMsgs.map(function(m) { return 'User constraint: ' + m.content }).join('\n')
     var baseNotes = notesInput || chatNotes || state.gamePlanModal.notes || ''
 
     // If regenerating from tweak chat AND we have an edited plan, inject it as the baseline
