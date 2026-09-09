@@ -2842,6 +2842,7 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
     '[{"step": "full step text with quantities", "active_min": 10, "passive_min": 0}]\n' +
     '- DO NOT include scheduled_time — the app calculates times from your constraints\n' +
     '- DO NOT use fields named: task, details, instructions, description, step_name, duration_minutes\n' +
+    '- Return steps in CHRONOLOGICAL ORDER — first step first, last step last\n' +
     '- No markdown, no backticks, just the raw JSON array'
   let gpResp, gpAttempts = 0
   while (gpAttempts < 3) {
@@ -2983,12 +2984,13 @@ function gpNormalizeStep(s) {
 
 function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
   steps = steps.map(gpNormalizeStep)
-  // Model returns steps in reverse order (backwards from dinner) — reverse to get chronological order
-  // Detect: if first step looks like a final step (serve/plate/enjoy), reverse
+  // Safety: if model returned steps backwards (last step first), reverse them
   if (steps.length > 1) {
-    var first = (steps[0].step || '').toLowerCase()
-    var isReversed = /plate|serve|enjoy|garnish|present|transfer to plate|rest the|let rest/.test(first)
-    if (isReversed) steps = steps.slice().reverse()
+    var firstStep = (steps[0].step || '').toLowerCase()
+    var lastStep = (steps[steps.length-1].step || '').toLowerCase()
+    var firstIsLast = /plate|serve|enjoy|garnish|rest|finish|done|complete/.test(firstStep)
+    var lastIsFirst = /preheat|prep|chop|slice|season|gather|measure|set up/.test(lastStep)
+    if (firstIsLast || lastIsFirst) steps = steps.slice().reverse()
   }
   var dinnerMins = gpParseTime(targetTime)  // This is the eat-at time — never override it
   var constraints = gpParseConstraints(notes || '', dinnerMins)
