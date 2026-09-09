@@ -2815,7 +2815,18 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
     .join('\n---\n')
     .slice(0, 2000) // last ~2000 chars of assistant responses = the agreed plan
 
-  var prompt = `You are a professional chef generating a detailed step-by-step cooking timeline.
+  // Check if we have an edited plan baseline in the notes
+  var hasEditedBaseline = notes.includes('CURRENT EDITED PLAN')
+
+  var prompt = hasEditedBaseline
+    ? `You are updating an existing cooking plan based on user feedback.
+
+EAT TIME: ${targetTime} — FIXED.
+
+${notes}
+
+YOUR JOB: Return the plan above with ONLY the changes requested in "User constraint" lines. Keep every other step exactly as written — same text, same time, same order. Only modify steps that the user explicitly asked to change.`
+    : `You are a professional chef generating a detailed step-by-step cooking timeline.
 
 ╔══════════════════════════════════════╗
 ║  EAT TIME: ${targetTime} — FIXED. NEVER CHANGE THIS.  ║
@@ -2834,8 +2845,13 @@ ${mealText}
 
 REMINDER: Serve at ${targetTime}. Not 4:30. Not 6:00. ${targetTime}.
 
-YOUR JOB: Fill in the detailed steps that match the agreed timing framework. The plan may span multiple time windows (e.g. morning prep + afternoon cooking). Use the exact scheduled_time from the agreed framework.
+YOUR JOB: Fill in the detailed steps that match the agreed timing framework. The plan may span multiple time windows (e.g. morning prep + afternoon cooking). Use the exact scheduled_time from the agreed framework.`
 
+  var promptRules = hasEditedBaseline ? `
+CRITICAL RULES:
+- Return ONLY a valid JSON array, no explanation, no markdown
+- Keep ALL steps from the baseline EXACTLY unless user explicitly asked to change that specific step
+- Only convert temperatures, rename items, or adjust times if user asked for it` : `
 CRITICAL RULES:
 - NEVER refuse or flag conflicts — just output the JSON regardless of current time
 - The plan may be for tomorrow or another day — do not compare to current time
@@ -2843,15 +2859,10 @@ CRITICAL RULES:
 - Include exact quantities in every step
 - Label which recipe for each step
 - Return ONLY a valid JSON array, no explanation, no markdown
-- ONLY include steps that are explicitly in the recipe instructions above — do NOT add steps that aren't in the recipe (no searing, no extra browning, no additional techniques unless the recipe says to do them)
-- Do NOT improvise or add "chef's touches" — follow the recipe exactly as written
+- ONLY include steps that are explicitly in the recipe instructions above — do NOT add steps that aren't in the recipe
+- Do NOT improvise or add "chef's touches" — follow the recipe exactly as written`
 
-[
-  {"step": "Morning prep: Pound 8 chicken cutlets to 1/4 inch, season with salt and pepper", "scheduled_time": "7:00 AM", "active_min": 8, "passive_min": 0},
-  {"step": "Morning prep: Set up breading station — flour, beaten eggs, panko mixed with 2oz Parmigiano-Reggiano in 3 separate bowls", "scheduled_time": "7:08 AM", "active_min": 5, "passive_min": 0},
-  {"step": "For Broccoli: Preheat oven to 450°F, toss 1.5 lbs broccoli florets with 3 tbsp olive oil, salt, pepper on sheet pan", "scheduled_time": "5:30 PM", "active_min": 5, "passive_min": 20},
-  {"step": "For Chicken: Heat large skillet over medium-high, add oil", "scheduled_time": "5:35 PM", "active_min": 3, "passive_min": 0}
-]\``
+  prompt = prompt + promptRules
 
   let gpResp, gpAttempts = 0
   while (gpAttempts < 3) {
@@ -5039,9 +5050,8 @@ function bindEvents() {
       var key = today + '-' + slot
       var saved = state.savedGamePlans[key]
       console.log('Plan button: key=', key, 'saved=', !!saved, 'saved.result=', !!(saved&&saved.result), 'allKeys=', Object.keys(state.savedGamePlans))
-      if (saved && saved.result) {
-        // Restore saved plan — always takes priority over chat history
-        console.log('Recipe: restoring saved plan, key=', key, 'result steps=', saved.result.length)
+      if (saved && saved.result && saved.date >= today) {
+        // Restore saved plan — only if it's for today or future
         state.gamePlanModal = { ...saved, recipeId: saved.recipeId || rid, view: 'result' }
         state.gamePlanResult = saved.result
         state.gamePlanView = 'result'
@@ -5343,7 +5353,7 @@ function bindEvents() {
       // Check for saved plan
       var key = today + '-' + slot
       var saved = state.savedGamePlans[key]
-      if (saved && saved.result) {
+      if (saved && saved.result && saved.date >= today) {
         state.gamePlanModal = { ...saved, view: 'result' }
         state.gamePlanResult = saved.result
         state.gamePlanView = 'result'
@@ -6808,9 +6818,8 @@ async function estimateCaloriesAI(description) {
 
       var key = date + '-' + slot
       var saved = state.savedGamePlans[key]
-      if (saved && saved.result) {
-        // Restore saved plan — always takes priority over chat history
-        console.log('Calendar: restoring saved plan key=', key, 'steps=', saved.result.length)
+      if (saved && saved.result && saved.date >= (date || today)) {
+        // Restore saved plan — only if it's for today or future
         state.gamePlanModal = { ...saved, recipeId, view: 'result' }
         state.gamePlanResult = saved.result
         state.gamePlanView = 'result'
