@@ -2818,62 +2818,27 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   // Check if we have an edited plan baseline in the notes
   var hasEditedBaseline = notes.includes('CURRENT EDITED PLAN')
 
-  var prompt = hasEditedBaseline
-    ? `You are updating an existing cooking plan based on user feedback.
-
-EAT TIME: ${targetTime} — FIXED.
-
-${notes}
-
-YOUR JOB: Return the plan above with ONLY the changes requested in "User constraint" lines. Keep every other step exactly as written — same text, same time, same order. Only modify steps that the user explicitly asked to change.
-
-REQUIRED OUTPUT FORMAT — use EXACTLY these field names, no others:
-[
-  {"step": "the full step description", "scheduled_time": "5:30 PM", "active_min": 10, "passive_min": 0},
-  {"step": "next step", "scheduled_time": "5:40 PM", "active_min": 5, "passive_min": 15}
-]
-
-DO NOT use: task, details, instructions, description, step_name, duration_minutes, recipe, step_number.
-ONLY use: step, scheduled_time, active_min, passive_min.
-No markdown, no backticks, just the raw JSON array.`
-    : `You are a professional chef generating a detailed step-by-step cooking timeline.
-
-╔══════════════════════════════════════╗
-║  EAT TIME: ${targetTime} — FIXED. NEVER CHANGE THIS.  ║
-╚══════════════════════════════════════╝
-
-The meal must be served at ${targetTime}. This is set by the user and cannot be changed regardless of anything else in this prompt.
-
-MEAL DATE: ${mealDate}
-RECIPES: ${recipeNames.join(', ')}
-
-PLANNING CONVERSATION (use this for scheduling constraints like start times, gaps, and prep windows — but IGNORE any eat/serve times mentioned here, use ${targetTime} only):
-${planningChat || notes}
-
-FULL RECIPE DETAILS:
-${mealText}
-
-REMINDER: Serve at ${targetTime}. Not 4:30. Not 6:00. ${targetTime}.
-
-YOUR JOB: Fill in the detailed steps that match the agreed timing framework. The plan may span multiple time windows (e.g. morning prep + afternoon cooking). Use the exact scheduled_time from the agreed framework.`
-
-  var promptRules = hasEditedBaseline ? `
-CRITICAL RULES:
-- Return ONLY a valid JSON array, no explanation, no markdown
-- Keep ALL steps from the baseline EXACTLY unless user explicitly asked to change that specific step
-- Only convert temperatures, rename items, or adjust times if user asked for it` : `
-CRITICAL RULES:
-- NEVER refuse or flag conflicts — just output the JSON regardless of current time
-- The plan may be for tomorrow or another day — do not compare to current time
-- scheduled_time must match the times discussed in the planning conversation
-- Include exact quantities in every step
-- Label which recipe for each step
-- Return ONLY a valid JSON array, no explanation, no markdown
-- ONLY include steps that are explicitly in the recipe instructions above — do NOT add steps that aren't in the recipe
-- Do NOT improvise or add "chef's touches" — follow the recipe exactly as written`
-
-  prompt = prompt + promptRules
-
+  var prompt = 'You are a professional chef generating a cooking timeline.\n\n' +
+    'EAT TIME: ' + targetTime + ' — THIS IS FIXED. Work backwards from this. Last step must finish at ' + targetTime + '.\n' +
+    'CURRENT TIME: ' + currentTime + '\n' +
+    'MEAL DATE: ' + mealDate + '\n' +
+    'RECIPES: ' + recipeNames.join(', ') + '\n\n' +
+    (hasEditedBaseline
+      ? notes + '\n\nFULL RECIPE DETAILS (reference only — do not add steps not in baseline):\n' + mealText
+      : 'USER CONSTRAINTS:\n' + (notes || 'None') + '\n\nFULL RECIPE DETAILS:\n' + mealText
+    ) + '\n\n' +
+    (hasEditedBaseline
+      ? 'YOUR JOB: Return the CURRENT EDITED PLAN above with only the specific changes from User constraints applied. Keep all other steps exactly as written — same text, same scheduled_time. Do NOT add, remove, or reorder steps unless explicitly asked.'
+      : 'YOUR JOB: Generate a step-by-step timeline working backwards from ' + targetTime + '. Interleave recipes to use passive time efficiently. Include exact quantities in every step.'
+    ) + '\n\n' +
+    'CRITICAL RULES:\n' +
+    '- EAT TIME is ' + targetTime + ' — never change this\n' +
+    '- NEVER refuse or flag time conflicts — just generate the plan\n' +
+    '- The plan may be for tomorrow — do not compare to current time\n' +
+    '- Return ONLY a JSON array with exactly these fields — no others:\n' +
+    '[{"step": "full step text with quantities", "scheduled_time": "5:30 PM", "active_min": 10, "passive_min": 0}]\n' +
+    '- DO NOT use fields named: task, details, instructions, description, step_name, duration_minutes\n' +
+    '- No markdown, no backticks, just the raw JSON array'
   let gpResp, gpAttempts = 0
   while (gpAttempts < 3) {
     try {
