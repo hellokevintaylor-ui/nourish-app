@@ -2836,7 +2836,8 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
     '- NEVER refuse or flag time conflicts — just generate the plan\n' +
     '- The plan may be for tomorrow — do not compare to current time\n' +
     '- Return ONLY a JSON array with exactly these fields — no others:\n' +
-    '[{"step": "full step text with quantities", "scheduled_time": "5:30 PM", "active_min": 10, "passive_min": 0}]\n' +
+    '[{"step": "full step text with quantities", "active_min": 10, "passive_min": 0}]\n' +
+    '- DO NOT include scheduled_time — the app calculates times from your constraints\n' +
     '- DO NOT use fields named: task, details, instructions, description, step_name, duration_minutes\n' +
     '- No markdown, no backticks, just the raw JSON array'
   let gpResp, gpAttempts = 0
@@ -3004,18 +3005,8 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
 
   for (var i = 0; i < steps.length; i++) {
     var s = steps[i]
-
-    // If model provided a scheduled_time (from agreed framework), use it directly
-    if (s.scheduled_time) {
-      var scheduledMins = gpParseTime(s.scheduled_time)
-      if (scheduledMins > 0) {
-        cursor = scheduledMins
-        result.push({ time: gpFormatTime(cursor), step: s.step })
-        cursor += (s.active_min || 0) + (s.passive_min || 0)
-        continue
-      }
-    }
-
+    // Always calculate time ourselves — never trust model's scheduled_time
+    // Model's scheduled_time ignores user's start time constraints
     var stepMins = (s.active_min || 0) + (s.passive_min || 0)
     if (!stepMins) stepMins = 5
 
