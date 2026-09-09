@@ -3301,7 +3301,8 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
     dateLabel,
     (hasExistingResult
       ? '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
-        '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>'
+        '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>' +
+        '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">✕ Clear</button>'
       : '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Start over</button>'
     )
   )
@@ -4002,16 +4003,15 @@ async function gpGenerateHandler() {
     var editedPlanContext = ''
     if (isInChatView && currentResult && currentResult.length) {
       var editedTimeline = currentResult.map(function(i) { return i.time + ' — ' + i.step }).join('\n')
-      editedPlanContext = 'CURRENT EDITED PLAN (use this as the baseline — preserve these steps and times unless the conversation below requests specific changes):\n' + editedTimeline + '\n\n'
+      editedPlanContext = 'CURRENT EDITED PLAN — THIS IS THE USER\'S WORKING VERSION. You MUST use this as the baseline. Return these exact steps with these exact times UNLESS the conversation below explicitly asks to change a specific step. Do not rewrite, reorder, or replace steps that were not mentioned in the conversation.\n\n' + editedTimeline + '\n\nONLY modify steps that the conversation below explicitly discusses. Leave all other steps exactly as shown above.\n\n'
     }
 
     var notes = editedPlanContext + 'TARGET MEAL TIME: ' + timeVal + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + baseNotes
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
-    // Clear saved plan so we don't restore the old one during generation
     var regenKey = date + '-' + slot
-    delete state.savedGamePlans[regenKey]
+    // Don't delete savedGamePlans here - we want to preserve edits until new result arrives
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, generating: true }
     state.gamePlanLoading = true
     state.gamePlanResult = null
