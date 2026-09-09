@@ -2983,6 +2983,13 @@ function gpNormalizeStep(s) {
 
 function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
   steps = steps.map(gpNormalizeStep)
+  // Model returns steps in reverse order (backwards from dinner) — reverse to get chronological order
+  // Detect: if first step looks like a final step (serve/plate/enjoy), reverse
+  if (steps.length > 1) {
+    var first = (steps[0].step || '').toLowerCase()
+    var isReversed = /plate|serve|enjoy|garnish|present|transfer to plate|rest the|let rest/.test(first)
+    if (isReversed) steps = steps.slice().reverse()
+  }
   var dinnerMins = gpParseTime(targetTime)  // This is the eat-at time — never override it
   var constraints = gpParseConstraints(notes || '', dinnerMins)
   var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
