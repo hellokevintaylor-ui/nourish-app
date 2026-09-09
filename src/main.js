@@ -2825,7 +2825,11 @@ EAT TIME: ${targetTime} — FIXED.
 
 ${notes}
 
-YOUR JOB: Return the plan above with ONLY the changes requested in "User constraint" lines. Keep every other step exactly as written — same text, same time, same order. Only modify steps that the user explicitly asked to change.`
+YOUR JOB: Return the plan above with ONLY the changes requested in "User constraint" lines. Keep every other step exactly as written — same text, same time, same order. Only modify steps that the user explicitly asked to change.
+
+Return ONLY a valid JSON array in this exact format:
+[{"step": "step text here", "scheduled_time": "5:30 PM", "active_min": 10, "passive_min": 0}]
+No other fields. No markdown. Just the JSON array.`
     : `You are a professional chef generating a detailed step-by-step cooking timeline.
 
 ╔══════════════════════════════════════╗
@@ -2980,7 +2984,19 @@ function gpParseConstraints(notes, dinnerMins) {
   return constraints
 }
 
+function gpNormalizeStep(s) {
+  // Handle multiple possible JSON schemas from the model
+  var step = s.step || s.instructions || s.description || s.text || ''
+  if (!step && s.step_name && s.instructions) step = s.step_name + ': ' + s.instructions
+  if (!step && s.step_name) step = s.step_name
+  var time = s.scheduled_time || s.time || s.start_time || ''
+  var active = s.active_min || s.duration_minutes || s.active || 0
+  var passive = s.passive_min || s.passive || 0
+  return { step: step, time: time, active_min: parseInt(active)||0, passive_min: parseInt(passive)||0 }
+}
+
 function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
+  steps = steps.map(gpNormalizeStep)
   var dinnerMins = gpParseTime(targetTime)  // This is the eat-at time — never override it
   var constraints = gpParseConstraints(notes || '', dinnerMins)
   var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
@@ -3378,6 +3394,7 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
   })
   var stopWords = new Set(['and','the','with','for','into','from','over','some','about','until','then','well','each','fresh','dried','ground','large','small','medium','olive','black','white','red','hot','cold','warm','cup','tbsp','tsp','salt','pepper','oil','water','heat','add','mix','stir','cook','bake','roast','boil'])
   var getChips = (stepText) => {
+    if (!stepText) return []
     var lower = stepText.toLowerCase()
     var matches = []
     parsedIngs.forEach(ing => {
@@ -4187,6 +4204,8 @@ document.addEventListener('click', function gpDelegation(e) {
     state.gamePlanEditing = false; state.gamePlanCheckedIngs = new Set()
     state.gamePlanIngredients = null; state._lastGamePlan = null
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, view: 'planning-chat', generating: false, notes: '', targetTime: null }
+    // Also clear from DB so it doesn't restore on next page load
+    if (gpM.date && gpM.slot) db.deleteGamePlan && db.deleteGamePlan(gpM.date, gpM.slot)
     render(); initGamePlanChat()
     return
   }
