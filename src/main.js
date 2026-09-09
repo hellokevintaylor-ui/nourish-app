@@ -2730,9 +2730,12 @@ function gpSaveCurrent() {
 
 
 function gpParseTime(t) {
-  const m = (t||'').match(/(\d+):(\d+)\s*(AM|PM)/i)
+  if (!t) return 0
+  // Normalize p->pm, a->am
+  t = t.replace(/(\d)(\s*)(p)\b/i, '$1$2pm').replace(/(\d)(\s*)(a)\b/i, '$1$2am')
+  var m = t.match(/(\d+):?(\d*)\s*(am|pm)/i)
   if (!m) return 0
-  let h = parseInt(m[1]), min = parseInt(m[2]), ampm = m[3].toUpperCase()
+  var h = parseInt(m[1]), min = parseInt(m[2]||'0'), ampm = m[3].toUpperCase()
   if (ampm === 'PM' && h !== 12) h += 12
   if (ampm === 'AM' && h === 12) h = 0
   return h * 60 + min
@@ -2891,18 +2894,27 @@ function gpParseConstraints(notes, dinnerMins) {
   if (!dinnerMins) dinnerMins = 23 * 60 // default midnight
   var constraints = { startMins: null, gapStartMins: null, gapEndMins: null }
   if (!notes) return constraints
-  var lower = notes.toLowerCase()
+  // Strip CURRENT TIME line so it doesn't get picked up as start time
+  var cleanNotes = notes.replace(/CURRENT TIME[^\n]*/gi, '').replace(/TARGET MEAL TIME[^\n]*/gi, '')
+  var lower = cleanNotes.toLowerCase()
   var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
 
   // ── START TIME ──
+  // Handle both "5:30pm" and "5:30p" style times
+  var timeRe = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.?))'
   var startNow = /(?:start|starting|begin|prep)\s+now|can start now|starting now/i.test(lower)
-  var startMatch = lower.match(/(?:start|starting|begin|free|available|can cook|can start|prepping?)(?:\s+(?:at|from))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
-  if (!startMatch) startMatch = lower.match(/(?:it(?:'s| is)|right now|currently|now is|time is|current time)\s*[:\-]?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i)
+  // Flexible time pattern: handles 5pm, 5:30pm, 5:30p, 17:30
+  var timePat = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\.m\.|p\.m\.|a|p)?)'
+  var startMatch = lower.match(/(?:start(?:ing)?(?:\s+prep)?|begin(?:ning)?|free|available|can\s+(?:start|cook))(?:\s+(?:at|from|after|cooking|prep))?\s+(\d{1,2}(?::\d{2})?(?:\s*(?:am|pm|a|p))?)/i)
+  if (!startMatch) startMatch = lower.match(/(?:free|available)\s+(?:from|after|at|starting)\s+(\d{1,2}(?::\d{2})?(?:\s*(?:am|pm|a|p))?)/i)
+  if (!startMatch) startMatch = lower.match(/(?:home|back|return)\s+(?:at|by|around)\s+(\d{1,2}(?::\d{2})?(?:\s*(?:am|pm|a|p))?)/i)
 
   if (startNow) {
     constraints.startMins = nowMins
   } else if (startMatch) {
     var t = startMatch[1].trim()
+    // Normalize p->pm, a->am
+    t = t.replace(/(\d)(\s*)(p)$/i, '$1$2pm').replace(/(\d)(\s*)(a)$/i, '$1$2am')
     if (!/am|pm/i.test(t)) t += ' PM'
     constraints.startMins = gpParseTime(t)
   }
