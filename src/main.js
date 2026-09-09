@@ -3975,8 +3975,9 @@ async function gpGenerateHandler() {
     _gpGenerating = true
     var { slot, date, recipeId } = state.gamePlanModal
     // Don't regenerate if we already have a result — user must explicitly use ↺ Redo
-    if (state.gamePlanModal.result && !state.gamePlanModal.generating) {
-      console.warn('gpGenerateHandler: result exists, not regenerating')
+    // Allow regeneration when in chat/tweak view (user is refining the plan)
+    var isInChatView = state.gamePlanModal.view === 'chat' || state.gamePlanModal.view === 'planning-chat'
+    if (state.gamePlanModal.result && !isInChatView && !state.gamePlanModal.generating) {
       _gpGenerating = false
       return
     }
@@ -4344,7 +4345,7 @@ async function sendGpChatMessage(text) {
     var hasResult = !!result
     let system
     if (hasResult) {
-      system = 'You are a cooking timeline assistant. The user has a generated cooking plan and may want to fix timing or adjust steps. If the timing looks wrong, acknowledge it and tell them to tap the ↺ Redo button (top right of the black header) to regenerate with corrected constraints. For tweaks to specific steps, suggest the change directly. Be brief and practical.'
+      system = 'You are a cooking timeline assistant helping the user refine their cooking plan. Discuss changes conversationally — timing shifts, reordering steps, adjusting for new constraints. When you have agreed on what to change, tell them to tap the \'📋 Generate the plan now\' button at the bottom of this chat to rebuild with all the changes. Never mention a Redo button. Be brief and practical.'
     } else {
       var gpRecipes = buildGpRecipeContext(slot, gpDate)
       var recipeCtx = gpRecipes.map(r => {
