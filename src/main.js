@@ -3295,10 +3295,15 @@ function renderGamePlanChatFirst(gp, blackHeader, wrapFn) {
       '</div>'
     : ''
 
+  var hasExistingResult = !!(gp.result && gp.result.length)
   var header = blackHeader(
     '📋 Plan ' + slotLabel,
     dateLabel,
-    '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Start over</button>'
+    (hasExistingResult
+      ? '<button id="gp-back-to-timeline" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">← Plan</button>' +
+        '<button id="gp-regenerate" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:4px">↺ Redo</button>'
+      : '<button id="gp-start-over" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">↺ Start over</button>'
+    )
   )
 
   var body =
@@ -3990,7 +3995,17 @@ async function gpGenerateHandler() {
     var chatHistory = state.gamePlanChats[gpGenChatKey] || []
     var chatNotes = chatHistory.map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
     var baseNotes = notesInput || chatNotes || state.gamePlanModal.notes || ''
-    var notes = 'TARGET MEAL TIME: ' + timeVal + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + baseNotes
+
+    // If regenerating from tweak chat AND we have an edited plan, inject it as the baseline
+    var currentResult = state.gamePlanModal.result
+    var isInChatView = state.gamePlanModal.view === 'chat' || state.gamePlanModal.view === 'planning-chat'
+    var editedPlanContext = ''
+    if (isInChatView && currentResult && currentResult.length) {
+      var editedTimeline = currentResult.map(function(i) { return i.time + ' — ' + i.step }).join('\n')
+      editedPlanContext = 'CURRENT EDITED PLAN (use this as the baseline — preserve these steps and times unless the conversation below requests specific changes):\n' + editedTimeline + '\n\n'
+    }
+
+    var notes = editedPlanContext + 'TARGET MEAL TIME: ' + timeVal + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + baseNotes
     if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
     state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, notes, generating: true }
     state._lastGamePlan = { slot, date, targetTime: timeVal }
