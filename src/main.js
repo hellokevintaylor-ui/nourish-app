@@ -2827,9 +2827,15 @@ ${notes}
 
 YOUR JOB: Return the plan above with ONLY the changes requested in "User constraint" lines. Keep every other step exactly as written — same text, same time, same order. Only modify steps that the user explicitly asked to change.
 
-Return ONLY a valid JSON array in this exact format:
-[{"step": "step text here", "scheduled_time": "5:30 PM", "active_min": 10, "passive_min": 0}]
-No other fields. No markdown. Just the JSON array.`
+REQUIRED OUTPUT FORMAT — use EXACTLY these field names, no others:
+[
+  {"step": "the full step description", "scheduled_time": "5:30 PM", "active_min": 10, "passive_min": 0},
+  {"step": "next step", "scheduled_time": "5:40 PM", "active_min": 5, "passive_min": 15}
+]
+
+DO NOT use: task, details, instructions, description, step_name, duration_minutes, recipe, step_number.
+ONLY use: step, scheduled_time, active_min, passive_min.
+No markdown, no backticks, just the raw JSON array.`
     : `You are a professional chef generating a detailed step-by-step cooking timeline.
 
 ╔══════════════════════════════════════╗
@@ -2986,11 +2992,13 @@ function gpParseConstraints(notes, dinnerMins) {
 
 function gpNormalizeStep(s) {
   // Handle multiple possible JSON schemas from the model
-  var step = s.step || s.instructions || s.description || s.text || ''
+  var step = s.step || s.task || s.instructions || s.description || s.text || s.action || ''
   if (!step && s.step_name && s.instructions) step = s.step_name + ': ' + s.instructions
+  if (!step && s.task && s.details) step = s.task + ' — ' + s.details
   if (!step && s.step_name) step = s.step_name
-  var time = s.scheduled_time || s.time || s.start_time || ''
-  var active = s.active_min || s.duration_minutes || s.active || 0
+  if (!step && s.task) step = s.task
+  var time = s.scheduled_time || s.time || s.start_time || s.start || ''
+  var active = s.active_min || s.duration_minutes || s.duration || s.active || 0
   var passive = s.passive_min || s.passive || 0
   return { step: step, time: time, active_min: parseInt(active)||0, passive_min: parseInt(passive)||0 }
 }
