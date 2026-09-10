@@ -1345,10 +1345,22 @@ function renderRecipes() {
   if (search) filtered = filtered.filter(r => r.name.toLowerCase().includes(search) || (r.ingredients||'').toLowerCase().includes(search))
 
   // Sort
-  const sort = state.recipeSort || 'newest'
+  const sort = state.recipeSort || 'recent'
   if (sort === 'az') filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name))
   else if (sort === 'za') filtered = [...filtered].sort((a, b) => b.name.localeCompare(a.name))
-  // 'newest' is default order from Supabase (created_at desc)
+  else if (sort === 'newest') {
+    // Sort by created_at desc (newest added first)
+    filtered = [...filtered].sort((a, b) => new Date(b.created_at||0) - new Date(a.created_at||0))
+  } else {
+    // 'recent' = sort by last viewed (localStorage), then by created_at
+    const viewed = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
+    filtered = [...filtered].sort((a, b) => {
+      const ta = viewed[String(a.id)] || 0
+      const tb = viewed[String(b.id)] || 0
+      if (tb !== ta) return tb - ta
+      return new Date(b.created_at||0) - new Date(a.created_at||0)
+    })
+  }
 
   const archivedCount = state.recipes.filter(r => r.archived).length
   const isListView = state.recipeView === 'list'
@@ -1413,7 +1425,8 @@ function renderRecipes() {
       <!-- Sort + View controls -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
         <div style="display:flex;gap:4px">
-          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--forest)':'var(--border)'};background:${sort==='newest'?'var(--forest)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
+          <button class="recipe-sort-btn ${sort==='recent'?'active':''}" data-sort="recent" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='recent'?'var(--forest)':'var(--border)'};background:${sort==='recent'?'var(--forest)':'white'};color:${sort==='recent'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Recent</button>
+          <button class="recipe-sort-btn ${sort==='newest'?'active':''}" data-sort="newest" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='newest'?'var(--forest)':'var(--border)'};background:${sort==='newest'?'var(--forest)':'white'};color:${sort==='newest'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">New</button>
           <button class="recipe-sort-btn ${sort==='az'?'active':''}" data-sort="az" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='az'?'var(--forest)':'var(--border)'};background:${sort==='az'?'var(--forest)':'white'};color:${sort==='az'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">A→Z</button>
           <button class="recipe-sort-btn ${sort==='za'?'active':''}" data-sort="za" style="font-size:11px;padding:4px 9px;border-radius:6px;border:1.5px solid ${sort==='za'?'var(--forest)':'var(--border)'};background:${sort==='za'?'var(--forest)':'white'};color:${sort==='za'?'white':'var(--ink3)'};cursor:pointer;font-family:inherit">Z→A</button>
         </div>
@@ -3537,7 +3550,7 @@ function renderGamePlanResult(gp, blackHeader, wrapFn) {
     '</div>'
   }).join('')
   if (gpEditing) {
-    planTab += '<button id="gp-add-step" style="width:100%;margin-top:10px;padding:9px;background:white;border:1.5px dashed #d4d4d0;border-radius:10px;font-size:13px;font-weight:600;color:#6e6e69;cursor:pointer;font-family:inherit">+ Add step</button>'
+    planTab = '<button id="gp-add-step" style="width:100%;margin-bottom:10px;padding:9px;background:white;border:1.5px dashed #d4d4d0;border-radius:10px;font-size:13px;font-weight:600;color:#6e6e69;cursor:pointer;font-family:inherit">+ Add step</button>' + planTab
   }
 
   // ── NOTES TAB ──
@@ -4934,6 +4947,14 @@ function bindEvents() {
     el.addEventListener('click', () => {
       var rid = el.closest('.recipe-card').dataset.rid
       var isCollapsing = state.expandedRecipe === rid
+      // Track last viewed time for "Recent" sort
+      if (!isCollapsing) {
+        try {
+          var viewed = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
+          viewed[String(rid)] = Date.now()
+          localStorage.setItem('mep_recipe_viewed', JSON.stringify(viewed))
+        } catch(e) {}
+      }
       if (isCollapsing) {
         // Save game plan state before collapsing
         if (state.gamePlanModal) {
@@ -5270,11 +5291,17 @@ function bindEvents() {
       if (state.gamePlanModal && state.gamePlanModal.result && newTime) {
         var result = [...state.gamePlanModal.result]
         result[stepIdx] = { ...result[stepIdx], time: newTime }
+        // Auto-reorder by time if all times are valid
+        var allValid = result.every(function(s) { return gpParseTime(s.time) > 0 })
+        if (allValid) result = result.slice().sort(function(a, b) { return gpParseTime(a.time) - gpParseTime(b.time) })
         state.gamePlanModal = { ...state.gamePlanModal, result }
         state.gamePlanResult = result
-        // Save updated plan
         var key = state.gamePlanModal.date + '-' + state.gamePlanModal.slot
-        if (key) state.savedGamePlans[key] = { ...state.gamePlanModal }
+        if (key) {
+          state.savedGamePlans[key] = { ...state.gamePlanModal, view: 'result', _notes: state.gamePlanNotes, _tab: state.gamePlanTab }
+          saveGamePlanToDb()
+        }
+        render()
       }
     })
     input.addEventListener('keydown', e => {
