@@ -2906,121 +2906,123 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
   console.log('Calling gpBuildTimeline with targetTime:', targetTime)
   // Build windows from constraints for passing to gpBuildTimeline
   var _gpConstraints = gpParseConstraints(notes || '', gpParseTime(targetTime))
-  var _gpWindows = null
-  if (_gpConstraints.startMins !== null && _gpConstraints.gapStartMins !== null && _gpConstraints.gapEndMins !== null) {
-    _gpWindows = [
-      { label: 'prep', startMins: _gpConstraints.startMins, endMins: _gpConstraints.gapStartMins },
-      { label: 'cooking', startMins: _gpConstraints.gapEndMins, endMins: gpParseTime(targetTime) }
-    ]
-  }
+  var _gpWindows = _gpConstraints.windows || null
   return gpBuildTimeline(gpSteps, gpNormalizeTime(targetTime) || targetTime, isWholeDay, slot, notes, _gpWindows)
 }
 
+function gpNormalizeTime2(t) {
+  if (!t) return 0
+  t = String(t).trim()
+  t = t.replace(/(\d)(\s*)(p)/i,'$1$2pm').replace(/(\d)(\s*)(a)/i,'$1$2am')
+  if (!/am|pm/i.test(t)) t += ' PM'
+  return gpParseTime(t)
+}
+
+// Extract all cooking windows from natural language notes
+// Returns array of {label, startMins, endMins} sorted chronologically
+// Always adds a final "cooking" window ending at dinnerMins
 function gpParseConstraints(notes, dinnerMins) {
-  if (!dinnerMins) dinnerMins = 23 * 60 // default midnight
-  var constraints = { startMins: null, gapStartMins: null, gapEndMins: null }
+  if (!dinnerMins) dinnerMins = 23 * 60
+  var constraints = { startMins: null, gapStartMins: null, gapEndMins: null, windows: null }
   if (!notes) return constraints
-  // Strip CURRENT TIME line so it doesn't get picked up as start time
+
   var cleanNotes = notes.replace(/CURRENT TIME[^\n]*/gi, '').replace(/TARGET MEAL TIME[^\n]*/gi, '')
   var lower = cleanNotes.toLowerCase()
   var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
 
-  // ── START TIME ──
-  // Handle both "5:30pm" and "5:30p" style times
-  var timeRe = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.?))'
-  var startNow = /(?:start|starting|begin|prep)\s+now|can start now|starting now/i.test(lower)
+  // TIME REGEX: matches 8am, 8:00am, 8a, 5:30p, 5:30pm, 17:30
+  var tRe = /\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)\b/gi
 
-  // "prep window between X and Y" = start=X, gapStart=Y (gap starts when prep ends)
-  // Then "resume/back at Z" = gapEnd=Z (when cooking starts again)
-  var prepBetween = lower.match(/(?:prep|prep\s+window|hour|time|window)(?:\s+(?:to\s+do\s+prep|for\s+prep|between|from))?\s+between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:and|to|-|\u2013)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-  if (!prepBetween) prepBetween = lower.match(/between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:and|to|-|\u2013)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-  if (prepBetween) {
-    var _pb1 = prepBetween[1].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
-    var _pb2 = prepBetween[2].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
-    if (!/am|pm/i.test(_pb1)) _pb1 += ' PM'
-    if (!/am|pm/i.test(_pb2)) _pb2 += ' PM'
-    // start = beginning of prep window (1pm)
-    // gapStart = end of prep window (2pm) — the gap starts after prep
-    constraints.startMins = gpParseTime(_pb1)
-    constraints.gapStartMins = gpParseTime(_pb2)
-    // gapEnd comes from "resume/back at X" or "start cooking at X"
-    var resumeMatch = lower.match(/(?:resume|back|return|start\s+cooking|then\s+back|can\s+resume)(?:\s+cooking)?(?:\s+again)?(?:\s+(?:at|to))?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-    if (resumeMatch) {
-      var _rb = resumeMatch[1].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
-      if (!/am|pm/i.test(_rb)) _rb += ' PM'
-      constraints.gapEndMins = gpParseTime(_rb)
-    } else {
-      // No explicit resume — guess 1hr before dinner
-      constraints.gapEndMins = dinnerMins - 60
+  // ── EXTRACT ALL "X to Y" / "X - Y" / "between X and Y" WINDOWS ──
+  var rawWindows = []
+
+  // Pattern: "from 8 to 9", "8am-9am", "between 8 and 9", "8am to 9am"
+  var rangeRe = /(?:from\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:to|-|–|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/gi
+  var m
+  while ((m = rangeRe.exec(lower)) !== null) {
+    var s = gpNormalizeTime2(m[1]), e = gpNormalizeTime2(m[2])
+    if (s > 0 && e > s && e <= dinnerMins) rawWindows.push({ startMins: s, endMins: e })
+  }
+
+  // Pattern: "between X and Y"
+  var betweenRe = /between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:and|to|-|–)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/gi
+  while ((m = betweenRe.exec(lower)) !== null) {
+    var s = gpNormalizeTime2(m[1]), e = gpNormalizeTime2(m[2])
+    if (s > 0 && e > s && e <= dinnerMins) {
+      // Only add if not already captured
+      if (!rawWindows.find(function(w) { return Math.abs(w.startMins-s)<5 && Math.abs(w.endMins-e)<5 }))
+        rawWindows.push({ startMins: s, endMins: e })
     }
   }
 
-  // Only look for startMatch if prepBetween didn't set startMins
-  var startMatch = null
-  if (constraints.startMins === null) {
-    startMatch = lower.match(/(?:start(?:ing)?(?:\s+(?:at|prep|cooking))?|begin(?:ning)?|can\s+(?:start|cook))(?:\s+(?:at|from|after|around|cooking|prep))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-    if (!startMatch) startMatch = lower.match(/(?:free|available|home|back)\s+(?:from|after|at|by|around|starting)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-    if (!startMatch) startMatch = lower.match(/(?:hour|window)\s+(?:from|between|at)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-  }
+  // Deduplicate and sort
+  rawWindows.sort(function(a, b) { return a.startMins - b.startMins })
 
-  if (startNow) {
+  // Also look for "start cooking at X" / "back at X" / "resume at X"
+  var cookStartRe = /(?:start(?:\s+cooking)?|back|resume|return|then\s+(?:back|cook))(?:\s+(?:cooking|prep))?(?:\s+again)?(?:\s+(?:at|from))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i
+  var cookStartMatch = lower.match(cookStartRe)
+  var cookStartMins = cookStartMatch ? gpNormalizeTime2(cookStartMatch[1]) : 0
+
+  // "start now" / "starting now"
+  if (/(?:start|starting|begin|prep)\s+now|can start now/i.test(lower)) {
     constraints.startMins = nowMins
-  } else if (startMatch) {
-    var t = startMatch[1].trim()
-    // Normalize p->pm, a->am
-    t = t.replace(/(\d)(\s*)(p)$/i, '$1$2pm').replace(/(\d)(\s*)(a)$/i, '$1$2am')
-    if (!/am|pm/i.test(t)) t += ' PM'
-    constraints.startMins = gpParseTime(t)
   }
 
-  // ── GAP: explicit range "break between X and Y" / "away from X to Y" ──
-  var gapMatch = lower.match(/(?:break|gap|away|unavailable|off|gone|busy|leave|leaving|out)(?:[^\d]*)(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)(?:\s*(?:and|to|until|till|-)\s*)(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
-  if (gapMatch) {
-    var gs = gapMatch[1].trim(), ge = gapMatch[2].trim()
-    if (!/am|pm/i.test(gs)) gs += ' PM'
-    if (!/am|pm/i.test(ge)) ge += ' PM'
-    constraints.gapStartMins = gpParseTime(gs)
-    constraints.gapEndMins = gpParseTime(ge)
-  }
+  // Build windows array
+  var windows = []
 
-  // ── GAP: "back at X" / "return at X" / "resume at X" / "free at X" ──
-  if (!constraints.gapEndMins) {
-    var backMatch = lower.match(/(?:back|return|resume|free again|available|start again|come back|finish cooking)(?:\s+(?:at|by|around))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
-    if (backMatch) {
-      var ge2 = backMatch[1].trim()
-      if (!/am|pm/i.test(ge2)) ge2 += ' PM'
-      constraints.gapEndMins = gpParseTime(ge2)
-      // Estimate gap start from context — look for duration "90 minutes" / "an hour"
-      var durMatch = lower.match(/(\d+)\s*(?:hour|hr)s?/i)
-      var dur = durMatch ? parseInt(durMatch[1]) * 60 : 0
-      if (!dur) { var durMatch2 = lower.match(/(\d+)\s*min/i); dur = durMatch2 ? parseInt(durMatch2[1]) : 0 }
-      if (dur && constraints.startMins !== null) {
-        constraints.gapStartMins = constraints.startMins + dur
-      } else {
-        // Fall back: gap starts 30 min before gap end
-        constraints.gapStartMins = constraints.gapEndMins - 30
+  if (rawWindows.length > 0) {
+    // Use extracted windows as prep windows
+    rawWindows.forEach(function(w, i) {
+      var lbl = i === 0 ? (rawWindows.length > 1 ? 'morning_prep' : 'prep') :
+               i === 1 ? 'afternoon_prep' : 'prep_' + (i+1)
+      windows.push({ label: lbl, startMins: w.startMins, endMins: w.endMins })
+    })
+
+    // Set startMins to first window start
+    constraints.startMins = rawWindows[0].startMins
+
+    // Check if any window ends AT dinner time — that's the cooking window already
+    var lastRaw = rawWindows[rawWindows.length - 1]
+    var lastIsCooking = Math.abs(lastRaw.endMins - dinnerMins) < 10
+
+    if (lastIsCooking) {
+      // Last window IS the cooking window — relabel it
+      windows[windows.length - 1].label = 'cooking'
+      // Cook start is the start of that window
+      cookStartMins = lastRaw.startMins
+    } else {
+      // Add cooking window: starts at cookStartMins or last window end, ends at dinner
+      var cookStart = cookStartMins > 0 ? cookStartMins : lastRaw.endMins
+      if (cookStart < dinnerMins) {
+        windows.push({ label: 'cooking', startMins: cookStart, endMins: dinnerMins })
       }
     }
+
+    constraints.windows = windows
+    // Also set legacy gap fields for backward compat (use first gap)
+    constraints.gapStartMins = rawWindows[0].endMins
+    constraints.gapEndMins = cookStart
+  } else if (cookStartMins > 0) {
+    // No explicit windows but "start cooking at X" given
+    // Single cooking window from cookStartMins to dinner
+    constraints.startMins = cookStartMins
+    constraints.windows = [{ label: 'cooking', startMins: cookStartMins, endMins: dinnerMins }]
+  } else {
+    // No windows detected — try simple start time
+    var startMatch = lower.match(/(?:start(?:ing)?(?:\s+(?:at|prep|cooking))?|begin(?:ning)?|can\s+(?:start|cook)|free|available)(?:\s+(?:at|from|after|around|cooking|prep))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+    if (startMatch) {
+      constraints.startMins = gpNormalizeTime2(startMatch[1])
+    }
   }
 
-  // ── VALIDATE ──
-  // Start time must be before dinner time
-  if (constraints.startMins !== null && constraints.startMins >= dinnerMins) {
-    constraints.startMins = null  // invalid — ignore it
-  }
-  // Gap end must be before dinner
-  if (constraints.gapEndMins && constraints.gapEndMins >= dinnerMins) {
-    constraints.gapEndMins = null
-    constraints.gapStartMins = null
-  }
-  // Gap start must be after start time
-  if (constraints.gapStartMins && constraints.startMins && constraints.gapStartMins < constraints.startMins) {
-    constraints.gapStartMins = constraints.startMins + 60
-  }
+  // Validate
+  if (constraints.startMins !== null && constraints.startMins >= dinnerMins) constraints.startMins = null
 
-  console.log('gpParseConstraints result:', JSON.stringify(constraints), 'dinnerMins:', dinnerMins)
+  console.log('gpParseConstraints:', JSON.stringify({ startMins: constraints.startMins, windows: constraints.windows }))
   return constraints
 }
+
 
 function gpNormalizeStep(s) {
   // Handle multiple possible JSON schemas from the model
@@ -3064,6 +3066,7 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes, windows) {
   var result = []
 
   // WINDOW-BASED scheduling (multi-window days)
+  console.log('gpBuildTimeline: windows=', JSON.stringify(windows), 'step windows=', steps.map(function(s){return s.window}))
   if (windows && windows.length > 0) {
     // Group steps by window label
     var assigned = {}
@@ -3086,16 +3089,35 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes, windows) {
     var lastLabel = windows[windows.length - 1].label
     unassigned.forEach(function(s) { assigned[lastLabel].push(s) })
 
-    // Place each window's steps sequentially
-    windows.forEach(function(w) {
+    // Place steps in each window
+    // LAST window (cooking): place BACKWARDS from eat time so food is hot at dinner
+    // EARLIER windows (prep): place forwards from window start
+    windows.forEach(function(w, wi) {
       var wSteps = assigned[w.label] || []
       if (wSteps.length === 0) return
-      var cursor = w.startMins
-      wSteps.forEach(function(s) {
-        var dur = Math.max((s.active_min||0) + (s.passive_min||0), 5)
-        result.push({ time: gpFormatTime(cursor), step: s.step })
-        cursor += dur
-      })
+      var isLastWindow = wi === windows.length - 1
+      if (isLastWindow) {
+        // Place backwards from eat time
+        var cursor = w.endMins  // eat time
+        var reversed = wSteps.slice().reverse()
+        var placed = []
+        reversed.forEach(function(s) {
+          var dur = Math.max((s.active_min||0) + (s.passive_min||0), 5)
+          cursor -= dur
+          // Don't go before window start
+          if (cursor < w.startMins) cursor = w.startMins
+          placed.unshift({ time: gpFormatTime(cursor), step: s.step })
+        })
+        placed.forEach(function(p) { result.push(p) })
+      } else {
+        // Earlier windows: place forwards from window start
+        var cursor2 = w.startMins
+        wSteps.forEach(function(s) {
+          var dur = Math.max((s.active_min||0) + (s.passive_min||0), 5)
+          result.push({ time: gpFormatTime(cursor2), step: s.step })
+          cursor2 += dur
+        })
+      }
     })
 
     result.sort(function(a, b) { return gpParseTime(a.time) - gpParseTime(b.time) })
@@ -3103,8 +3125,14 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes, windows) {
     return result
   }
 
-  // FALLBACK: simple forward placement with optional gap
+  // FALLBACK: simple forward/backward placement
   var constraints = gpParseConstraints(notes || '', dinnerMins)
+  // If constraints has windows, use them
+  if (constraints.windows && constraints.windows.length > 0) {
+    windows = constraints.windows
+    // Re-enter window-based path
+    return gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes, windows)
+  }
   var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
   var startMins = constraints.startMins !== null ? constraints.startMins : nowMins
   var mealDateStr = state.gamePlanModal ? state.gamePlanModal.date : null
@@ -3113,22 +3141,41 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes, windows) {
 
   var gapStartMins = constraints.gapStartMins || null
   var gapEndMins = constraints.gapEndMins || null
-  var cursor = startMins
 
-  for (var i = 0; i < steps.length; i++) {
-    var s = steps[i]
-    var stepMins = Math.max((s.active_min||0) + (s.passive_min||0), 5)
-    if (gapStartMins && gapEndMins && cursor < gapStartMins && cursor + stepMins > gapStartMins) {
-      result.push({ time: gpFormatTime(cursor), step: s.step + ' — ⏸ Stop here. Take your break.' })
-      cursor = gapEndMins
-      continue
+  // Split into prep steps (before gap) and cooking steps (after gap, anchored to dinner)
+  var prepSteps = [], cookSteps = []
+  steps.forEach(function(s) {
+    var lbl = (s.window||'').toLowerCase()
+    if (gapStartMins && (lbl.includes('prep') || lbl.includes('before') || lbl.includes('morning') || lbl.includes('afternoon') || lbl.includes('night'))) {
+      prepSteps.push(s)
+    } else {
+      cookSteps.push(s)
     }
-    if (gapStartMins && gapEndMins && cursor >= gapStartMins && cursor < gapEndMins) {
-      cursor = gapEndMins
-    }
+  })
+  // If model didn't use window labels, treat everything as cooking
+  if (prepSteps.length === 0) { cookSteps = steps }
+
+  // Place prep steps forward from startMins
+  var cursor = startMins
+  prepSteps.forEach(function(s) {
+    var dur = Math.max((s.active_min||0)+(s.passive_min||0), 5)
     result.push({ time: gpFormatTime(cursor), step: s.step })
-    cursor += stepMins
-  }
+    cursor += dur
+  })
+
+  // Place cooking steps BACKWARDS from dinnerMins
+  var cookEnd = dinnerMins
+  var cookStart = gapEndMins || startMins
+  var revCook = cookSteps.slice().reverse()
+  var cookPlaced = []
+  var cc = cookEnd
+  revCook.forEach(function(s) {
+    var dur = Math.max((s.active_min||0)+(s.passive_min||0), 5)
+    cc -= dur
+    if (cc < cookStart) cc = cookStart
+    cookPlaced.unshift({ time: gpFormatTime(cc), step: s.step })
+  })
+  cookPlaced.forEach(function(p) { result.push(p) })
 
   result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served — enjoy! 🍽️' })
   return result
