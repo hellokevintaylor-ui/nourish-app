@@ -2917,21 +2917,38 @@ function gpParseConstraints(notes, dinnerMins) {
   var timeRe = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.?))'
   var startNow = /(?:start|starting|begin|prep)\s+now|can start now|starting now/i.test(lower)
 
-  // Detect 'between X and Y' / 'between X - Y' gaps
-  var gapBetween = lower.match(/between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:and|to|-|\u2013)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-  if (gapBetween && !constraints.gapStartMins) {
-    var _gs = gapBetween[1].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
-    var _ge = gapBetween[2].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
-    if (!/am|pm/i.test(_gs)) _gs += ' PM'
-    if (!/am|pm/i.test(_ge)) _ge += ' PM'
-    constraints.gapStartMins = gpParseTime(_gs)
-    constraints.gapEndMins = gpParseTime(_ge)
+  // "prep window between X and Y" = start=X, gapStart=Y (gap starts when prep ends)
+  // Then "resume/back at Z" = gapEnd=Z (when cooking starts again)
+  var prepBetween = lower.match(/(?:prep|prep\s+window|hour|time|window)(?:\s+(?:to\s+do\s+prep|for\s+prep|between|from))?\s+between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:and|to|-|\u2013)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+  if (!prepBetween) prepBetween = lower.match(/between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:and|to|-|\u2013)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+  if (prepBetween) {
+    var _pb1 = prepBetween[1].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
+    var _pb2 = prepBetween[2].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
+    if (!/am|pm/i.test(_pb1)) _pb1 += ' PM'
+    if (!/am|pm/i.test(_pb2)) _pb2 += ' PM'
+    // start = beginning of prep window (1pm)
+    // gapStart = end of prep window (2pm) — the gap starts after prep
+    constraints.startMins = gpParseTime(_pb1)
+    constraints.gapStartMins = gpParseTime(_pb2)
+    // gapEnd comes from "resume/back at X" or "start cooking at X"
+    var resumeMatch = lower.match(/(?:resume|back|return|start\s+cooking|then\s+back|can\s+resume)(?:\s+cooking)?(?:\s+again)?(?:\s+(?:at|to))?\s+(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+    if (resumeMatch) {
+      var _rb = resumeMatch[1].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
+      if (!/am|pm/i.test(_rb)) _rb += ' PM'
+      constraints.gapEndMins = gpParseTime(_rb)
+    } else {
+      // No explicit resume — guess 1hr before dinner
+      constraints.gapEndMins = dinnerMins - 60
+    }
   }
-  var startMatch = lower.match(/(?:start(?:ing)?(?:\s+(?:at|prep|cooking))?|begin(?:ning)?|free|available|can\s+(?:start|cook))(?:\s+(?:at|from|after|around|cooking|prep))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-  if (!startMatch) startMatch = lower.match(/(?:free|available|home|back)\s+(?:from|after|at|by|around|starting)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-  if (!startMatch) startMatch = lower.match(/(?:hour|window)\s+(?:from|between|at)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
-  // If gap was detected and no explicit start, use gap start as start time
-  if (!startMatch && constraints.gapStartMins !== null && constraints.startMins === null) constraints.startMins = constraints.gapStartMins
+
+  // Only look for startMatch if prepBetween didn't set startMins
+  var startMatch = null
+  if (constraints.startMins === null) {
+    startMatch = lower.match(/(?:start(?:ing)?(?:\s+(?:at|prep|cooking))?|begin(?:ning)?|can\s+(?:start|cook))(?:\s+(?:at|from|after|around|cooking|prep))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+    if (!startMatch) startMatch = lower.match(/(?:free|available|home|back)\s+(?:from|after|at|by|around|starting)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+    if (!startMatch) startMatch = lower.match(/(?:hour|window)\s+(?:from|between|at)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+  }
 
   if (startNow) {
     constraints.startMins = nowMins
