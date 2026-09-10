@@ -2939,10 +2939,12 @@ function gpParseConstraints(notes, dinnerMins) {
   var rawWindows = []
 
   // Pattern: "from 8 to 9", "8am-9am", "between 8 and 9", "8am to 9am"
-  var rangeRe = /(?:from\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:to|-|–|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/gi
+  var rangeRe = /(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p))\s*(?:to|-|\u2013|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)|(\d{1,2}(?::\d{2})?)\s*(?:to|-|\u2013|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p))/gi
   var m
   while ((m = rangeRe.exec(lower)) !== null) {
-    var s = gpNormalizeTime2(m[1]), e = gpNormalizeTime2(m[2])
+    var t1 = (m[1] || m[3] || '').trim(), t2 = (m[2] || m[4] || '').trim()
+    if (!t1 || !t2) continue
+    var s = gpNormalizeTime2(t1), e = gpNormalizeTime2(t2)
     if (s > 0 && e > s && e <= dinnerMins) rawWindows.push({ startMins: s, endMins: e })
   }
 
@@ -2961,7 +2963,7 @@ function gpParseConstraints(notes, dinnerMins) {
   rawWindows.sort(function(a, b) { return a.startMins - b.startMins })
 
   // Also look for "start cooking at X" / "back at X" / "resume at X"
-  var cookStartRe = /(?:start(?:\s+cooking)?|back|resume|return|then\s+(?:back|cook))(?:\s+(?:cooking|prep))?(?:\s+again)?(?:\s+(?:at|from))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i
+  var cookStartRe = /(?:start(?:\s+(?:cooking|the))?|back|resume|return|then\s+(?:back|cook)|final\s+cooking|cooking\s+push)(?:\s+(?:cooking|prep|push|again|the|final))*(?:\s+(?:at|from))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i
   var cookStartMatch = lower.match(cookStartRe)
   var cookStartMins = cookStartMatch ? gpNormalizeTime2(cookStartMatch[1]) : 0
 
@@ -2974,10 +2976,15 @@ function gpParseConstraints(notes, dinnerMins) {
   var windows = []
 
   if (rawWindows.length > 0) {
-    // Use extracted windows as prep windows
+    // Prepend night_before if mentioned
+    if (/night before|evening before|the night before|tonight|prep.*tonight|this evening/i.test(lower)) {
+      windows.push({ label: 'night_before', startMins: -60, endMins: 0 })
+    }
+    // Use extracted time ranges as named prep windows
     rawWindows.forEach(function(w, i) {
-      var lbl = i === 0 ? (rawWindows.length > 1 ? 'morning_prep' : 'prep') :
-               i === 1 ? 'afternoon_prep' : 'prep_' + (i+1)
+      var lbl = windows.length === 0
+        ? (rawWindows.length > 1 ? 'morning_prep' : 'prep')
+        : i === 0 ? 'morning_prep' : i === 1 ? 'afternoon_prep' : 'prep_' + (i+1)
       windows.push({ label: lbl, startMins: w.startMins, endMins: w.endMins })
     })
 
@@ -3005,14 +3012,14 @@ function gpParseConstraints(notes, dinnerMins) {
     // Also set legacy gap fields for backward compat (use first gap)
     constraints.gapStartMins = rawWindows[0].endMins
     constraints.gapEndMins = cookStart
-  } else if (cookStartMins > 0 || /night before|evening before|the night before/i.test(lower) || /morning|next morning/i.test(lower)) {
+  } else if (cookStartMins > 0 || /night before|evening before|the night before|tonight|prep.*tonight|this evening/i.test(lower) || /morning|next morning|tomorrow morning/i.test(lower)) {
     // Multi-day or labelled windows without explicit time ranges
     var namedWindows = []
-    if (/night before|evening before|the night before/i.test(lower)) {
-      namedWindows.push({ label: 'night_before', startMins: -60, endMins: 0 }) // negative = "night before", display as label
+    if (/night before|evening before|the night before|tonight|prep.*tonight|this evening/i.test(lower)) {
+      namedWindows.push({ label: 'night_before', startMins: -60, endMins: 0 })
     }
-    if (/morning|next morning/i.test(lower)) {
-      namedWindows.push({ label: 'morning_prep', startMins: 1, endMins: 2 }) // placeholder, display as "Morning"
+    if (/morning|next morning|tomorrow morning/i.test(lower)) {
+      namedWindows.push({ label: 'morning_prep', startMins: 1, endMins: 2 })
     }
     if (cookStartMins > 0) {
       namedWindows.push({ label: 'cooking', startMins: cookStartMins, endMins: dinnerMins })
@@ -3047,7 +3054,8 @@ function gpNormalizeStep(s) {
   var time = s.scheduled_time || s.time || s.start_time || s.start || ''
   var active = s.active_min || s.duration_minutes || s.duration || s.active || 0
   var passive = s.passive_min || s.passive || 0
-  return { step: step, time: time, active_min: parseInt(active)||0, passive_min: parseInt(passive)||0 }
+  var window_label = s.window || s.window_label || s.phase || s.period || ''
+  return { step: step, time: time, active_min: parseInt(active)||0, passive_min: parseInt(passive)||0, window: window_label }
 }
 
 function gpParseWindows(windowsJson, targetTime) {
