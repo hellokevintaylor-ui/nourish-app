@@ -2847,7 +2847,7 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
     ) + '\n\n' +
     (hasEditedBaseline
       ? 'YOUR JOB: Return the CURRENT EDITED PLAN above with only the specific changes from User constraints applied. Keep all other steps exactly as written. Do NOT add, remove, or reorder unless explicitly asked.'
-      : 'YOUR JOB: Identify any cooking windows from the user constraints (e.g. morning prep 7-8am, afternoon break 2-3pm, cooking 6-8pm). Assign each step to the most logical window — make-ahead steps in early windows, fresh/hot steps in the cooking window closest to dinner. If only one window, no window field needed. Return steps in chronological order within each window.'
+      : 'YOUR JOB: Identify cooking windows from the user constraints. Common windows: night_before (evening before dinner day), morning_prep (morning of dinner day), afternoon_prep, cooking (final window ending at dinner). Assign each step to the most logical window — things that improve with time (marinades, braises, doughs) go in night_before or morning_prep; fresh/hot things go in cooking. If only one window, omit the window field. Use these exact label names: night_before, morning_prep, afternoon_prep, cooking. Return steps in chronological order within each window.'
     ) + '\n\n' +
     'CRITICAL RULES:\n' +
     '- EAT TIME is ' + targetTime + ' — never change this\n' +
@@ -3003,11 +3003,22 @@ function gpParseConstraints(notes, dinnerMins) {
     // Also set legacy gap fields for backward compat (use first gap)
     constraints.gapStartMins = rawWindows[0].endMins
     constraints.gapEndMins = cookStart
-  } else if (cookStartMins > 0) {
-    // No explicit windows but "start cooking at X" given
-    // Single cooking window from cookStartMins to dinner
-    constraints.startMins = cookStartMins
-    constraints.windows = [{ label: 'cooking', startMins: cookStartMins, endMins: dinnerMins }]
+  } else if (cookStartMins > 0 || /night before|evening before|the night before/i.test(lower) || /morning|next morning/i.test(lower)) {
+    // Multi-day or labelled windows without explicit time ranges
+    var namedWindows = []
+    if (/night before|evening before|the night before/i.test(lower)) {
+      namedWindows.push({ label: 'night_before', startMins: -60, endMins: 0 }) // negative = "night before", display as label
+    }
+    if (/morning|next morning/i.test(lower)) {
+      namedWindows.push({ label: 'morning_prep', startMins: 1, endMins: 2 }) // placeholder, display as "Morning"
+    }
+    if (cookStartMins > 0) {
+      namedWindows.push({ label: 'cooking', startMins: cookStartMins, endMins: dinnerMins })
+      constraints.startMins = cookStartMins
+    } else if (namedWindows.length > 0) {
+      constraints.startMins = namedWindows[0].startMins
+    }
+    if (namedWindows.length > 0) constraints.windows = namedWindows
   } else {
     // No windows detected — try simple start time
     var startMatch = lower.match(/(?:start(?:ing)?(?:\s+(?:at|prep|cooking))?|begin(?:ning)?|can\s+(?:start|cook)|free|available)(?:\s+(?:at|from|after|around|cooking|prep))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
@@ -3090,27 +3101,36 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes, windows) {
     unassigned.forEach(function(s) { assigned[lastLabel].push(s) })
 
     // Place steps in each window
-    // LAST window (cooking): place BACKWARDS from eat time so food is hot at dinner
-    // EARLIER windows (prep): place forwards from window start
+    // LAST window (cooking): place BACKWARDS from eat time
+    // EARLIER windows: forwards from window start (or labelled if no real time)
     windows.forEach(function(w, wi) {
       var wSteps = assigned[w.label] || []
       if (wSteps.length === 0) return
       var isLastWindow = wi === windows.length - 1
-      if (isLastWindow) {
+      var isLabelOnly = w.startMins <= 0 || (w.startMins === 1 && w.endMins === 2)
+
+      if (isLastWindow && !isLabelOnly) {
         // Place backwards from eat time
-        var cursor = w.endMins  // eat time
+        var cursor = w.endMins
         var reversed = wSteps.slice().reverse()
         var placed = []
         reversed.forEach(function(s) {
           var dur = Math.max((s.active_min||0) + (s.passive_min||0), 5)
           cursor -= dur
-          // Don't go before window start
           if (cursor < w.startMins) cursor = w.startMins
           placed.unshift({ time: gpFormatTime(cursor), step: s.step })
         })
         placed.forEach(function(p) { result.push(p) })
+      } else if (isLabelOnly) {
+        // Label-only window (night_before, morning) — use section header as time
+        var sectionLabel = w.label === 'night_before' ? 'Night Before' :
+                           w.label === 'morning_prep' ? 'Morning' :
+                           w.label.replace(/_/g, ' ')
+        wSteps.forEach(function(s, si) {
+          result.push({ time: si === 0 ? sectionLabel : '↓', step: s.step })
+        })
       } else {
-        // Earlier windows: place forwards from window start
+        // Earlier windows with real times: place forwards
         var cursor2 = w.startMins
         wSteps.forEach(function(s) {
           var dur = Math.max((s.active_min||0) + (s.passive_min||0), 5)
