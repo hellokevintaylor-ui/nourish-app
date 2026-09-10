@@ -1349,17 +1349,29 @@ function renderRecipes() {
   if (sort === 'az') filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name))
   else if (sort === 'za') filtered = [...filtered].sort((a, b) => b.name.localeCompare(a.name))
   else if (sort === 'newest') {
-    // Sort by created_at desc (newest added first)
     filtered = [...filtered].sort((a, b) => new Date(b.created_at||0) - new Date(a.created_at||0))
   } else {
-    // 'recent' = sort by last viewed (localStorage), then by created_at
+    // 'recent' = use frozen order captured on tab arrival, don't re-sort mid-session
     const viewed = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
-    filtered = [...filtered].sort((a, b) => {
-      const ta = viewed[String(a.id)] || 0
-      const tb = viewed[String(b.id)] || 0
-      if (tb !== ta) return tb - ta
-      return new Date(b.created_at||0) - new Date(a.created_at||0)
-    })
+    const frozenOrder = state._recipeViewOrder || null
+    if (frozenOrder) {
+      // Use frozen order from tab arrival
+      filtered = [...filtered].sort((a, b) => {
+        const ia = frozenOrder.indexOf(String(a.id))
+        const ib = frozenOrder.indexOf(String(b.id))
+        if (ia === -1 && ib === -1) return new Date(b.created_at||0) - new Date(a.created_at||0)
+        if (ia === -1) return 1
+        if (ib === -1) return -1
+        return ia - ib
+      })
+    } else {
+      filtered = [...filtered].sort((a, b) => {
+        const ta = viewed[String(a.id)] || 0
+        const tb = viewed[String(b.id)] || 0
+        if (tb !== ta) return tb - ta
+        return new Date(b.created_at||0) - new Date(a.created_at||0)
+      })
+    }
   }
 
   const archivedCount = state.recipes.filter(r => r.archived).length
@@ -4620,6 +4632,16 @@ function bindEvents() {
   // Tabs
   document.querySelectorAll('.tab[data-tab]').forEach(el => {
     el.addEventListener('click', () => {
+      // Freeze recent sort order when arriving at recipes tab
+      if (el.dataset.tab === 'recipes' && (state.recipeSort || 'recent') === 'recent') {
+        var _vd = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
+        state._recipeViewOrder = state.recipes.slice().sort(function(a, b) {
+          var ta = _vd[String(a.id)]||0, tb = _vd[String(b.id)]||0
+          return tb !== ta ? tb - ta : new Date(b.created_at||0) - new Date(a.created_at||0)
+        }).map(function(r) { return String(r.id) })
+      } else if (el.dataset.tab !== 'recipes') {
+        state._recipeViewOrder = null  // clear when leaving
+      }
       state.tab = el.dataset.tab
       localStorage.setItem('mep_tab', state.tab)
       render()
@@ -5024,13 +5046,18 @@ function bindEvents() {
     el.addEventListener('click', () => {
       var rid = el.closest('.recipe-card').dataset.rid
       var isCollapsing = state.expandedRecipe === rid
-      // Track last viewed time for "Recent" sort
+      // Track last viewed time for "Recent" sort — only after 3s so quick taps don't count
       if (!isCollapsing) {
-        try {
-          var viewed = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
-          viewed[String(rid)] = Date.now()
-          localStorage.setItem('mep_recipe_viewed', JSON.stringify(viewed))
-        } catch(e) {}
+        if (window._gpViewTimer) clearTimeout(window._gpViewTimer)
+        window._gpViewTimer = setTimeout(function() {
+          try {
+            var viewed = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
+            viewed[String(rid)] = Date.now()
+            localStorage.setItem('mep_recipe_viewed', JSON.stringify(viewed))
+          } catch(e) {}
+        }, 3000)
+      } else {
+        if (window._gpViewTimer) clearTimeout(window._gpViewTimer)
       }
       if (isCollapsing) {
         // Save game plan state before collapsing
@@ -5686,7 +5713,10 @@ function bindEvents() {
     el.addEventListener('click', () => {
       var id = el.dataset.expandRecipe
       if (state.expandedRecipe !== id) {
-        try { var _v = JSON.parse(localStorage.getItem('mep_recipe_viewed')||'{}'); _v[String(id)] = Date.now(); localStorage.setItem('mep_recipe_viewed', JSON.stringify(_v)) } catch(e) {}
+        if (window._gpViewTimer) clearTimeout(window._gpViewTimer)
+        window._gpViewTimer = setTimeout(function() {
+          try { var _v = JSON.parse(localStorage.getItem('mep_recipe_viewed')||'{}'); _v[String(id)] = Date.now(); localStorage.setItem('mep_recipe_viewed', JSON.stringify(_v)) } catch(e) {}
+        }, 3000)
       }
       state.expandedRecipe = state.expandedRecipe === id ? null : id
       render()
