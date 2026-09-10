@@ -1354,11 +1354,18 @@ function renderRecipes() {
     // 'recent' = use frozen order captured on tab arrival, don't re-sort mid-session
     const viewed = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
     const frozenOrder = state._recipeViewOrder || null
-    if (frozenOrder) {
-      // Use frozen order from tab arrival
+    // Initialize frozen order if not set (e.g. page load already on recipes tab, or mid-session render)
+    if (!frozenOrder && state.tab === 'recipes') {
+      state._recipeViewOrder = state.recipes.slice().sort(function(a, b) {
+        var ta = viewed[String(a.id)]||0, tb = viewed[String(b.id)]||0
+        return tb !== ta ? tb - ta : new Date(b.created_at||0) - new Date(a.created_at||0)
+      }).map(function(r) { return String(r.id) })
+    }
+    const activeOrder = state._recipeViewOrder || null
+    if (activeOrder) {
       filtered = [...filtered].sort((a, b) => {
-        const ia = frozenOrder.indexOf(String(a.id))
-        const ib = frozenOrder.indexOf(String(b.id))
+        const ia = activeOrder.indexOf(String(a.id))
+        const ib = activeOrder.indexOf(String(b.id))
         if (ia === -1 && ib === -1) return new Date(b.created_at||0) - new Date(a.created_at||0)
         if (ia === -1) return 1
         if (ib === -1) return -1
