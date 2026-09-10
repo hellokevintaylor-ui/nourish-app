@@ -3030,41 +3030,51 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
   var gapStartMins = constraints.gapStartMins || null
   var gapEndMins = constraints.gapEndMins || null
 
-  // Check if all steps fit between startMins and dinnerMins (excluding gap)
-  var availableMins = dinnerMins - startMins - (gapStartMins && gapEndMins ? gapEndMins - gapStartMins : 0)
-  var totalMins = steps.reduce(function(sum, s) { return sum + (s.active_min || 0) + (s.passive_min || 0) }, 0)
+  // Total cooking time needed
+  var totalMins = steps.reduce(function(sum, s) { return sum + Math.max((s.active_min||0) + (s.passive_min||0), 5) }, 0)
+  var gapDur = (gapStartMins && gapEndMins) ? (gapEndMins - gapStartMins) : 0
 
-  // If not enough time, push start earlier (but never before now)
-  if (totalMins > availableMins) {
-    startMins = Math.max(nowMins, dinnerMins - totalMins - (gapStartMins && gapEndMins ? gapEndMins - gapStartMins : 0))
-  }
+  // Available time windows:
+  // Window 1: startMins → gapStartMins (or dinnerMins if no gap)
+  // Window 2: gapEndMins → dinnerMins (if gap exists)
+  var window1End = gapStartMins || dinnerMins
+  var window1Dur = window1End - startMins
+  var window2Dur = gapEndMins ? (dinnerMins - gapEndMins) : 0
+  var totalAvail = window1Dur + window2Dur
 
-  // Place steps forward from startMins, skipping the gap
+  // If steps don't fit, we still respect the start constraint
+  // Place steps forward, filling window 1 first, then window 2
   var result = []
   var cursor = startMins
+  var inWindow2 = false
 
   for (var i = 0; i < steps.length; i++) {
     var s = steps[i]
-    // Always calculate time ourselves — never trust model's scheduled_time
-    // Model's scheduled_time ignores user's start time constraints
-    var stepMins = (s.active_min || 0) + (s.passive_min || 0)
-    if (!stepMins) stepMins = 5
+    var stepMins = Math.max((s.active_min||0) + (s.passive_min||0), 5)
 
-    // If this step would run into the gap, pause and jump to gap end
-    if (gapStartMins && gapEndMins && cursor < gapStartMins && cursor + stepMins > gapStartMins) {
-      result.push({ time: gpFormatTime(cursor), step: s.step + ' — then PAUSE. Lid on, lowest heat. Take your break.' })
-      cursor = gapEndMins
-      continue
+    // If we'd run into the gap, finish this step then jump to gap end
+    if (gapStartMins && gapEndMins && !inWindow2 && cursor < gapStartMins) {
+      if (cursor + stepMins > gapStartMins) {
+        // Step straddles the gap — place it before gap, add pause note
+        result.push({ time: gpFormatTime(cursor), step: s.step + ' — ⏸ Stop here. Take your break.' })
+        cursor = gapEndMins
+        inWindow2 = true
+        continue
+      }
     }
 
-    // If inside gap, jump to end
+    // If we're in the gap, jump to window 2
     if (gapStartMins && gapEndMins && cursor >= gapStartMins && cursor < gapEndMins) {
       cursor = gapEndMins
+      inWindow2 = true
     }
 
     result.push({ time: gpFormatTime(cursor), step: s.step })
     cursor += stepMins
   }
+
+  // If last step finishes before dinner, that's fine — dinner is the serve step
+  // If it finishes AFTER dinner, we warn but still show (editing can fix)
 
   // Use targetTime directly — it's the eat-at time set by the user
   var servedLabel = isWholeDay ? 'Dinner' : (slot === 'Lunch' ? 'Lunch' : 'Dinner')
