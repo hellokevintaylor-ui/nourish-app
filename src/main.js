@@ -876,8 +876,24 @@ function render() {
 
 
 
-      <!-- GOALS PANEL -->
+
+
+      <!-- TABS -->
+      <div class="tabs">
+        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
+        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
+        <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">Week</div>
+        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">Log</div>
+        <div class="tab" id="nav-update-btn">Update</div>
+        <div class="tab" id="nav-sync-btn">Sync</div>
+      </div>
+
+
+
+      <!-- CONTENT -->
+      <div class="content">
       ${state.showGoals ? `
+
       <div class="goals-panel">
         <div class="goals-title">Your Goals</div>
 
@@ -956,23 +972,8 @@ function render() {
 
         <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--forest);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
 
-      </div>` : ''}
-
-
-      <!-- TABS -->
-      <div class="tabs">
-        <div class="tab ${state.tab==='recipes'?'active':''}" data-tab="recipes">Recipes${state.recipes.length>0?'<span class="tab-badge">'+state.recipes.length+'</span>':''}</div>
-        <div class="tab ${state.tab==='shop'?'active':''}" data-tab="shop">List${needCount>0?'<span class="tab-badge">'+needCount+'</span>':''}</div>
-        <div class="tab ${state.tab==='calendar'?'active':''}" data-tab="calendar">Week</div>
-        <div class="tab ${state.tab==='log'?'active':''}" data-tab="log">Log</div>
-        <div class="tab" id="nav-update-btn">Update</div>
-        <div class="tab" id="nav-sync-btn">Sync</div>
       </div>
-
-
-
-      <!-- CONTENT -->
-      <div class="content">
+      ` : ''}
         ${state.showSync ? `
         <div class="sync-panel">
           <div class="sync-title">Sync Devices</div>
@@ -1792,7 +1793,8 @@ function renderLogInner() {
   }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
-    '<button id="log-goals-btn" style="width:100%;margin-bottom:12px;padding:10px 14px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">Calories · Weight · Activity →</span></button>' +
+    '<button id="log-goals-btn" style="width:100%;margin-bottom:' + (state.showGoals?'0':'12') + 'px;padding:10px 14px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">' + (state.showGoals ? '▲ Close' : 'Calories · Weight · Activity →') + '</span></button>' +
+    (state.showGoals ? renderGoalsPanel() : '') +
 
     // 1. Day navigation + today summary banner
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
@@ -3006,6 +3008,12 @@ function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
   var startMins = constraints.startMins !== null ? constraints.startMins : nowMins
   if (isPlanningForToday && startMins < nowMins) startMins = nowMins
   // For future dates, allow morning start times (e.g. 7 AM prep) even though it's now evening
+  // CRITICAL: Never push start earlier than user's constraint
+  if (constraints.startMins !== null && startMins > constraints.startMins) {
+    // User said start at X — respect it even if we calculated an earlier time
+    // Don't push earlier — compress steps to fit instead
+    startMins = constraints.startMins
+  }
 
   // Gap window: gapStartMins to gapEndMins — no steps scheduled during this window
   var gapStartMins = constraints.gapStartMins || null
@@ -3187,6 +3195,10 @@ function renderCookModeInline(r) {
       '</div>'
     ).join('')
     askHtml = '<div style="border-top:0.5px solid #e8e8e5;background:#fafafa">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid #e8e8e5">' +
+        '<div style="font-size:11px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px">Ask AI</div>' +
+        '<button id="cook-ask-clear" style="font-size:11px;color:#a8a8a3;background:none;border:none;cursor:pointer;padding:2px 6px;font-family:inherit">Clear</button>' +
+      '</div>' +
       '<div style="padding:12px 14px;max-height:260px;overflow-y:auto" id="cook-ask-messages">' +
         (askMessages.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:16px 0">Ask anything about this recipe</div>' : bubbles) +
         (askLoading ? '<div style="color:#6e6e69;font-size:13px;font-style:italic;padding:4px 0">thinking...</div>' : '') +
@@ -5559,6 +5571,16 @@ function bindEvents() {
     })
   })
 
+  // cook-ask-clear
+  document.getElementById('cook-ask-clear')?.addEventListener('click', () => {
+    var rid = state.cookMode?.recipeId
+    if (rid) {
+      state.recipeChatMessages[rid] = []
+      db.saveRecipeChat && db.saveRecipeChat(rid, [])
+      render()
+    }
+  })
+
   // cook-ask-toggle: open/close inline Ask AI
   document.getElementById('cook-ask-toggle')?.addEventListener('click', async () => {
     state.cookAskOpen = !state.cookAskOpen
@@ -6414,9 +6436,33 @@ async function estimateCaloriesAI(description) {
     } else {
       var text = document.getElementById('paste-text')?.value?.trim() || ''
       if (!text) return
-      ingredients = text; instructions = ''
-      var splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
-      if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
+      // Use AI to parse — handles Substack, messy formats, mixed content
+      try {
+        var parseResp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            max_tokens: 2000,
+            system: 'You are a recipe parser. Extract recipes from messy text — blog posts, Substack articles, social media, etc. Strip out: author bios, subscription CTAs, comments, image captions, ads, social links, "jump to recipe" buttons, nutritional info tables, equipment lists, and any non-recipe content. Return ONLY valid JSON, no other text: {"name":"recipe name","ingredients":"one ingredient per line","instructions":"numbered steps"}',
+            messages: [{ role: 'user', content: 'Extract the recipe from this text:\n\n' + text.slice(0, 8000) }]
+          })
+        })
+        var parseData = await parseResp.json()
+        var parseText = (parseData.content?.[0]?.text || '').replace(/```json|```/g, '').trim()
+        var parsed = JSON.parse(parseText.match(/\{[\s\S]*\}/)?.[0] || '{}')
+        if (parsed.ingredients) ingredients = parsed.ingredients
+        if (parsed.instructions) instructions = parsed.instructions
+        if (parsed.name && !document.getElementById('paste-name')?.value?.trim()) {
+          var nameEl = document.getElementById('paste-name')
+          if (nameEl) nameEl.value = parsed.name
+          name = parsed.name
+        }
+      } catch(e) {
+        // Fallback to simple split
+        ingredients = text; instructions = ''
+        var splitMatch = text.match(/^([\s\S]*?)(?:instructions?|directions?|steps?|method|how to make)[:\s]*([\s\S]*)$/i)
+        if (splitMatch) { ingredients = splitMatch[1].replace(/ingredients?[:\s]*/i,'').trim(); instructions = splitMatch[2].trim() }
+      }
     }
     var tags = Array.from(document.querySelectorAll('.paste-tag-check:checked')).map(el => el.dataset.tag)
     var clippedFrom = state.sharedRecipe?.url || ''
