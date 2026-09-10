@@ -2906,11 +2906,22 @@ function gpParseConstraints(notes, dinnerMins) {
   // Handle both "5:30pm" and "5:30p" style times
   var timeRe = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\\.m\\.|p\\.m\\.?))'
   var startNow = /(?:start|starting|begin|prep)\s+now|can start now|starting now/i.test(lower)
-  // Flexible time pattern: handles 5pm, 5:30pm, 5:30p, 17:30
-  var timePat = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm|a\.m\.|p\.m\.|a|p)?)'
-  var startMatch = lower.match(/(?:start(?:ing)?(?:\s+prep)?|begin(?:ning)?|free|available|can\s+(?:start|cook))(?:\s+(?:at|from|after|cooking|prep))?\s+(\d{1,2}(?::\d{2})?(?:\s*(?:am|pm|a|p))?)/i)
-  if (!startMatch) startMatch = lower.match(/(?:free|available)\s+(?:from|after|at|starting)\s+(\d{1,2}(?::\d{2})?(?:\s*(?:am|pm|a|p))?)/i)
-  if (!startMatch) startMatch = lower.match(/(?:home|back|return)\s+(?:at|by|around)\s+(\d{1,2}(?::\d{2})?(?:\s*(?:am|pm|a|p))?)/i)
+
+  // Detect 'between X and Y' / 'between X - Y' gaps
+  var gapBetween = lower.match(/between\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)\s*(?:and|to|-|\u2013)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+  if (gapBetween && !constraints.gapStartMins) {
+    var _gs = gapBetween[1].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
+    var _ge = gapBetween[2].trim().replace(/(\d)(p)$/i,'$1pm').replace(/(\d)(a)$/i,'$1am')
+    if (!/am|pm/i.test(_gs)) _gs += ' PM'
+    if (!/am|pm/i.test(_ge)) _ge += ' PM'
+    constraints.gapStartMins = gpParseTime(_gs)
+    constraints.gapEndMins = gpParseTime(_ge)
+  }
+  var startMatch = lower.match(/(?:start(?:ing)?(?:\s+(?:at|prep|cooking))?|begin(?:ning)?|free|available|can\s+(?:start|cook))(?:\s+(?:at|from|after|around|cooking|prep))?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+  if (!startMatch) startMatch = lower.match(/(?:free|available|home|back)\s+(?:from|after|at|by|around|starting)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+  if (!startMatch) startMatch = lower.match(/(?:hour|window)\s+(?:from|between|at)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?)/i)
+  // If gap was detected and no explicit start, use gap start as start time
+  if (!startMatch && constraints.gapStartMins !== null && constraints.startMins === null) constraints.startMins = constraints.gapStartMins
 
   if (startNow) {
     constraints.startMins = nowMins
