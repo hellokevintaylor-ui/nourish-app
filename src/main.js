@@ -11,7 +11,7 @@ const state = {
   showSync: false,
   showArchived: false,
   recipeView: 'list',    // 'cards' or 'list'
-  recipeSort: 'newest',  // 'newest', 'az', 'za'
+  recipeSort: 'recent',  // 'recent', 'newest', 'az', 'za'
   cookMode: null,  // { recipeId, tab: 'ingredients'|'instructions' }
   chartWindow: '1M',  // '1W', '2W', '1M', '3M', 'All'
   expandedRecipe: null,
@@ -2738,7 +2738,9 @@ function gpSaveCurrent() {
     view: 'result',
     _notes: state.gamePlanNotes,
     _tab: state.gamePlanTab,
-    _ingredients: state.gamePlanIngredients
+    _ingredients: state.gamePlanIngredients,
+    _checkedSteps: Array.from(state.gamePlanCheckedSteps || new Set()),
+    _checkedIngs: Array.from(state.gamePlanCheckedIngs || new Set())
   }
   saveGamePlanToDb()
 }
@@ -4337,7 +4339,7 @@ document.addEventListener('click', function gpDelegation(e) {
     delete state.savedGamePlans[sKey]
     state.gamePlanChats[sKey] = []
     state.gamePlanResult = null; state.gamePlanView = 'planning-chat'
-    state.gamePlanEditing = false; state.gamePlanCheckedIngs = new Set()
+    state.gamePlanEditing = false; state.gamePlanCheckedIngs = new Set(); state.gamePlanCheckedSteps = new Set()
     state.gamePlanIngredients = null; state._lastGamePlan = null
     if (state.gamePlanModal) state.gamePlanModal = { ...state.gamePlanModal, result: null, view: 'planning-chat', generating: false, notes: '', targetTime: null }
     // Also clear from DB so it doesn't restore on next page load
@@ -5221,6 +5223,12 @@ function bindEvents() {
         if (saved._notes) state.gamePlanNotes = saved._notes
         if (saved._tab) state.gamePlanTab = saved._tab
         if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
+        if (saved._checkedSteps) state.gamePlanCheckedSteps = new Set(saved._checkedSteps); else state.gamePlanCheckedSteps = new Set()
+        if (saved._checkedIngs) state.gamePlanCheckedIngs = new Set(saved._checkedIngs); else state.gamePlanCheckedIngs = new Set()
+        if (saved._checkedSteps) state.gamePlanCheckedSteps = new Set(saved._checkedSteps)
+        else state.gamePlanCheckedSteps = new Set()
+        if (saved._checkedIngs) state.gamePlanCheckedIngs = new Set(saved._checkedIngs)
+        else state.gamePlanCheckedIngs = new Set()
       } else if (hasPriorChat) {
         state.gamePlanView = 'planning-chat'
         state.gamePlanModal = { slot, targetTime: state._lastGamePlan?.targetTime || defaultTime, date: today, recipeId: rid, view: 'planning-chat' }
@@ -5230,6 +5238,7 @@ function bindEvents() {
         state.gamePlanView = 'planning-chat'
         state.gamePlanTab = 'ingredients'
         state.gamePlanCheckedIngs = new Set()
+        state.gamePlanCheckedSteps = new Set()
         state.gamePlanNotes = ''
         state._lastGamePlan = { slot, date: today }
         state.gamePlanModal = { slot, targetTime: defaultTime, date: today, recipeId: rid, view: 'planning-chat' }
@@ -5529,6 +5538,8 @@ function bindEvents() {
         if (saved._notes) state.gamePlanNotes = saved._notes
         if (saved._tab) state.gamePlanTab = saved._tab
         if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
+        if (saved._checkedSteps) state.gamePlanCheckedSteps = new Set(saved._checkedSteps); else state.gamePlanCheckedSteps = new Set()
+        if (saved._checkedIngs) state.gamePlanCheckedIngs = new Set(saved._checkedIngs); else state.gamePlanCheckedIngs = new Set()
       } else {
         state.gamePlanResult = null
         state.gamePlanModal = { date: today, slot, targetTime: defaultTime, result: null, notes: '', generating: false, view: 'planning-chat' }
@@ -5666,6 +5677,9 @@ function bindEvents() {
   document.querySelectorAll('[data-expand-recipe]').forEach(el => {
     el.addEventListener('click', () => {
       var id = el.dataset.expandRecipe
+      if (state.expandedRecipe !== id) {
+        try { var _v = JSON.parse(localStorage.getItem('mep_recipe_viewed')||'{}'); _v[String(id)] = Date.now(); localStorage.setItem('mep_recipe_viewed', JSON.stringify(_v)) } catch(e) {}
+      }
       state.expandedRecipe = state.expandedRecipe === id ? null : id
       render()
     })
@@ -7029,6 +7043,8 @@ async function estimateCaloriesAI(description) {
         if (saved._notes) state.gamePlanNotes = saved._notes
         if (saved._tab) state.gamePlanTab = saved._tab
         if (saved._ingredients) state.gamePlanIngredients = saved._ingredients
+        if (saved._checkedSteps) state.gamePlanCheckedSteps = new Set(saved._checkedSteps); else state.gamePlanCheckedSteps = new Set()
+        if (saved._checkedIngs) state.gamePlanCheckedIngs = new Set(saved._checkedIngs); else state.gamePlanCheckedIngs = new Set()
         render()
       } else if (hasPriorChat) {
         state.gamePlanView = 'chat'
