@@ -2833,16 +2833,17 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
       : 'USER CONSTRAINTS:\n' + (notes || 'None') + '\n\nFULL RECIPE DETAILS:\n' + mealText
     ) + '\n\n' +
     (hasEditedBaseline
-      ? 'YOUR JOB: Return the CURRENT EDITED PLAN above with only the specific changes from User constraints applied. Keep all other steps exactly as written — same text, same scheduled_time. Do NOT add, remove, or reorder steps unless explicitly asked.'
-      : 'YOUR JOB: Generate a step-by-step timeline working backwards from ' + targetTime + '. Interleave recipes to use passive time efficiently. Include exact quantities in every step.'
+      ? 'YOUR JOB: Return the CURRENT EDITED PLAN above with only the specific changes from User constraints applied. Keep all other steps exactly as written. Do NOT add, remove, or reorder unless explicitly asked.'
+      : 'YOUR JOB: Identify any cooking windows from the user constraints (e.g. morning prep 7-8am, afternoon break 2-3pm, cooking 6-8pm). Assign each step to the most logical window — make-ahead steps in early windows, fresh/hot steps in the cooking window closest to dinner. If only one window, no window field needed. Return steps in chronological order within each window.'
     ) + '\n\n' +
     'CRITICAL RULES:\n' +
     '- EAT TIME is ' + targetTime + ' — never change this\n' +
     '- NEVER refuse or flag time conflicts — just generate the plan\n' +
     '- The plan may be for tomorrow — do not compare to current time\n' +
-    '- Return ONLY a JSON array with exactly these fields — no others:\n' +
-    '[{"step": "full step text with quantities", "active_min": 10, "passive_min": 0}]\n' +
-    '- DO NOT include scheduled_time — the app calculates times from your constraints\n' +
+    '- Return ONLY a JSON array. When multiple time windows exist (prep, cooking etc), add a "window" field matching the window name.\n' +
+    'Single window example: [{"step": "Chop onions", "active_min": 5, "passive_min": 0}]\n' +
+    'Multi-window example: [{"step": "Make vinaigrette", "active_min": 10, "passive_min": 0, "window": "morning_prep"}, {"step": "Roast chicken", "active_min": 5, "passive_min": 45, "window": "cooking"}]\n' +
+    '- DO NOT include scheduled_time — the app calculates times\n' +
     '- DO NOT use fields named: task, details, instructions, description, step_name, duration_minutes\n' +
     '- Return steps in CHRONOLOGICAL ORDER — first step first, last step last\n' +
     '- No markdown, no backticks, just the raw JSON array'
@@ -2890,7 +2891,16 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
     return null
   }
   console.log('Calling gpBuildTimeline with targetTime:', targetTime)
-  return gpBuildTimeline(gpSteps, gpNormalizeTime(targetTime) || targetTime, isWholeDay, slot, notes)
+  // Build windows from constraints for passing to gpBuildTimeline
+  var _gpConstraints = gpParseConstraints(notes || '', gpParseTime(targetTime))
+  var _gpWindows = null
+  if (_gpConstraints.startMins !== null && _gpConstraints.gapStartMins !== null && _gpConstraints.gapEndMins !== null) {
+    _gpWindows = [
+      { label: 'prep', startMins: _gpConstraints.startMins, endMins: _gpConstraints.gapStartMins },
+      { label: 'cooking', startMins: _gpConstraints.gapEndMins, endMins: gpParseTime(targetTime) }
+    ]
+  }
+  return gpBuildTimeline(gpSteps, gpNormalizeTime(targetTime) || targetTime, isWholeDay, slot, notes, _gpWindows)
 }
 
 function gpParseConstraints(notes, dinnerMins) {
@@ -2995,91 +3005,102 @@ function gpNormalizeStep(s) {
   return { step: step, time: time, active_min: parseInt(active)||0, passive_min: parseInt(passive)||0 }
 }
 
-function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes) {
+function gpParseWindows(windowsJson, targetTime) {
+  try {
+    var windows = typeof windowsJson === 'string' ? JSON.parse(windowsJson) : windowsJson
+    if (!Array.isArray(windows)) return null
+    return windows.map(function(w) {
+      var s = gpParseTime(w.start || w.startTime || '')
+      var e = gpParseTime(w.end || w.endTime || w.finish || '')
+      return { label: (w.label || w.name || w.window || 'cooking').toLowerCase().replace(/\s+/g,'_'), startMins: s, endMins: e }
+    }).filter(function(w) { return w.startMins > 0 && w.endMins > w.startMins })
+      .sort(function(a, b) { return a.startMins - b.startMins })
+  } catch(e) { return null }
+}
+
+function gpBuildTimeline(steps, targetTime, isWholeDay, slot, notes, windows) {
   steps = steps.map(gpNormalizeStep)
-  // Safety: if model returned steps backwards (last step first), reverse them
+
+  // Safety: reverse if model returned backwards
   if (steps.length > 1) {
     var firstStep = (steps[0].step || '').toLowerCase()
     var lastStep = (steps[steps.length-1].step || '').toLowerCase()
-    var firstIsLast = /plate|serve|enjoy|garnish|rest|finish|done|complete/.test(firstStep)
-    var lastIsFirst = /preheat|prep|chop|slice|season|gather|measure|set up/.test(lastStep)
+    var firstIsLast = /plate|serve|enjoy|garnish|rest the|finish the sauce|final/.test(firstStep)
+    var lastIsFirst = /preheat|set up|gather|measure|night before|day before/.test(lastStep)
     if (firstIsLast || lastIsFirst) steps = steps.slice().reverse()
   }
-  var dinnerMins = gpParseTime(targetTime)  // This is the eat-at time — never override it
-  var constraints = gpParseConstraints(notes || '', dinnerMins)
-  var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
 
-  // Is this plan for today or a future date?
-  var planDate = (arguments[4] ? '' : '') // notes is arg 4, date context from state
-  var mealDateStr = state.gamePlanModal ? state.gamePlanModal.date : null
-  var todayStr = new Date().toISOString().slice(0,10)
-  var isPlanningForToday = !mealDateStr || mealDateStr === todayStr
+  var dinnerMins = gpParseTime(targetTime)
+  var result = []
 
-  // Start time: use constraint, or current time (only enforce now-floor for today)
-  var startMins = constraints.startMins !== null ? constraints.startMins : nowMins
-  if (isPlanningForToday && startMins < nowMins) startMins = nowMins
-  // For future dates, allow morning start times (e.g. 7 AM prep) even though it's now evening
-  // CRITICAL: Never push start earlier than user's constraint
-  if (constraints.startMins !== null && startMins > constraints.startMins) {
-    // User said start at X — respect it even if we calculated an earlier time
-    // Don't push earlier — compress steps to fit instead
-    startMins = constraints.startMins
+  // WINDOW-BASED scheduling (multi-window days)
+  if (windows && windows.length > 0) {
+    // Group steps by window label
+    var assigned = {}
+    var unassigned = []
+    windows.forEach(function(w) { assigned[w.label] = [] })
+
+    steps.forEach(function(s) {
+      var lbl = (s.window || '').toLowerCase().replace(/\s+/g,'_')
+      if (lbl && assigned[lbl]) {
+        assigned[lbl].push(s)
+      } else {
+        // Try partial match
+        var matched = Object.keys(assigned).find(function(k) { return lbl.includes(k) || k.includes(lbl) })
+        if (matched) assigned[matched].push(s)
+        else unassigned.push(s)
+      }
+    })
+
+    // Unassigned steps go in the last window (cooking)
+    var lastLabel = windows[windows.length - 1].label
+    unassigned.forEach(function(s) { assigned[lastLabel].push(s) })
+
+    // Place each window's steps sequentially
+    windows.forEach(function(w) {
+      var wSteps = assigned[w.label] || []
+      if (wSteps.length === 0) return
+      var cursor = w.startMins
+      wSteps.forEach(function(s) {
+        var dur = Math.max((s.active_min||0) + (s.passive_min||0), 5)
+        result.push({ time: gpFormatTime(cursor), step: s.step })
+        cursor += dur
+      })
+    })
+
+    result.sort(function(a, b) { return gpParseTime(a.time) - gpParseTime(b.time) })
+    result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served — enjoy! 🍽️' })
+    return result
   }
 
-  // Gap window: gapStartMins to gapEndMins — no steps scheduled during this window
+  // FALLBACK: simple forward placement with optional gap
+  var constraints = gpParseConstraints(notes || '', dinnerMins)
+  var nowMins = (function() { var n = new Date(); return n.getHours() * 60 + n.getMinutes() })()
+  var startMins = constraints.startMins !== null ? constraints.startMins : nowMins
+  var mealDateStr = state.gamePlanModal ? state.gamePlanModal.date : null
+  var todayStr = new Date().toISOString().slice(0,10)
+  if ((!mealDateStr || mealDateStr === todayStr) && startMins < nowMins) startMins = nowMins
+
   var gapStartMins = constraints.gapStartMins || null
   var gapEndMins = constraints.gapEndMins || null
-
-  // Total cooking time needed
-  var totalMins = steps.reduce(function(sum, s) { return sum + Math.max((s.active_min||0) + (s.passive_min||0), 5) }, 0)
-  var gapDur = (gapStartMins && gapEndMins) ? (gapEndMins - gapStartMins) : 0
-
-  // Available time windows:
-  // Window 1: startMins → gapStartMins (or dinnerMins if no gap)
-  // Window 2: gapEndMins → dinnerMins (if gap exists)
-  var window1End = gapStartMins || dinnerMins
-  var window1Dur = window1End - startMins
-  var window2Dur = gapEndMins ? (dinnerMins - gapEndMins) : 0
-  var totalAvail = window1Dur + window2Dur
-
-  // If steps don't fit, we still respect the start constraint
-  // Place steps forward, filling window 1 first, then window 2
-  var result = []
   var cursor = startMins
-  var inWindow2 = false
 
   for (var i = 0; i < steps.length; i++) {
     var s = steps[i]
     var stepMins = Math.max((s.active_min||0) + (s.passive_min||0), 5)
-
-    // If we'd run into the gap, finish this step then jump to gap end
-    if (gapStartMins && gapEndMins && !inWindow2 && cursor < gapStartMins) {
-      if (cursor + stepMins > gapStartMins) {
-        // Step straddles the gap — place it before gap, add pause note
-        result.push({ time: gpFormatTime(cursor), step: s.step + ' — ⏸ Stop here. Take your break.' })
-        cursor = gapEndMins
-        inWindow2 = true
-        continue
-      }
+    if (gapStartMins && gapEndMins && cursor < gapStartMins && cursor + stepMins > gapStartMins) {
+      result.push({ time: gpFormatTime(cursor), step: s.step + ' — ⏸ Stop here. Take your break.' })
+      cursor = gapEndMins
+      continue
     }
-
-    // If we're in the gap, jump to window 2
     if (gapStartMins && gapEndMins && cursor >= gapStartMins && cursor < gapEndMins) {
       cursor = gapEndMins
-      inWindow2 = true
     }
-
     result.push({ time: gpFormatTime(cursor), step: s.step })
     cursor += stepMins
   }
 
-  // If last step finishes before dinner, that's fine — dinner is the serve step
-  // If it finishes AFTER dinner, we warn but still show (editing can fix)
-
-  // Use targetTime directly — it's the eat-at time set by the user
-  var servedLabel = isWholeDay ? 'Dinner' : (slot === 'Lunch' ? 'Lunch' : 'Dinner')
-  console.log('gpBuildTimeline: targetTime=', targetTime, 'cursor at end=', cursor, 'dinnerMins=', dinnerMins)
-  result.push({ time: targetTime, step: servedLabel + ' is served — enjoy! 🍽️' })
+  result.push({ time: targetTime, step: (isWholeDay ? 'Dinner' : slot) + ' is served — enjoy! 🍽️' })
   return result
 }
 
