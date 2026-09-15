@@ -13,7 +13,7 @@ const state = {
   recipeView: 'list',    // 'cards' or 'list'
   recipeSort: 'recent',  // 'recent', 'newest', 'az', 'za'
   cookMode: null,  // { recipeId, tab: 'ingredients'|'instructions' }
-  chartWindow: '1M',  // '1W', '2W', '1M', '3M', 'All'
+  chartWindow: '1W',  // '1W', '2W', '1M', '3M', 'All'
   expandedRecipe: null,
   calendarRecipePreview: null, // recipe id to show in modal from week tab
   activeCategory: 'All',
@@ -1894,6 +1894,7 @@ function renderLogInner() {
       '</div>' +
     '</div>' +
     (!isToday ? '<div style="font-size:10px;color:var(--ink3);margin-bottom:8px;font-style:italic">Adding to ' + dayLabel + '</div>' : '') +
+    (state.logModalStandalone && state.logModal ? renderLogStandalone() : '') +
     '<div class="log-search-wrap">' +
       '<input id="log-search" class="log-search-input" placeholder="Search recipes to log..." value="' + esc(search) + '" />' +
       (recipeResults.length ? '<div class="log-search-results">' +
@@ -3908,6 +3909,32 @@ function renderAddToWeekInline(r) {
       '<div style="display:flex;gap:7px">' +
         slots.map(s => '<button class="tag-filter-chip ' + (m.selectedSlot === s ? 'active' : '') + '" data-week-slot="' + s + '">' + s + '</button>').join('') +
       '</div>' +
+    '</div>' +
+  '</div>'
+}
+
+
+function renderLogStandalone() {
+  var m = state.logModal
+  if (!m) return ''
+  var estimating = m.estimating || false
+  return '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-bottom:12px">' +
+    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
+      '<button id="lm-cancel" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center">×</button>' +
+      '<div style="flex:1;font-size:13px;font-weight:700;color:white">Log — ' + esc(m.recipeName||'') + '</div>' +
+      '<button id="lm-save" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Log it</button>' +
+    '</div>' +
+    '<div style="padding:14px;display:flex;flex-direction:column;gap:8px">' +
+      '<input id="lm-portion" placeholder="How much? (e.g. 1 serving, half portion)" value="' + esc(m.portion||'') + '" style="padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none" />' +
+      '<input id="lm-notes" placeholder="Any changes? (e.g. no cheese, extra chicken)" value="' + esc(m.notes||'') + '" style="padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none" />' +
+      '<div style="display:flex;gap:8px">' +
+        (estimating
+          ? '<div style="flex:1;font-size:13px;color:#6e6e69;font-style:italic;padding:9px">Estimating calories...</div>'
+          : '<input id="lm-cals" type="number" placeholder="Calories (auto-filled)" value="' + (m.calories||'') + '" style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none" />' +
+            '<button id="lm-estimate" style="padding:9px 14px;background:white;border:1.5px solid #d4d4d0;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;color:#3a3a38">Estimate</button>'
+        ) +
+      '</div>' +
+      (m.estimateMsg ? '<div style="font-size:12px;color:#6e6e69;padding:4px 0">' + esc(m.estimateMsg) + '</div>' : '') +
     '</div>' +
   '</div>'
 }
@@ -6450,7 +6477,7 @@ async function estimateCaloriesAI(description) {
       setTimeout(() => { const card = document.querySelector('[data-rid="' + r.id + '"]'); if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, 80) }
     })
   })
-  document.querySelectorAll('#lm-cancel').forEach(btn => btn.addEventListener('click', () => { state.logModal = null; render() }))
+  document.querySelectorAll('#lm-cancel').forEach(btn => btn.addEventListener('click', () => { state.logModal = null; state.logModalStandalone = false; render() }))
 
   // Estimate button in log modal
   document.querySelectorAll('#lm-estimate').forEach(btn => btn.addEventListener('click', async () => {
@@ -6966,10 +6993,14 @@ async function estimateCaloriesAI(description) {
   // Log from recipe search result
   document.querySelectorAll('[data-log-recipe][data-log-recipe-name]').forEach(el => {
     el.addEventListener('click', () => {
-      state.logModal = { recipeId: el.dataset.logRecipe, recipeName: el.dataset.logRecipeName }
+      var logRid = el.dataset.logRecipe
+      state.logModal = { recipeId: logRid, recipeName: el.dataset.logRecipeName, portion: '', calories: '', notes: '' }
       state.logSearch = ''
       state.logSearchFocused = false
+      // Show inline in log tab (no recipe card needed)
+      state.logModalStandalone = true
       render()
+      setTimeout(() => { document.getElementById('lm-portion')?.focus() }, 80)
     })
   })
 
