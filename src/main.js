@@ -2066,10 +2066,28 @@ function renderWeightProgress() {
     }
   }
 
-  // SVG — Y range must always include start weight and target
-  const visibleWeights = [startWeight, latestWeight, parseFloat(target_weight), ...actualPoints.map(p => p.weight)]
-  const minW = Math.floor(Math.min(...visibleWeights)) - 1
-  const maxW = Math.ceil(Math.max(...visibleWeights)) + 1
+  // SVG — Y range
+  // For windowed views (not All), zoom axis to expected range for that period
+  // so small daily/weekly changes are actually visible
+  const targetW = parseFloat(target_weight)
+  let minW, maxW
+  if (windowDays && lbsPerDay > 0) {
+    // Calculate expected weight at start and end of current window
+    const windowStartExpected = Math.max(startWeight - lbsPerDay * windowStartDay, targetW)
+    const windowEndExpected = Math.max(startWeight - lbsPerDay * (windowStartDay + windowDays), targetW)
+    // Include actual logged weights in window too
+    const windowActualWeights = actualPoints.map(p => p.weight)
+    const allWindowWeights = [windowStartExpected, windowEndExpected, ...windowActualWeights]
+    // Zoom in: axis spans the expected range + small padding (2 lbs each side)
+    const padding = Math.max(1, (windowStartExpected - windowEndExpected) * 0.3)
+    minW = Math.floor(Math.min(...allWindowWeights) - padding)
+    maxW = Math.ceil(Math.max(...allWindowWeights) + padding)
+  } else {
+    // All view: full journey from start to target
+    const visibleWeights = [startWeight, latestWeight, targetW, ...actualPoints.map(p => p.weight)]
+    minW = Math.floor(Math.min(...visibleWeights)) - 1
+    maxW = Math.ceil(Math.max(...visibleWeights)) + 1
+  }
   const W = 320, H = 155, padL = 32, padR = 12, padT = 12, padB = 28
 
   // X scale based on window — map day offsets within the window
@@ -2464,7 +2482,12 @@ function renderCalendar() {
         const search = state.calendarSearch || ''
         const tagFilter = state.calendarTagFilter
         const recipeTags = getTagsForNamespace('recipe')
-        let results = state.recipes
+        const _calViewed = JSON.parse(localStorage.getItem('mep_recipe_viewed') || '{}')
+        let results = state.recipes.slice().sort((a, b) => {
+          const ta = _calViewed[String(a.id)] || 0, tb = _calViewed[String(b.id)] || 0
+          if (tb !== ta) return tb - ta
+          return new Date(b.created_at||0) - new Date(a.created_at||0)
+        })
         if (tagFilter) results = results.filter(r => (r.tags||[]).includes(tagFilter))
         if (search) results = results.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
         results = results.slice(0, 20)
