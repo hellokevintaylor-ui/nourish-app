@@ -1660,7 +1660,8 @@ function renderShop() {
         renderShopItems(done) +
       '</div>'
     : '') +
-  + (function() {
+ +
+    + (function() {
     var lcMsgs = state.logChatMessages || []
     var lcBubbles = lcMsgs.map(function(m) {
       return '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:8px">' +
