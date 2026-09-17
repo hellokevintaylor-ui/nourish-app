@@ -1687,6 +1687,63 @@ function renderShop() {
   '</div>'
 }
 
+function renderGoalsPanel() {
+  const s = buildGoalsSuggestions()
+  const paceCards = !s
+    ? '<div style="font-size:11px;color:#6e6e69;margin-top:10px">Fill in start weight, target weight, height, and age to see your calorie targets.</div>'
+    : '<div style="margin-top:12px;font-size:11px;color:#6e6e69">Maintenance calories (TDEE): ~' + s.tdee + ' cal/day</div>' +
+      '<div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">' +
+        '<div class="goal-pace-card ' + (state.goals.loss_pace==='moderate'?'active':'') + '" data-pace="moderate" data-calories="' + s.moderate.calories + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+            '<span style="font-weight:700">Moderate</span>' +
+            '<span style="font-size:15px;font-weight:800">' + s.moderate.calories + ' cal/day</span>' +
+          '</div>' +
+          '<div style="font-size:11px;opacity:0.8">~' + s.moderate.lbs_per_week + ' lbs/week · Reach ' + state.goals.target_weight + ' lbs by ' + s.moderate.date + '</div>' +
+        '</div>' +
+        '<div class="goal-pace-card ' + (state.goals.loss_pace==='faster'?'active':'') + '" data-pace="faster" data-calories="' + s.faster.calories + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+            '<span style="font-weight:700">Faster</span>' +
+            '<span style="font-size:15px;font-weight:800">' + s.faster.calories + ' cal/day</span>' +
+          '</div>' +
+          '<div style="font-size:11px;opacity:0.8">~' + s.faster.lbs_per_week + ' lbs/week · Reach ' + state.goals.target_weight + ' lbs by ' + s.faster.date + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:8px;font-size:11px;color:#6e6e69">Tap a plan to select it. Current goal: <strong style="color:#1a1a1a">' + state.goals.calories + ' cal/day</strong></div>'
+
+  return '<div class="goals-panel" style="border-radius:12px;margin-bottom:12px">' +
+    '<div class="goals-title">Your Goals</div>' +
+    '<div class="goals-grid">' +
+      '<div class="goal-field"><label>Goal Start Date</label>' +
+        '<input type="date" id="goal-start-date-input" value="' + (state.goals.goal_start_date || new Date().toISOString().slice(0,10)) + '" /></div>' +
+      '<div class="goal-field"><label>Goal Start Weight (lbs)</label>' +
+        '<input type="number" data-goal="weight" value="' + (state.goals.weight||'') + '" placeholder="e.g. 186" /></div>' +
+    '</div>' +
+    '<div class="goals-grid" style="margin-top:8px">' +
+      '<div class="goal-field"><label>Target Weight (lbs)</label>' +
+        '<input type="number" data-goal="target_weight" value="' + (state.goals.target_weight||'') + '" placeholder="e.g. 165" /></div>' +
+      '<div class="goal-field"><label>Current Weight (lbs)</label>' +
+        '<input type="text" readonly value="' + (state.weightLog&&state.weightLog.length>0 ? state.weightLog[state.weightLog.length-1].weight+' lbs' : 'Log a weigh-in') + '" style="opacity:' + (state.weightLog&&state.weightLog.length>0?'1':'0.5') + ';cursor:default" /></div>' +
+    '</div>' +
+    '<div class="goals-grid" style="margin-top:8px">' +
+      '<div class="goal-field"><label>Height (inches)</label>' +
+        '<input type="number" data-goal="height_inches" value="' + (state.goals.height_inches||'') + '" placeholder="e.g. 70" /></div>' +
+      '<div class="goal-field"><label>Age</label>' +
+        '<input type="number" data-goal="age" value="' + (state.goals.age||'') + '" placeholder="e.g. 35" /></div>' +
+    '</div>' +
+    '<div class="goal-field" style="margin-top:8px"><label>Activity Level</label>' +
+      '<select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #d4d4d0;background:#f9f9f8;color:#1a1a1a;font-size:13px;font-family:inherit">' +
+        '<option value="sedentary" ' + (state.goals.activity_level==='sedentary'?'selected':'') + '>Sedentary (desk job, little exercise)</option>' +
+        '<option value="light" ' + (state.goals.activity_level==='light'?'selected':'') + '>Lightly Active (1-3 days/week)</option>' +
+        '<option value="moderate" ' + (state.goals.activity_level==='moderate'?'selected':'') + '>Moderately Active (3-5 days/week)</option>' +
+        '<option value="active" ' + (state.goals.activity_level==='active'?'selected':'') + '>Very Active (6-7 days/week)</option>' +
+        '<option value="very_active" ' + (state.goals.activity_level==='very_active'?'selected':'') + '>Extremely Active (physical job + exercise)</option>' +
+      '</select></div>' +
+    paceCards +
+    '<button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>' +
+  '</div>'
+}
+
+
 function renderLog() {
   try {
     return renderLogInner()
