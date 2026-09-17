@@ -28,8 +28,26 @@ Claude reads this at the start of a session; keep entries short.
 - The 0x08 corruption was invisible in GitHub's file viewer and undetectable
   by behavioral tests. The integrity check in gp_test.js is what catches it.
 
+**Project setup (Claude side)**
+- Rewrote project instructions: removed the contradictory syntax-check lines,
+  fixed the gp_test.js path (repo root, `npm test`), dropped the
+  /mnt/transcripts reference, added the GitHub restore block.
+- Removed all code files from Claude project files. They were stale snapshots
+  that don't track GitHub — one of them handed Claude the superseded
+  gp_test.js this session. GitHub is now the only source of truth; Claude
+  restores via curl at session start.
+- Added this file and wired it into the restore block.
+- Working model: one thread per task, not one long thread. Continuity comes
+  from instructions + GitHub + this file, not from keeping a thread alive.
+
 **Open / next**
-- Nothing in flight. Pick up whatever's next.
+- Nothing in flight. Next session: pick up actual app work — this session was
+  all infrastructure.
+- Unverified: whether scheduled/recurring tasks are available in the web UI
+  (would suit a weekly `npm test` health check; not suited to updating this
+  file, since a scheduled run can't see the session it would summarize).
+- Unverified: whether "Search and reference past chats" is enabled. Chat
+  search returned nothing all session.
 
 **Known, not urgent**
 - `.env` is committed to this public repo. Contains only `VITE_SUPABASE_URL`
