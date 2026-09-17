@@ -46,6 +46,9 @@ const state = {
   logSearch: '',        // search query in log tab
   logTagFilter: null,
   logSearchFocused: false,
+  logChatOpen: false,
+  logChatMessages: [],
+  logChatLoading: false,
   logBreakdownId: null,
   chatRecipeContext: null,
   recipeChatMessages: {},   // keyed by recipe id, persistent per-recipe chat threads
@@ -1657,6 +1660,30 @@ function renderShop() {
         renderShopItems(done) +
       '</div>'
     : '') +
+  + (function() {
+    var lcMsgs = state.logChatMessages || []
+    var lcBubbles = lcMsgs.map(function(m) {
+      return '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:8px">' +
+        '<div style="max-width:88%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:' + (m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px') + ';padding:9px 12px;font-size:13px;line-height:1.5">' + esc(m.content).replace(/\n/g,'<br>') + '</div></div>'
+    }).join('')
+    var panel = state.logChatOpen ? (
+      '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-top:4px">' +
+      '<div style="background:#1a1a1a;padding:10px 14px;display:flex;align-items:center;gap:8px">' +
+        '<div style="flex:1;font-size:13px;font-weight:700;color:white">💬 AI Coach</div>' +
+        '<button id="log-chat-clear" style="font-size:11px;color:rgba(255,255,255,0.5);background:none;border:none;cursor:pointer;padding:2px 6px;font-family:inherit">Clear</button>' +
+        '<button id="log-chat-close" style="width:24px;height:24px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:14px;color:white;border-radius:50%">×</button>' +
+      '</div>' +
+      '<div style="padding:12px 14px;max-height:280px;overflow-y:auto" id="log-chat-messages">' +
+        (lcMsgs.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:16px 0">Ask me anything about your food, weight, or progress</div>' : lcBubbles) +
+        (state.logChatLoading ? '<div style="color:#6e6e69;font-size:13px;font-style:italic;padding:4px 0">thinking...</div>' : '') +
+      '</div>' +
+      '<div style="padding:8px 14px 12px;display:flex;gap:8px">' +
+        '<input id="log-chat-input" placeholder="e.g. Why isn\'t the scale moving?" style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none;-webkit-appearance:none" />' +
+        '<button id="log-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Send</button>' +
+      '</div>' +
+    '</div>') : ''
+    return '<button id="log-ai-btn" style="width:100%;margin-top:12px;padding:10px 14px;background:' + (state.logChatOpen?'#1a1a1a':'white') + ';color:' + (state.logChatOpen?'white':'#3a3a38') + ';border:1.5px solid ' + (state.logChatOpen?'#1a1a1a':'#d4d4d0') + ';border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>💬 AI Coach</span><span style="opacity:0.6;font-size:11px">' + (state.logChatOpen?'▲ Close':'Ask about your food & progress →') + '</span></button>' + panel
+  }()) +
   '</div>'
 }
 
@@ -4325,6 +4352,26 @@ async function gpGenerateHandler() {
     }, 50)
   }, {signal: _s}))
 
+  // ── LOG AI COACH ──
+  document.getElementById('log-ai-btn')?.addEventListener('click', () => {
+    state.logChatOpen = !state.logChatOpen
+    render()
+    if (state.logChatOpen) setTimeout(() => {
+      document.getElementById('log-chat-input')?.focus()
+      var el = document.getElementById('log-chat-messages'); if (el) el.scrollTop = el.scrollHeight
+    }, 80)
+  })
+  document.getElementById('log-chat-close')?.addEventListener('click', () => { state.logChatOpen = false; render() })
+  document.getElementById('log-chat-clear')?.addEventListener('click', () => { state.logChatMessages = []; render() })
+  document.getElementById('log-chat-send')?.addEventListener('click', function() {
+    var inp = document.getElementById('log-chat-input')
+    var txt = inp?.value?.trim()
+    if (txt) { inp.value = ''; sendLogChat(txt) }
+  })
+  document.getElementById('log-chat-input')?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('log-chat-send')?.click() }
+  })
+
   // ── CHAT HANDLERS ──
   // chat-send and chat-input handled via document delegation below
   document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
@@ -4650,6 +4697,51 @@ async function sendGpChatMessage(text) {
   }, 50)
   saveGamePlanToDb()
 }
+
+async function sendLogChat(text) {
+  if (!text.trim()) return
+  state.logChatMessages = [...(state.logChatMessages||[]), { role: 'user', content: text }]
+  state.logChatLoading = true
+  render()
+  setTimeout(() => { var el = document.getElementById('log-chat-messages'); if (el) el.scrollTop = el.scrollHeight }, 50)
+
+  var goals = state.goals || {}
+  var recentWeight = (state.weightLog || []).slice(-7).map(function(e) { return e.date + ': ' + e.weight + 'lbs' }).join(', ')
+  var recentCals = {}
+  ;(state.log || []).slice(-21).forEach(function(e) {
+    var d = e.date || 'today'; if (!recentCals[d]) recentCals[d] = 0; recentCals[d] += (e.calories||0)
+  })
+  var calsStr = Object.entries(recentCals).slice(-7).map(function(kv) { return kv[0]+': '+kv[1]+' cal' }).join(', ')
+  var exerciseStr = (state.exerciseLog || []).slice(-7).map(function(e) { return (e.date||'')+': '+(e.type||'')+' '+(e.duration||0)+'min'+(e.calories_burned?' '+(e.calories_burned)+' cal burned':'') }).join('; ')
+
+  var ctx = 'You are a supportive, knowledgeable nutrition and fitness coach. The user\'s real data:\n\n' +
+    'GOALS — Target weight: ' + (goals.target_weight||'not set') + 'lbs | Daily calories: ' + (goals.daily_calories||'not set') + ' | Target date: ' + (goals.target_date||'not set') + '\n' +
+    'RECENT WEIGHT (newest first): ' + (recentWeight||'none logged') + '\n' +
+    'RECENT DAILY CALORIES: ' + (calsStr||'none logged') + '\n' +
+    'RECENT EXERCISE: ' + (exerciseStr||'none logged') + '\n\n' +
+    'Be honest, data-driven, and encouraging. Reference their actual numbers. Keep responses concise — 2-4 sentences unless they ask for detail.'
+
+  try {
+    var resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: ctx,
+        messages: state.logChatMessages.map(function(m) { return { role: m.role, content: m.content } }),
+        max_tokens: 500
+      })
+    })
+    var data = await resp.json()
+    var reply = data.content?.[0]?.text || 'Sorry, something went wrong.'
+    state.logChatMessages = [...state.logChatMessages, { role: 'assistant', content: reply }]
+  } catch(e) {
+    state.logChatMessages = [...state.logChatMessages, { role: 'assistant', content: 'Something went wrong — try again.' }]
+  }
+  state.logChatLoading = false
+  render()
+  setTimeout(() => { var el = document.getElementById('log-chat-messages'); if (el) el.scrollTop = el.scrollHeight }, 50)
+}
+
 
 function bindEvents() {
   if (_gpAC) _gpAC.abort()
