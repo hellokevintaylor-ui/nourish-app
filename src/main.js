@@ -3043,7 +3043,7 @@ async function generateGamePlan(slot, targetTime, date, recipeId, notes) {
 function gpNormalizeTime2(t) {
   if (!t) return 0
   t = String(t).trim()
-  t = t.replace(/(\d)(\s*)(p)/i,'$1$2pm').replace(/(\d)(\s*)(a)/i,'$1$2am')
+  t = t.replace(/(\d)(\s*)(p)\b/i,'$1$2pm').replace(/(\d)(\s*)(a)\b/i,'$1$2am')
   if (!/am|pm/i.test(t)) t += ' PM'
   return gpParseTime(t)
 }
