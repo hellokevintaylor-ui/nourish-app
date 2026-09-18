@@ -5,6 +5,81 @@ Claude reads this at the start of a session; keep entries short.
 
 ---
 
+## 2026-09-18
+
+**Workflow: getting files out of Cowork threads**
+- Cowork threads can't hand over a downloadable file. Workaround in use: build
+  the change in a Cowork thread, paste the finished file into a **chat** thread,
+  chat writes it to disk and presents it, then upload via the GitHub web UI.
+- **When a file is pasted in, the paste is the source of truth and GitHub is the
+  stale copy** — the reverse of the normal rule. Claude reconstructed from
+  GitHub first this session and had to be corrected.
+- Small files (db.js, ~350 lines): transcribe verbatim. Large files (main.js,
+  ~7500 lines): retyping is unreliable, so pull GitHub and re-apply the delta,
+  then verify every distinctive string from the paste is present.
+- Better option not yet tried: have the Cowork thread emit a **diff against
+  GitHub main** instead of the whole file. Smaller, and provably base + change.
+
+**Shipped**
+- `src/db.js` — from Cowork. `updateRecipe` now also maps `cooking_notes`,
+  `clippedFrom`, `clipped_from`, `category`; returns null on empty update;
+  surfaces Supabase errors; warns on unmapped keys.
+- `src/main.js` — source-link feature from Cowork (`normalizeSourceUrl`,
+  `sourceHost`, `editingSourceId`/`_sourceDraft`, editable source row on the
+  recipe card, `paste-source` field), plus six fixes found while auditing.
+
+**These two files are a matched pair.** Old `updateRecipe` mapped only six keys
+and silently dropped the rest. Three main.js call sites were affected:
+`{clippedFrom}` (source-link save wrote nothing — UI updated optimistically so
+it looked like it worked), `{category}` (inline dropdown never persisted),
+`{cooking_notes}` snake_case from cook-mode Save (notes dropped, other fields
+saved — looked intermittent). Shipping main.js without db.js leaves the
+source-link feature broken.
+
+**Fixed in main.js**
+- **~100 lines of event bindings were stranded at module scope**, between
+  `gpGenerateHandler` and `init()` — indented like a function body but not in
+  one. Ran once at load before any DOM existed, so every
+  `getElementById(...)?.addEventListener` hit null and no-opped. AI Coach
+  (button/send/Enter/close/clear), chat starter prompts, "Clear conversation",
+  and the recipe-context back arrow and title link had never been bound. Moved
+  into `bindEvents`. Dropped two entries already covered by live handlers
+  (`#gp-regenerate` → `gpDelegation`; `.chat-recipe-link` → the broader
+  `[data-go-recipe]` handler) rather than double-binding.
+- `renderShop`: stray `+ +` coerced the AI Coach panel HTML to a number — the
+  tab rendered the literal text `NaN`.
+- `stripMeasurements`: `\ d*` (escaped space) instead of `\d*`. Only stripped a
+  quantity when a space followed; `"1/2 cup milk"` → `"1/cup milk"`. Feeds
+  pantry matching, so it was quietly weakening "do I already have this?".
+- `parseIngredientLine` mixed numbers: `m => m[0]` returns the first *character*
+  of the match, not the group. `"12½ oz"` → `"1 oz"`. Now converts properly
+  (1.5, 12.5, 2.75).
+- `sendGpChatMessage` read `slot` before its `var` destructuring assigned it →
+  always undefined, so every Lunch plan fell back to the dinner time.
+- `gp-tweak-from-fullscreen` referenced five undefined vars — guaranteed
+  ReferenceError on click. Repointed to the `sc*` locals.
+- Verified after: syntax check clean, `npm test` 10/10.
+
+**Learned**
+- `node --input-type=module --check` will not catch a block of handlers sitting
+  at module scope — it's valid JS that silently does nothing. Indentation is
+  the only visible tell.
+- Optional chaining (`?.addEventListener`) hides binding bugs completely. The
+  handlers failed silently for however long this has been shipped.
+
+**Open / next**
+- "▶ Start Cooking" does nothing. Sets `gamePlanView = 'fullscreen'`, but no
+  renderer handles that value, so it falls through to the result view.
+  `gp-exit-fullscreen` and `gp-tweak-from-fullscreen` exist for a screen that
+  was never built. Feature gap, not a typo — decide whether to build or remove.
+- The AI Coach panel lives in `renderShop`, not `renderLogInner`, despite the
+  "log" naming throughout. Now that it renders, it appears on the Shop tab.
+  Looks like it landed in the wrong function; moving it is a product call.
+- Add `src/db.js` to the restore block in the project instructions — it wasn't
+  there, and it was needed this session.
+
+---
+
 ## 2026-09-17
 
 **Done**
