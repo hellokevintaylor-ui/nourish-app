@@ -1303,7 +1303,7 @@ function renderRecipeCard(r) {
     '<div class="recipe-actions" style="margin-top:6px">' +
       '<button class="ra-btn" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">+ List</button>' +
       '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">+ Week</button>' +
-      '<button class="ra-btn" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Log</button>' +
+      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Log</button>' +
       '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe" style="flex:1;font-size:11px;padding:7px 4px;border-radius:8px;border:1.5px solid #d4d4d0;background:white;cursor:pointer;font-family:inherit;color:#3a3a38">+ Tag</button>' +
       (r.archived
         ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Restore</button>'
