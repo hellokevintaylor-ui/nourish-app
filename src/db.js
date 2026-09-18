@@ -27,15 +27,32 @@ export async function saveRecipe(recipe) {
     return data?.[0]
   }
 }
+// Every key updateRecipe knows how to write. Anything else is dropped —
+// the console.warn in updateRecipe is what makes that visible.
+const UPDATABLE_RECIPE_FIELDS = new Set([
+  'name', 'ingredients', 'instructions',
+  'cookingNotes', 'cooking_notes',
+  'clippedFrom', 'clipped_from',
+  'category', 'notes', 'prep_time'
+])
 export async function updateRecipe(id, fields) {
+  // Accepts either camelCase or snake_case — callers use both.
   const mapped = {}
   if (fields.name !== undefined) mapped.name = fields.name
   if (fields.ingredients !== undefined) mapped.ingredients = fields.ingredients
   if (fields.instructions !== undefined) mapped.instructions = fields.instructions
   if (fields.cookingNotes !== undefined) mapped.cooking_notes = fields.cookingNotes
+  if (fields.cooking_notes !== undefined) mapped.cooking_notes = fields.cooking_notes
+  if (fields.clippedFrom !== undefined) mapped.clipped_from = fields.clippedFrom
+  if (fields.clipped_from !== undefined) mapped.clipped_from = fields.clipped_from
+  if (fields.category !== undefined) mapped.category = fields.category
   if (fields.notes !== undefined) mapped.notes = fields.notes
   if (fields.prep_time !== undefined) mapped.prep_time = fields.prep_time
-  const { data } = await supabase.from('recipes').update(mapped).eq('id', id).select()
+  const unmapped = Object.keys(fields).filter(k => !UPDATABLE_RECIPE_FIELDS.has(k))
+  if (unmapped.length) console.warn('[updateRecipe] ignoring unmapped field(s):', unmapped.join(', '))
+  if (Object.keys(mapped).length === 0) return null
+  const { data, error } = await supabase.from('recipes').update(mapped).eq('id', id).select()
+  if (error) { console.warn('[updateRecipe] failed:', error.message, mapped); return null }
   return data?.[0]
 }
 export async function archiveRecipe(id, archived) {
