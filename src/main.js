@@ -67,11 +67,13 @@ const state = {
   logRecipeResults: [], // recipe search results in log
   editingNotes: null,
   editingRecipeId: null,
+  editingSourceId: null, // recipe id whose source-link input is open
+  _sourceDraft: null,    // in-flight text of that input, survives background renders
   shopReview: null,
   _shopPendingItem: null,
   _shopPantryWarning: null,
   pasteModal: false,
-  pasteModalDraft: { name: '', text: '', ingredients: '', instructions: '' }, // persists across re-renders
+  pasteModalDraft: { name: '', text: '', ingredients: '', instructions: '', source: '' }, // persists across re-renders
   addRecipeModal: false,
   addRecipeModalDraft: { name: '', ingredients: '', instructions: '', notes: '', tags: [] },
   logModal: null,
@@ -223,6 +225,12 @@ function preserveRecipeEditState() {
       if (instEl) recipe.instructions = instEl.value
     }
   }
+  // Same for an open source-link input — a background render (tag add, prep-time
+  // estimate landing) shouldn't wipe a URL mid-paste.
+  if (state.editingSourceId) {
+    const srcEl = document.getElementById('source-input-' + state.editingSourceId)
+    if (srcEl) state._sourceDraft = srcEl.value
+  }
 }
 
 async function addTagToItem(name, namespace, itemId) {
@@ -357,6 +365,27 @@ function normalizeRecipe(r) {
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+
+// Source links: accept what a human actually pastes ("open.substack.com/p/x",
+// a full https:// URL, a URL with tracking junk) and return a usable href,
+// or '' if it isn't a web address at all.
+function normalizeSourceUrl(s) {
+  let v = String(s || '').trim().replace(/^<|>$/g, '')
+  if (!v) return ''
+  if (/^(javascript|data|vbscript):/i.test(v)) return ''
+  if (!/^https?:\/\//i.test(v)) {
+    if (!/^[\w-]+(\.[\w-]+)+/.test(v)) return ''
+    v = 'https://' + v.replace(/^\/+/, '')
+  }
+  try {
+    const u = new URL(v)
+    if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.')) return ''
+    return u.href
+  } catch (e) { return '' }
+}
+function sourceHost(u) {
+  try { return new URL(u).hostname.replace(/^www\./, '') } catch (e) { return '' }
+}
 function calcTDEE(weight_lbs, height_inches, age, activity_level) {
   if (!weight_lbs || !height_inches || !age) return null
   // Mifflin-St Jeor (male default — we can add sex later)
@@ -400,7 +429,7 @@ function todayBurned() { return (state.exerciseLog || []).reduce((s,e) => s + (e
 // Strip measurements from ingredient lines for pantry matching
 function stripMeasurements(line) {
   return line.toLowerCase()
-    .replace(/[\d¼½¾⅓⅔⅛⅜⅝⅞]+\/?\ d*\s*/g, '')
+    .replace(/[\d¼½¾⅓⅔⅛⅜⅝⅞]+\/?\d*\s*/g, '')
     .replace(/\b(cups?|tbsp|tsp|tablespoons?|teaspoons?|oz|ounces?|lbs?|pounds?|grams?|kg|ml|liters?|pints?|quarts?|cans?|jars?|packages?|bunches?|heads?|cloves?|slices?|pieces?|large|medium|small|fresh|dried|chopped|minced|diced|sliced|about|to\s+\d+)\b/gi, '')
     .replace(/[,.\-–()]/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -421,7 +450,13 @@ function parseIngredientLine(line) {
     return (map[frac] || frac) + ' '
   })
   // Also handle mixed numbers like "1½" -> "1.5"
-  s = s.replace(/(\d+)[¼½¾⅓⅔⅛⅜⅝⅞]/, m => m[0])
+  // (was `m => m[0]`, which returned the first character of the match, so
+  // "12½" became "1" — the quantity silently lost a digit.)
+  s = s.replace(/(\d+)([¼½¾⅓⅔⅛⅜⅝⅞])/, (_, whole, frac) => {
+    const vals = {'¼':0.25,'½':0.5,'¾':0.75,'⅓':1/3,'⅔':2/3,'⅛':0.125,'⅜':0.375,'⅝':0.625,'⅞':0.875}
+    const n = parseInt(whole) + (vals[frac] || 0)
+    return String(Math.round(n * 100) / 100)
+  })
 
   const unitMap = {
     'tablespoons?': 'tbsp', 'tbsp': 'tbsp', 'teaspoons?': 'tsp', 'tsp': 'tsp',
@@ -1192,7 +1227,7 @@ function renderRecipeCard(r) {
         '<div class="recipe-name">' + esc(r.name) + (r.archived ? ' <span style="font-size:10px;color:#a8a8a3;font-weight:400">(archived)</span>' : '') + '</div>' +
         ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview" style="margin-top:4px">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
         prepSummary +
-        (r.clippedFrom ? '<div class="recipe-meta" style="margin-top:2px"><a href="' + esc(r.clippedFrom) + '" target="_blank" style="color:#3d52c4;text-decoration:none;font-size:11px">📎 ' + esc((() => { try { return new URL(r.clippedFrom).hostname.replace('www.','') } catch(e) { return '' } })()) + '</a></div>' : '') +
+        (r.clippedFrom ? '<div class="recipe-meta" style="margin-top:2px"><a href="' + esc(r.clippedFrom) + '" target="_blank" rel="noopener" style="color:#3d52c4;text-decoration:none;font-size:11px">📎 ' + esc(sourceHost(r.clippedFrom)) + '</a></div>' : '') +
       '</div>' +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
@@ -1285,9 +1320,23 @@ function renderRecipeCard(r) {
         '</button>' +
       '</div>')
 
-  const sourceLink = r.clippedFrom
-    ? '<div class="recipe-link" style="margin-bottom:8px"><a href="' + esc(r.clippedFrom) + '" target="_blank">View original ↗</a></div>'
-    : ''
+  // Source link — always editable, so a pasted recipe can get its URL later.
+  const isEditingSource = String(state.editingSourceId) === String(r.id)
+  const sourceLink = isEditingSource
+    ? '<div class="recipe-link" style="margin-bottom:8px;display:flex;gap:6px;align-items:center">' +
+        '<input id="source-input-' + r.id + '" class="source-edit-input" value="' + esc(state._sourceDraft != null ? state._sourceDraft : (r.clippedFrom || '')) + '" placeholder="Paste the link — e.g. someone.substack.com/p/…" ' +
+          'style="flex:1;min-width:0;padding:7px 10px;border:1.5px solid #d4d4d0;border-radius:8px;font-size:12px;font-family:inherit;outline:none;box-sizing:border-box" />' +
+        '<button data-source-save="' + r.id + '" style="flex-shrink:0;padding:7px 11px;background:#1a1a1a;color:white;border:1.5px solid #1a1a1a;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Save</button>' +
+        '<button data-source-cancel="' + r.id + '" style="flex-shrink:0;padding:7px 10px;background:white;color:#6e6e69;border:1.5px solid #d4d4d0;border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit">×</button>' +
+      '</div>'
+    : (r.clippedFrom
+        ? '<div class="recipe-link" style="margin-bottom:8px;display:flex;gap:10px;align-items:baseline">' +
+            '<a href="' + esc(r.clippedFrom) + '" target="_blank" rel="noopener">View original ↗</a>' +
+            '<button data-source-edit="' + r.id + '" style="background:none;border:none;padding:0;cursor:pointer;font-family:inherit;font-size:11px;color:#6e6e69;text-decoration:underline">Edit</button>' +
+          '</div>'
+        : '<div class="recipe-link" style="margin-bottom:8px">' +
+            '<button data-source-edit="' + r.id + '" style="background:none;border:none;padding:0;cursor:pointer;font-family:inherit;font-size:12px;color:#3d52c4">+ Add source link</button>' +
+          '</div>')
 
   const body = '<div class="recipe-body">' +
     sourceLink +
@@ -1660,8 +1709,7 @@ function renderShop() {
         renderShopItems(done) +
       '</div>'
     : '') +
- +
-    + (function() {
+    (function() {
     var lcMsgs = state.logChatMessages || []
     var lcBubbles = lcMsgs.map(function(m) {
       return '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:8px">' +
@@ -4145,6 +4193,7 @@ function renderPasteModalInline() {
     '<div style="padding:14px">' +
       warning +
       '<input id="paste-name" placeholder="Recipe name" value="' + ((state.pasteModalDraft && state.pasteModalDraft.name) || nameVal) + '" style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:8px" />' +
+      '<input id="paste-source" placeholder="Source link (optional)" value="' + esc((state.pasteModalDraft && state.pasteModalDraft.source) || (r && r.url) || '') + '" style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:12px;font-family:inherit;color:#3a3a38;outline:none;box-sizing:border-box;margin-bottom:8px" />' +
       bodyFields +
       tagSection +
     '</div>' +
@@ -4376,109 +4425,6 @@ async function gpGenerateHandler() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 50)
   }
-  document.querySelectorAll('#gp-regenerate').forEach(btn => btn.addEventListener('click', async () => {
-    if (_gpGen !== myGen) return
-    if (!state.gamePlanModal) return
-    var { slot, date, recipeId, targetTime: storedTime, notes } = state.gamePlanModal
-    var timeVal = storedTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
-    var regenKey = date + '-' + slot
-    var regenChatKey = regenKey
-    if (slot === 'Dinner' || slot === 'Day') localStorage.setItem('mep_dinner_time', timeVal)
-    // Clear saved so old plan doesn't leak back
-    delete state.savedGamePlans[regenKey]
-    state.gamePlanModal = { ...state.gamePlanModal, targetTime: timeVal, result: null, generating: true }
-    state.gamePlanResult = null
-    state._lastGamePlan = { slot, date, targetTime: timeVal }
-    render()
-    var regenNotes = 'TARGET MEAL TIME: ' + timeVal + '. ' + (notes || '')
-    var regenResult = await generateGamePlan(slot, timeVal, date, recipeId, regenNotes)
-    var finalResult2 = regenResult || [{ time: '?', step: 'Could not generate timeline — check your connection and try again.' }]
-    state.gamePlanResult = finalResult2
-    state.gamePlanModal = { ...state.gamePlanModal, result: finalResult2, view: 'result', generating: false }
-    // Add new result to chat history
-    if (!state.gamePlanChats[regenChatKey]) state.gamePlanChats[regenChatKey] = []
-    var slotLabel = slot === 'Day' ? 'whole day' : slot
-    var timelineText = finalResult2.map(item => item.time + ' — ' + item.step).join('\n')
-    state.gamePlanChats[regenChatKey].push({ role: 'assistant', content: 'Here\'s your updated plan (eat at ' + timeVal + '):\n\n' + timelineText })
-    state.gamePlanView = 'result'
-    state.savedGamePlans[regenKey] = { ...state.gamePlanModal }
-    saveGamePlanToDb()
-    render()
-    setTimeout(() => {
-      var el = document.getElementById('gp-start-cooking')
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }, 50)
-  }, {signal: _s}))
-
-  // ── LOG AI COACH ──
-  document.getElementById('log-ai-btn')?.addEventListener('click', () => {
-    state.logChatOpen = !state.logChatOpen
-    render()
-    if (state.logChatOpen) setTimeout(() => {
-      document.getElementById('log-chat-input')?.focus()
-      var el = document.getElementById('log-chat-messages'); if (el) el.scrollTop = el.scrollHeight
-    }, 80)
-  })
-  document.getElementById('log-chat-close')?.addEventListener('click', () => { state.logChatOpen = false; render() })
-  document.getElementById('log-chat-clear')?.addEventListener('click', () => { state.logChatMessages = []; render() })
-  document.getElementById('log-chat-send')?.addEventListener('click', function() {
-    var inp = document.getElementById('log-chat-input')
-    var txt = inp?.value?.trim()
-    if (txt) { inp.value = ''; sendLogChat(txt) }
-  })
-  document.getElementById('log-chat-input')?.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('log-chat-send')?.click() }
-  })
-
-  // ── CHAT HANDLERS ──
-  // chat-send and chat-input handled via document delegation below
-  document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
-    el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
-  })
-  document.getElementById('chat-clear-context')?.addEventListener('click', () => {
-    state.chatRecipeContext = null; render()
-  })
-
-  // Back arrow and recipe name link — both jump back to the recipe card
-  var goToRecipeFromChat = () => {
-    if (!state.chatRecipeContext) return
-    var rid = String(state.chatRecipeContext.id)
-    state.tab = 'recipes'
-    state.expandedRecipe = rid
-    localStorage.setItem('mep_tab', 'recipes')
-    render()
-    setTimeout(() => {
-      var card = document.querySelector('[data-rid="' + rid + '"]')
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 80)
-  }
-  document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
-  document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
-  document.getElementById('chat-clear')?.addEventListener('click', () => {
-    var rid = state.chatRecipeContext?.id
-    if (rid) {
-      state.recipeChatMessages[rid] = []
-      db.saveRecipeChat(rid, [])
-    } else {
-      state.chatMessages = []
-    }
-    render()
-  })
-
-  // Tappable recipe links inside AI chat bubbles
-  document.querySelectorAll('.chat-recipe-link[data-go-recipe]').forEach(el => {
-    el.addEventListener('click', () => {
-      state.tab = 'recipes'
-      state.expandedRecipe = String(el.dataset.goRecipe)
-      localStorage.setItem('mep_tab', 'recipes')
-      render()
-      setTimeout(() => {
-        var card = document.querySelector('[data-rid="' + el.dataset.goRecipe + '"]')
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
-    })
-  })
-
 
 // ── START ─────────────────────────────────────────────────────────────────────
 init()
@@ -4681,7 +4627,9 @@ async function sendGpChatMessage(text) {
   if (isGenerateIntent && !state.gamePlanModal?.result) {
     // User wants to generate — extract time from conversation if mentioned
     // Use the stored target time — don't try to parse it from the message
-    var targetTime = state.gamePlanModal?.targetTime || (slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
+    // `slot` is destructured further down, so reading it here got `undefined`
+    // and every Lunch plan silently fell back to the dinner time.
+    var targetTime = state.gamePlanModal?.targetTime || (state.gamePlanModal?.slot === 'Lunch' ? '12:30 PM' : localStorage.getItem('mep_dinner_time') || '7:00 PM')
     // Summarize conversation as notes
     var convoHistory = state.gamePlanChats[chatKey].map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n')
     var convoNotes = 'TARGET MEAL TIME: ' + targetTime + '. CURRENT TIME: ' + new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}) + '.\n' + convoHistory
@@ -5316,6 +5264,64 @@ function bindEvents() {
       }
       state.editingRecipeId = null
       render()
+    })
+  })
+
+  // Source link editing — cards are re-rendered wholesale by render(), so these
+  // listeners die with their nodes. No duplicate-listener risk.
+  document.querySelectorAll('[data-source-edit]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      var rid = el.dataset.sourceEdit
+      state.editingSourceId = String(state.editingSourceId) === String(rid) ? null : rid
+      state._sourceDraft = null
+      render()
+      setTimeout(() => {
+        var i = document.getElementById('source-input-' + rid)
+        if (i) { i.focus(); i.select() }
+      }, 50)
+    })
+  })
+  document.querySelectorAll('[data-source-cancel]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingSourceId = null
+      state._sourceDraft = null
+      render()
+    })
+  })
+  document.querySelectorAll('[data-source-save]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      var rid = el.dataset.sourceSave
+      var raw = document.getElementById('source-input-' + rid)?.value?.trim() || ''
+      var url = raw ? normalizeSourceUrl(raw) : ''
+      if (raw && !url) {
+        alert("That doesn't look like a web address. Try something like someone.substack.com/p/the-recipe")
+        return
+      }
+      var recipe = state.recipes.find(x => String(x.id) === String(rid))
+      if (recipe) {
+        recipe.clippedFrom = url
+        await db.updateRecipe(rid, { clippedFrom: url })
+      }
+      state.editingSourceId = null
+      state._sourceDraft = null
+      render()
+    })
+  })
+  document.querySelectorAll('.source-edit-input').forEach(el => {
+    el.addEventListener('click', e => e.stopPropagation())
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        document.querySelector('[data-source-save="' + el.id.replace('source-input-', '') + '"]')?.click()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        state.editingSourceId = null
+        state._sourceDraft = null
+        render()
+      }
     })
   })
 
@@ -6835,8 +6841,9 @@ async function estimateCaloriesAI(description) {
   document.getElementById('paste-text')?.addEventListener('input', e => { state.pasteModalDraft.text = e.target.value })
   document.getElementById('paste-ingredients')?.addEventListener('input', e => { state.pasteModalDraft.ingredients = e.target.value })
   document.getElementById('paste-instructions')?.addEventListener('input', e => { state.pasteModalDraft.instructions = e.target.value })
+  document.getElementById('paste-source')?.addEventListener('input', e => { state.pasteModalDraft.source = e.target.value })
 
-  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; render() })
+  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '', source: '' }; render() })
   document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
   document.querySelectorAll('#paste-save').forEach(btn => btn.addEventListener('click', async () => {
     var name = document.getElementById('paste-name')?.value?.trim()
@@ -6877,7 +6884,13 @@ async function estimateCaloriesAI(description) {
       }
     }
     var tags = Array.from(document.querySelectorAll('.paste-tag-check:checked')).map(el => el.dataset.tag)
-    var clippedFrom = state.sharedRecipe?.url || ''
+    // Typed source wins over the crawled URL; falls back to it when left blank.
+    var sourceRaw = document.getElementById('paste-source')?.value?.trim() || ''
+    var clippedFrom = sourceRaw ? normalizeSourceUrl(sourceRaw) : (state.sharedRecipe?.url || '')
+    if (sourceRaw && !clippedFrom) {
+      alert("That source doesn't look like a web address — fix it or clear it, then save.")
+      return
+    }
     var saved = await db.saveRecipe({ name, ingredients, instructions, notes: '', clippedFrom, tags })
     if (saved) {
       var recipe = normalizeRecipe(saved)
@@ -6891,7 +6904,7 @@ async function estimateCaloriesAI(description) {
         }
       })
     }
-    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '' }; state.tab = 'recipes'; render()
+    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '', source: '' }; state.tab = 'recipes'; render()
   }))
 
   // Chat handled by chat handlers below
@@ -7378,12 +7391,12 @@ async function estimateCaloriesAI(description) {
     var scResult = state.gamePlanResult
     if (!scResult) return
     var scChatKey = gpChatKey()
-    if (!state.gamePlanChats[chatKey] || state.gamePlanChats[chatKey].length === 0) {
-      var slotLabel = slot === 'Day' ? 'whole day' : (slot || 'meal')
-      var timelineText = result.map(item => item.time + ' — ' + item.step).join('\n')
-      state.gamePlanChats[chatKey] = [{
+    if (!state.gamePlanChats[scChatKey] || state.gamePlanChats[scChatKey].length === 0) {
+      var scSlotLabel = scSlot === 'Day' ? 'whole day' : (scSlot || 'meal')
+      var scTimelineText = scResult.map(item => item.time + ' — ' + item.step).join('\n')
+      state.gamePlanChats[scChatKey] = [{
         role: 'assistant',
-        content: 'Here\'s your ' + twkSlotLabel + ' plan (dinner at ' + (twkTime || '7:00 PM') + '):\n\n' + twkTimelineText + '\n\nWhat tweaks would you like to make?'
+        content: 'Here\'s your ' + scSlotLabel + ' plan (dinner at ' + (scTime || '7:00 PM') + '):\n\n' + scTimelineText + '\n\nWhat tweaks would you like to make?'
       }]
     }
     state.gamePlanView = 'chat'; render()
@@ -7436,4 +7449,62 @@ async function estimateCaloriesAI(description) {
     state.gamePlanModal = false
     render()
   }, {signal: _s}))
+
+  // ── LOG AI COACH + CHAT HANDLERS ──
+  // These were stranded at module scope and never bound; they belong here,
+  // where render() has already rebuilt the DOM.
+  // ── LOG AI COACH ──
+  document.getElementById('log-ai-btn')?.addEventListener('click', () => {
+    state.logChatOpen = !state.logChatOpen
+    render()
+    if (state.logChatOpen) setTimeout(() => {
+      document.getElementById('log-chat-input')?.focus()
+      var el = document.getElementById('log-chat-messages'); if (el) el.scrollTop = el.scrollHeight
+    }, 80)
+  })
+  document.getElementById('log-chat-close')?.addEventListener('click', () => { state.logChatOpen = false; render() })
+  document.getElementById('log-chat-clear')?.addEventListener('click', () => { state.logChatMessages = []; render() })
+  document.getElementById('log-chat-send')?.addEventListener('click', function() {
+    var inp = document.getElementById('log-chat-input')
+    var txt = inp?.value?.trim()
+    if (txt) { inp.value = ''; sendLogChat(txt) }
+  })
+  document.getElementById('log-chat-input')?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('log-chat-send')?.click() }
+  })
+
+  // ── CHAT HANDLERS ──
+  // chat-send and chat-input handled via document delegation below
+  document.querySelectorAll('.chat-prompt-chip[data-prompt-text], .chat-starter[data-prompt-text]').forEach(el => {
+    el.addEventListener('click', () => sendChatMessage(el.dataset.promptText))
+  })
+  document.getElementById('chat-clear-context')?.addEventListener('click', () => {
+    state.chatRecipeContext = null; render()
+  })
+
+  // Back arrow and recipe name link — both jump back to the recipe card
+  var goToRecipeFromChat = () => {
+    if (!state.chatRecipeContext) return
+    var rid = String(state.chatRecipeContext.id)
+    state.tab = 'recipes'
+    state.expandedRecipe = rid
+    localStorage.setItem('mep_tab', 'recipes')
+    render()
+    setTimeout(() => {
+      var card = document.querySelector('[data-rid="' + rid + '"]')
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }
+  document.getElementById('chat-back-to-recipe')?.addEventListener('click', goToRecipeFromChat)
+  document.getElementById('chat-go-to-recipe')?.addEventListener('click', goToRecipeFromChat)
+  document.getElementById('chat-clear')?.addEventListener('click', () => {
+    var rid = state.chatRecipeContext?.id
+    if (rid) {
+      state.recipeChatMessages[rid] = []
+      db.saveRecipeChat(rid, [])
+    } else {
+      state.chatMessages = []
+    }
+    render()
+  })
 }
