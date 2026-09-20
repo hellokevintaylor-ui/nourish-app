@@ -30,6 +30,7 @@ const state = {
   clipboardBanner: null,
   _lastClipboardUrl: null,
   clipUrlModal: false,
+  clipError: null,      // set when a URL clip fails; shown in the paste panel
   editingPantryId: null,
   editingShopId: null,
   weekOffset: 0,        // 0 = current week, 1 = next week, -1 = last week
@@ -1709,30 +1710,6 @@ function renderShop() {
         renderShopItems(done) +
       '</div>'
     : '') +
-    (function() {
-    var lcMsgs = state.logChatMessages || []
-    var lcBubbles = lcMsgs.map(function(m) {
-      return '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:8px">' +
-        '<div style="max-width:88%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:' + (m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px') + ';padding:9px 12px;font-size:13px;line-height:1.5">' + esc(m.content).replace(/\n/g,'<br>') + '</div></div>'
-    }).join('')
-    var panel = state.logChatOpen ? (
-      '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-top:4px">' +
-      '<div style="background:#1a1a1a;padding:10px 14px;display:flex;align-items:center;gap:8px">' +
-        '<div style="flex:1;font-size:13px;font-weight:700;color:white">💬 AI Coach</div>' +
-        '<button id="log-chat-clear" style="font-size:11px;color:rgba(255,255,255,0.5);background:none;border:none;cursor:pointer;padding:2px 6px;font-family:inherit">Clear</button>' +
-        '<button id="log-chat-close" style="width:24px;height:24px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:14px;color:white;border-radius:50%">×</button>' +
-      '</div>' +
-      '<div style="padding:12px 14px;max-height:280px;overflow-y:auto" id="log-chat-messages">' +
-        (lcMsgs.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:16px 0">Ask me anything about your food, weight, or progress</div>' : lcBubbles) +
-        (state.logChatLoading ? '<div style="color:#6e6e69;font-size:13px;font-style:italic;padding:4px 0">thinking...</div>' : '') +
-      '</div>' +
-      '<div style="padding:8px 14px 12px;display:flex;gap:8px">' +
-        '<input id="log-chat-input" placeholder="e.g. Why isn\'t the scale moving?" style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none;-webkit-appearance:none" />' +
-        '<button id="log-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Send</button>' +
-      '</div>' +
-    '</div>') : ''
-    return '<button id="log-ai-btn" style="width:100%;margin-top:12px;padding:10px 14px;background:' + (state.logChatOpen?'#1a1a1a':'white') + ';color:' + (state.logChatOpen?'white':'#3a3a38') + ';border:1.5px solid ' + (state.logChatOpen?'#1a1a1a':'#d4d4d0') + ';border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>💬 AI Coach</span><span style="opacity:0.6;font-size:11px">' + (state.logChatOpen?'▲ Close':'Ask about your food & progress →') + '</span></button>' + panel
-  }()) +
   '</div>'
 }
 
@@ -1800,6 +1777,32 @@ function renderLog() {
     console.error('renderLog error:', e)
     return '<div class="tab-content"><div style="padding:20px;color:red">Log tab error: ' + e.message + '</div></div>'
   }
+}
+
+// AI Coach — lives at the bottom of the Log tab.
+function renderCoachPanel() {
+    var lcMsgs = state.logChatMessages || []
+    var lcBubbles = lcMsgs.map(function(m) {
+      return '<div style="display:flex;flex-direction:column;align-items:' + (m.role==='user'?'flex-end':'flex-start') + ';margin-bottom:8px">' +
+        '<div style="max-width:88%;background:' + (m.role==='user'?'#1a1a1a':'#f2f2f0') + ';color:' + (m.role==='user'?'white':'#1a1a1a') + ';border-radius:' + (m.role==='user'?'16px 16px 4px 16px':'16px 16px 16px 4px') + ';padding:9px 12px;font-size:13px;line-height:1.5">' + esc(m.content).replace(/\n/g,'<br>') + '</div></div>'
+    }).join('')
+    var panel = state.logChatOpen ? (
+      '<div style="border:0.5px solid #e8e8e5;border-radius:12px;overflow:hidden;margin-top:4px">' +
+      '<div style="background:#1a1a1a;padding:10px 14px;display:flex;align-items:center;gap:8px">' +
+        '<div style="flex:1;font-size:13px;font-weight:700;color:white">💬 AI Coach</div>' +
+        '<button id="log-chat-clear" style="font-size:11px;color:rgba(255,255,255,0.5);background:none;border:none;cursor:pointer;padding:2px 6px;font-family:inherit">Clear</button>' +
+        '<button id="log-chat-close" style="width:24px;height:24px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:14px;color:white;border-radius:50%">×</button>' +
+      '</div>' +
+      '<div style="padding:12px 14px;max-height:280px;overflow-y:auto" id="log-chat-messages">' +
+        (lcMsgs.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:16px 0">Ask me anything about your food, weight, or progress</div>' : lcBubbles) +
+        (state.logChatLoading ? '<div style="color:#6e6e69;font-size:13px;font-style:italic;padding:4px 0">thinking...</div>' : '') +
+      '</div>' +
+      '<div style="padding:8px 14px 12px;display:flex;gap:8px">' +
+        '<input id="log-chat-input" placeholder="e.g. Why isn\'t the scale moving?" style="flex:1;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:20px;font-size:13px;font-family:inherit;outline:none;-webkit-appearance:none" />' +
+        '<button id="log-chat-send" style="background:#1a1a1a;color:white;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Send</button>' +
+      '</div>' +
+    '</div>') : ''
+    return '<button id="log-ai-btn" style="width:100%;margin-top:12px;padding:10px 14px;background:' + (state.logChatOpen?'#1a1a1a':'white') + ';color:' + (state.logChatOpen?'white':'#3a3a38') + ';border:1.5px solid ' + (state.logChatOpen?'#1a1a1a':'#d4d4d0') + ';border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>💬 AI Coach</span><span style="opacity:0.6;font-size:11px">' + (state.logChatOpen?'▲ Close':'Ask about your food & progress →') + '</span></button>' + panel
 }
 
 function renderLogInner() {
@@ -2092,6 +2095,9 @@ function renderLogInner() {
     // 9. Day-by-day breakdown of last 7 days
     '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">Day by day</div>' +
     weekRows +
+
+    // 10. AI Coach
+    renderCoachPanel() +
 
   '</div>'
 }
@@ -4160,10 +4166,24 @@ function renderPasteModalInline() {
     '</div>'
   }
   const r = state.sharedRecipe
-  const title = r ? 'Save Clipped Recipe' : 'Paste a Recipe'
-  const sub = r ? esc(r.source || '') : 'From YouTube, Instagram, a comment, anywhere'
+  const failedClip = !r && !!state.clipError
+  const errSrc = (state.pasteModalDraft && state.pasteModalDraft.source) || ''
+  const title = r ? 'Save Clipped Recipe'
+    : (failedClip ? (errSrc ? "Couldn't clip that page" : "Couldn't read that") : 'Paste a Recipe')
+  const sub = r ? esc(r.source || '')
+    : (failedClip ? esc(errSrc ? (sourceHost(errSrc) || errSrc) : 'Add it by hand below')
+                  : 'From YouTube, Instagram, a comment, anywhere')
   const nameVal = r ? esc(r.name || '') : ''
-  const warning = r && r.warning ? '<div style="background:#fff5f2;border:1px solid #ffcdc4;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#c0392b">[!] ' + esc(r.warning) + '</div>' : ''
+  const errBox = failedClip
+    ? '<div style="background:#fff5f2;border:1px solid #ffcdc4;border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:12px;color:#c0392b;line-height:1.45">' +
+      '<strong>Clip failed.</strong> ' + esc(state.clipError) +
+      (errSrc
+        ? '<div style="margin-top:7px"><button id="clip-retry" style="background:#c0392b;color:white;border:none;border-radius:7px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Try again</button>' +
+          '<button id="clip-open-source" style="margin-left:6px;background:white;color:#c0392b;border:1px solid #ffcdc4;border-radius:7px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Open page</button></div>'
+        : '') +
+      '</div>'
+    : ''
+  const warning = errBox || (r && r.warning ? '<div style="background:#fff5f2;border:1px solid #ffcdc4;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#c0392b">[!] ' + esc(r.warning) + '</div>' : '')
   const bodyFields = r
     ? '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Ingredients</div>' +
       '<textarea id="paste-ingredients" style="width:100%;min-height:90px;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;margin-bottom:8px" placeholder="One ingredient per line...">' + esc((state.pasteModalDraft && state.pasteModalDraft.ingredients) || (r && r.ingredients) || '') + '</textarea>' +
@@ -4192,12 +4212,57 @@ function renderPasteModalInline() {
     '</div>' +
     '<div style="padding:14px">' +
       warning +
-      '<input id="paste-name" placeholder="Recipe name" value="' + ((state.pasteModalDraft && state.pasteModalDraft.name) || nameVal) + '" style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:8px" />' +
+      '<input id="paste-name" placeholder="Recipe name" value="' + esc((state.pasteModalDraft && state.pasteModalDraft.name) || (r && r.name) || '') + '" style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:14px;font-weight:600;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:8px" />' +
       '<input id="paste-source" placeholder="Source link (optional)" value="' + esc((state.pasteModalDraft && state.pasteModalDraft.source) || (r && r.url) || '') + '" style="width:100%;padding:9px 12px;border:1.5px solid #d4d4d0;border-radius:10px;font-size:12px;font-family:inherit;color:#3a3a38;outline:none;box-sizing:border-box;margin-bottom:8px" />' +
       bodyFields +
       tagSection +
     '</div>' +
   '</div>'
+}
+
+// Single entry point for "clip this URL". Used by the Clip panel and the
+// clipboard banner. On failure it keeps the panel open, explains what went
+// wrong, and leaves the URL in the source field so a manual paste still
+// keeps the link — it does NOT silently become the blank Paste panel.
+async function clipFromUrl(url) {
+  state.clipUrlModal = false
+  state.clipboardBanner = null
+  state.clipError = null
+  state.sharedRecipe = null
+  state.pasteModal = true
+  state.shareLoading = true
+  state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '', source: url }
+  render()
+
+  var failed = function (msg) {
+    state.shareLoading = false
+    state.sharedRecipe = null
+    state.clipError = msg
+    render()
+  }
+
+  var resp
+  try {
+    resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
+  } catch (e) {
+    return failed('Could not reach the clipper. Check your connection and try again — or paste the recipe text below.')
+  }
+
+  var data = null
+  try { data = await resp.json() } catch (e) {}
+
+  if (!resp.ok || !data || data.error) {
+    var msg = (data && data.error) || ('The clipper returned an error (' + resp.status + ').')
+    return failed(msg + ' Paste the recipe text below instead — the source link is already filled in.')
+  }
+
+  if (!data.name && !data.ingredients && !data.instructions) {
+    return failed('Nothing recipe-shaped came back from that page. Paste the recipe text below instead — the source link is already filled in.')
+  }
+
+  state.shareLoading = false
+  state.sharedRecipe = data
+  render()
 }
 
 function renderPasteModal() {
@@ -4233,7 +4298,7 @@ function renderPasteModal() {
     '<div class="modal-title">' + title + '</div>' +
     '<div class="modal-sub">' + sub + '</div>' +
     warning +
-    '<input id="paste-name" placeholder="Recipe name" value="' + (state.pasteModalDraft.name || nameVal) + '" />' +
+    '<input id="paste-name" placeholder="Recipe name" value="' + esc(state.pasteModalDraft.name || (r && r.name) || '') + '" />' +
     bodyFields +
     tagSection +
     '<div class="modal-btns"><button class="modal-cancel" id="paste-cancel">Cancel</button><button class="modal-save" id="paste-save">Save to Recipe Box</button></div>' +
@@ -5142,17 +5207,14 @@ function bindEvents() {
     } catch (err) {
       state.shareLoading = false
       state.sharedRecipe = null
+      state.clipError = "Couldn't read the recipe from that photo. Type or paste it below instead."
       render()
-      setTimeout(() => {
-        var nameEl = document.getElementById('paste-name')
-        if (nameEl) nameEl.placeholder = "Could not read photo -- paste recipe manually"
-      }, 50)
     }
     e.target.value = ''
   })
   document.getElementById('add-recipe-btn')?.addEventListener('click', () => { state.addRecipeModal = !state.addRecipeModal; render(); setTimeout(() => document.getElementById('r-name')?.focus(), 50) })
   document.getElementById('clip-url-btn-recipes')?.addEventListener('click', async () => {
-    state.clipUrlModal = true; render()
+    state.clipUrlModal = true; state.clipError = null; render()
     setTimeout(async () => {
       try {
         var text = await navigator.clipboard.readText()
@@ -6691,8 +6753,8 @@ async function estimateCaloriesAI(description) {
   }))
 
   // Paste modal
-  document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true;  render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
-  document.getElementById('paste-recipe-btn')?.addEventListener('click', () => { state.pasteModal = true; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('paste-btn')?.addEventListener('click', () => { state.pasteModal = true; state.clipError = null; state.sharedRecipe = null; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
+  document.getElementById('paste-recipe-btn')?.addEventListener('click', () => { state.pasteModal = true; state.clipError = null; state.sharedRecipe = null; render(); setTimeout(() => document.getElementById('paste-name')?.focus(), 50) })
   document.getElementById('nav-update-btn')?.addEventListener('click', async () => {
     var el = document.getElementById('nav-update-btn')
     if (el) el.textContent = 'Updating...'
@@ -6714,7 +6776,7 @@ async function estimateCaloriesAI(description) {
 
   // Clip URL modal
   document.getElementById('clip-url-btn')?.addEventListener('click', async () => {
-    state.clipUrlModal = true;  render()
+    state.clipUrlModal = true; state.clipError = null; render()
     setTimeout(async () => {
       try {
         var text = await navigator.clipboard.readText()
@@ -6728,29 +6790,24 @@ async function estimateCaloriesAI(description) {
   document.getElementById('clip-url-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'clip-url-modal-bg') { state.clipUrlModal = false; render() } })
   document.querySelectorAll('#clip-url-go').forEach(btn => btn.addEventListener('click', async () => {
     var url = document.getElementById('clip-url-input')?.value?.trim()
-    if (!url || !url.startsWith('http')) return
-    state.clipUrlModal = false; state.pasteModal = true; state.shareLoading = true; render()
-    try {
-      var resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
-      var recipe = await resp.json()
-      if (recipe.error) throw new Error(recipe.error)
-      state.shareLoading = false; state.sharedRecipe = recipe; render()
-    } catch(e) {
-      state.shareLoading = false; state.sharedRecipe = null; render()
-    }
+    if (!url) return
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url.replace(/^\/+/, '')
+    await clipFromUrl(url)
   }))
+  document.getElementById('clip-retry')?.addEventListener('click', async () => {
+    var url = (state.pasteModalDraft && state.pasteModalDraft.source) || ''
+    if (url) await clipFromUrl(url)
+  })
+  document.getElementById('clip-open-source')?.addEventListener('click', () => {
+    var url = (state.pasteModalDraft && state.pasteModalDraft.source) || ''
+    if (url) window.open(url, '_blank', 'noopener')
+  })
   document.getElementById('clip-url-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('clip-url-go')?.click() })
 
   // Clipboard banner
   document.getElementById('clipboard-yes')?.addEventListener('click', async () => {
     var url = state.clipboardBanner
-    state.clipboardBanner = null; state.pasteModal = true; state.shareLoading = true; render()
-    try {
-      var resp = await fetch('/api/scrape?url=' + encodeURIComponent(url))
-      var recipe = await resp.json()
-      if (recipe.error) throw new Error(recipe.error)
-      state.shareLoading = false; state.sharedRecipe = recipe; render()
-    } catch(e) { state.shareLoading = false; state.sharedRecipe = null; render() }
+    if (url) await clipFromUrl(url)
   })
   document.getElementById('clipboard-no')?.addEventListener('click', () => { state.clipboardBanner = null; render() })
 
@@ -6843,7 +6900,7 @@ async function estimateCaloriesAI(description) {
   document.getElementById('paste-instructions')?.addEventListener('input', e => { state.pasteModalDraft.instructions = e.target.value })
   document.getElementById('paste-source')?.addEventListener('input', e => { state.pasteModalDraft.source = e.target.value })
 
-  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '', source: '' }; render() })
+  document.getElementById('paste-cancel')?.addEventListener('click', () => { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.clipError = null; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '', source: '' }; render() })
   document.getElementById('paste-modal-bg')?.addEventListener('click', e => { if (e.target.id === 'paste-modal-bg') { state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; render() } })
   document.querySelectorAll('#paste-save').forEach(btn => btn.addEventListener('click', async () => {
     var name = document.getElementById('paste-name')?.value?.trim()
@@ -6904,7 +6961,7 @@ async function estimateCaloriesAI(description) {
         }
       })
     }
-    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '', source: '' }; state.tab = 'recipes'; render()
+    state.pasteModal = false; state.sharedRecipe = null; state.shareLoading = false; state.clipError = null; state.pasteModalDraft = { name: '', text: '', ingredients: '', instructions: '', source: '' }; state.tab = 'recipes'; render()
   }))
 
   // Chat handled by chat handlers below
