@@ -33,8 +33,26 @@ export default async function handler(req, res) {
     } catch (e) {}
   }
 
+  // Second fallback: a reader proxy that returns plain text. No JSON-LD in the
+  // result, so this leans on the AI extraction path further down. Sites like
+  // Serious Eats block datacenter IPs outright and only get through here.
+  if (!html || html.includes('cf-browser-verification') || html.includes('challenge-platform') || html.length < 500) {
+    try {
+      const r = await fetch('https://r.jina.ai/' + url, {
+        headers: { 'Accept': 'text/plain' },
+        signal: AbortSignal.timeout(15000)
+      })
+      if (r.ok) {
+        const text = await r.text()
+        if (text && text.length > 500) html = text
+      }
+    } catch (e) {}
+  }
+
   if (!html || html.length < 200) {
-    return res.status(422).json({ error: 'Could not fetch this page — the site may be blocking automated requests.' })
+    return res.status(422).json({
+      error: 'That site blocked the clipper (a lot of big recipe sites block automated requests).'
+    })
   }
 
   const source = (() => { try { return new URL(url).hostname.replace('www.', '') } catch(e) { return '' } })()
@@ -143,7 +161,11 @@ ${pageText}`
     }
   } catch (e) {}
 
-  // Final fallback — name only
+  // Final fallback — name only. If we don't even have a name, there's nothing
+  // worth handing back; say so rather than returning an empty shell.
+  if (!fallbackName) {
+    return res.status(422).json({ error: 'Fetched the page but found no recipe on it.' })
+  }
   return res.status(200).json({
     name: fallbackName, ingredients: '', instructions: '', url, source,
     partial: true,
