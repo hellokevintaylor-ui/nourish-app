@@ -5,6 +5,64 @@ Claude reads this at the start of a session; keep entries short.
 
 ---
 
+## 2026-09-20
+
+**Shipped** — `src/main.js`, `api/scrape.js`
+
+**Clip-from-URL failed silently and looked like a random tab switch.**
+Reported from mobile: pasted a Serious Eats URL, got the blank Paste panel
+with no error. Cause: on failure the handler set `sharedRecipe = null` but
+left `pasteModal = true`. `renderPasteModalInline` picks its layout off
+`sharedRecipe` — null means "manual paste" — so a failed clip rendered as the
+Paste a Recipe window. The typed URL was discarded. Both entry points (Clip
+button, clipboard banner) had the same swallowed catch.
+
+- Both now route through one `clipFromUrl(url)` at module scope. On failure:
+  panel stays open, red banner with the real reason, Try again / Open page
+  buttons, and the URL pre-filled in `paste-source` so a manual paste still
+  keeps the link. New `state.clipError`, cleared on reset and on reopen.
+- Treats a non-2xx response, unparseable JSON, and an all-empty payload as
+  failures too — previously only `recipe.error` was checked.
+- Photo scan failures use the same banner. It was setting `paste-name`'s
+  placeholder in a `setTimeout`, which the next render wiped.
+- Bare `seriouseats.com/...` with no scheme was silently dropped by
+  `startsWith('http')` — now prefixed with `https://`.
+- `paste-name` value wasn't `esc()`d in either paste renderer (only the
+  `nameVal` branch was). An apostrophe in a clipped title broke the input.
+
+**Why Serious Eats specifically:** Dotdash Meredith blocks datacenter IPs, so
+the direct fetch 403s and the allorigins proxy didn't get through either.
+Added a third fallback in `api/scrape.js` via the `r.jina.ai` reader proxy —
+returns plain text, so JSON-LD extraction won't match and it falls through to
+the AI path, which is fine. Also: the final fallback returned a 200 with an
+empty name when there was nothing on the page; now 422s with a real message.
+**Untested against the live site** — container network is allowlisted, so the
+jina fallback has never actually been exercised. Confirm on the next clip.
+
+**AI Coach moved to the Log tab.** Was at the end of `renderShop()` despite
+every identifier being `log*` (`logChatOpen`, `log-ai-btn`, `logChatMessages`)
+— the 2026-09-18 open item. Extracted the IIFE into a named
+`renderCoachPanel()` above `renderLogInner()`, called at the bottom of the Log
+tab after the day-by-day rows. Handlers bind by ID in `bindEvents`, so they
+needed no change. This was the intended placement all along; it only became
+visible once the stranded bindings were fixed last session.
+
+**Learned**
+- A null-means-manual-entry render branch doubles as the silent error path.
+  Anywhere a renderer switches layout on a nullable field, a failed fetch
+  will land in the wrong layout and look like a UI bug, not an error.
+- Verified after: syntax check clean, `npm test` 10/10.
+
+**Open / next**
+- Confirm the Serious Eats clip actually works post-deploy. If it still fails,
+  the banner now names the stage that gave up.
+- Still open from 09-18: "▶ Start Cooking" sets `gamePlanView = 'fullscreen'`
+  with no renderer for that value. Build or remove.
+- Still open from 09-18: add `src/db.js` to the restore block in the project
+  instructions. Needed again this session; still not there.
+
+---
+
 ## 2026-09-18
 
 **Workflow: getting files out of Cowork threads**
