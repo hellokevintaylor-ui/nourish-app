@@ -154,6 +154,9 @@ export async function addExerciseEntry(activity, calories_burned, breakdown, dat
   const { data } = await supabase.from('exercise_log').insert({ user_id: uid(), activity, calories_burned: calories_burned || 0, breakdown: breakdown || '', logged_at }).select()
   return data?.[0]
 }
+export async function updateExerciseEntry(id, fields) {
+  await supabase.from('exercise_log').update(fields).eq('id', id).eq('user_id', uid())
+}
 export async function deleteExerciseEntry(id) {
   await supabase.from('exercise_log').delete().eq('id', id).eq('user_id', uid())
 }

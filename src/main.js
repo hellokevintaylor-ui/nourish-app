@@ -55,6 +55,7 @@ const state = {
   recipeChatMessages: {},   // keyed by recipe id, persistent per-recipe chat threads
   cookAskOpen: false,  // inline Ask AI panel in cook mode
   editingLogId: null,
+  editingExId: null,   // exercise row being edited inline (Log tab)
   scaleModal: null,
   estimatingPrepId: null,
   refreshingPrepId: null,
@@ -424,6 +425,23 @@ function buildGoalsSuggestions() {
 }
 
 function todayCalories() { return state.log.reduce((s,e) => s + (e.calories||0), 0) }
+// Exercise entries are cached in several places: today's list, the viewed-day
+// list (past days), the 30-day history, and the per-day week cache. They're
+// separate objects fetched separately, so an edit/delete has to hit all of
+// them or the day totals and weekly Out figure go stale until reload.
+function exerciseCaches() {
+  var lists = [state.exerciseLog, state.viewedDayExercise, state.historyExerciseLog]
+  Object.values(state._weekExByDate || {}).forEach(l => lists.push(l))
+  return lists.filter(Array.isArray)
+}
+function patchExerciseEverywhere(id, fields) {
+  exerciseCaches().forEach(list => list.forEach(x => { if (String(x.id) === String(id)) Object.assign(x, fields) }))
+}
+function removeExerciseEverywhere(id) {
+  exerciseCaches().forEach(list => {
+    for (var i = list.length - 1; i >= 0; i--) if (String(list[i].id) === String(id)) list.splice(i, 1)
+  })
+}
 function todayBurned() { return (state.exerciseLog || []).reduce((s,e) => s + (e.calories_burned||0), 0) }
 
 
@@ -2055,11 +2073,22 @@ function renderLogInner() {
     '</div>' +
     (viewedExercise && viewedExercise.length > 0 ?
       viewedExercise.map(e =>
+        String(state.editingExId) === String(e.id) ?
+        '<div class="log-entry" style="flex-direction:column;align-items:stretch;gap:6px">' +
+          '<input id="edit-ex-activity-' + e.id + '" data-ex-edit-input="' + e.id + '" value="' + esc(e.activity) + '" style="font-size:13px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit" />' +
+          '<div style="display:flex;gap:6px;align-items:center">' +
+            '<input id="edit-ex-cals-' + e.id + '" data-ex-edit-input="' + e.id + '" type="number" min="0" value="' + (e.calories_burned||0) + '" style="width:80px;padding:6px 8px;border:1.5px solid var(--forest2);border-radius:8px;font-family:inherit;font-size:13px" />' +
+            '<span style="font-size:11px;color:var(--ink3)">kcal burned</span>' +
+            '<button class="add-btn" data-save-ex="' + e.id + '" style="flex:1">Save</button>' +
+            '<button class="modal-cancel" data-cancel-ex="' + e.id + '" style="padding:6px 10px">Cancel</button>' +
+          '</div>' +
+        '</div>'
+        :
         '<div class="log-entry">' +
           '<div style="flex:1">' +
-            '<div class="log-food">' + esc(e.activity) + '</div>' +
+            '<div class="log-food" style="cursor:pointer" data-edit-ex="' + e.id + '">' + esc(e.activity) + '</div>' +
             '<div class="log-cal-row-entry">' +
-              '<span class="log-cal" style="color:var(--forest)">-' + e.calories_burned + ' kcal burned</span>' +
+              '<span class="log-cal" style="color:var(--forest);cursor:pointer" data-edit-ex="' + e.id + '">-' + e.calories_burned + ' kcal burned</span>' +
               (e.calories_burned > 0 ? '<button class="log-breakdown-btn" data-ex-breakdown-id="' + e.id + '">?</button>' : '') +
             '</div>' +
             (state.logBreakdownId === 'ex-' + e.id && e.breakdown ?
@@ -6405,13 +6434,51 @@ function bindEvents() {
     })
   })
 
+  // Exercise inline edit — mirrors the meal-log edit (data-edit-log)
+  document.querySelectorAll('[data-edit-ex]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingExId = el.dataset.editEx
+      render()
+      setTimeout(() => document.getElementById('edit-ex-cals-' + el.dataset.editEx)?.select(), 50)
+    })
+  })
+  document.querySelectorAll('[data-save-ex]').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation()
+      var id = el.dataset.saveEx
+      var activity = document.getElementById('edit-ex-activity-' + id)?.value?.trim()
+      var cals = Math.max(0, parseInt(document.getElementById('edit-ex-cals-' + id)?.value) || 0)
+      if (!activity) return
+      patchExerciseEverywhere(id, { activity, calories_burned: cals })
+      state.editingExId = null
+      render()
+      await db.updateExerciseEntry(id, { activity, calories_burned: cals })
+    })
+  })
+  document.querySelectorAll('[data-cancel-ex]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation()
+      state.editingExId = null
+      render()
+    })
+  })
+  document.querySelectorAll('[data-ex-edit-input]').forEach(el => {
+    el.addEventListener('keydown', e => {
+      var id = el.dataset.exEditInput
+      if (e.key === 'Enter') { e.preventDefault(); document.querySelector('[data-save-ex="' + id + '"]')?.click() }
+      if (e.key === 'Escape') { e.preventDefault(); document.querySelector('[data-cancel-ex="' + id + '"]')?.click() }
+    })
+  })
+
   // Exercise delete
   document.querySelectorAll('[data-ex-del]').forEach(el => {
     el.addEventListener('click', async () => {
       var id = el.dataset.exDel
-      state.exerciseLog = (state.exerciseLog || []).filter(x => String(x.id) !== String(id))
-      await db.deleteExerciseEntry(id)
+      removeExerciseEverywhere(id)
+      if (String(state.editingExId) === String(id)) state.editingExId = null
       render()
+      await db.deleteExerciseEntry(id)
     })
   })
   async function estimatePrepTime(recipe) {
