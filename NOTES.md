@@ -58,8 +58,13 @@ visible once the stranded bindings were fixed last session.
   the banner now names the stage that gave up.
 - Still open from 09-18: "▶ Start Cooking" sets `gamePlanView = 'fullscreen'`
   with no renderer for that value. Build or remove.
-- Still open from 09-18: add `src/db.js` to the restore block in the project
-  instructions. Needed again this session; still not there.
+- Make `gp_test.js` resolve main.js from either `./main.js` or `src/main.js`,
+  so the mirroring step in the instructions can go away. Until then, skipping
+  the `cp` gives a green 10/10 against the unedited GitHub copy.
+
+**Project instructions updated (end of session).** Restore block now pulls
+`src/db.js`, `api/scan.js`, `api/scrape.js` — resolves the 09-18 item. Added
+the `src/main.js` mirroring note under TESTING; line count bumped to ~7600.
 
 ---
 
