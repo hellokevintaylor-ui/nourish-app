@@ -54,6 +54,7 @@ const state = {
   chatRecipeContext: null,
   recipeChatMessages: {},   // keyed by recipe id, persistent per-recipe chat threads
   cookAskOpen: false,  // inline Ask AI panel in cook mode
+  cookAskHistoryLoading: null,  // recipeId whose Ask AI history is being fetched
   editingLogId: null,
   editingExId: null,   // exercise row being edited inline (Log tab)
   scaleModal: null,
@@ -1259,11 +1260,14 @@ function renderRecipeCard(r) {
   }
 
   // Game plan swaps in place of card body
-  // Match by recipeId OR by this recipe being in today's dinner slot
+  // Match by recipeId OR by this recipe being in today's dinner slot.
+  // The slot-level fallback is skipped on the Week tab: there a recipeId-less
+  // plan renders under its slot (renderCalendar), and the Week tab's inline
+  // recipe preview reuses this function — matching here too drew two windows.
   var gpModal = state.gamePlanModal
   var gpMatchesCard = gpModal && (
     String(gpModal.recipeId) === String(r.id) ||
-    ((!gpModal.recipeId || gpModal.recipeId === '') && state.expandedRecipe === r.id && gpModal.date && gpModal.slot)
+    (state.tab !== 'calendar' && (!gpModal.recipeId || gpModal.recipeId === '') && state.expandedRecipe === r.id && gpModal.date && gpModal.slot)
   )
   if (gpMatchesCard) {
     return header + renderGamePlanInline(r) + '</div>'
@@ -2425,6 +2429,46 @@ function getMealPlanEntries(date, slot) {
   return state.mealPlan.filter(e => e.date === date && e.meal_slot === slot)
 }
 
+// Meal-plan entry → recipe. IDs compared as strings (dataset values are always
+// strings); falls back to an exact name match for entries saved without a
+// recipe_id.
+function findPlannedRecipe(entry) {
+  if (!entry) return null
+  if (entry.recipe_id != null) {
+    const byId = state.recipes.find(x => String(x.id) === String(entry.recipe_id))
+    if (byId) return byId
+  }
+  const name = (entry.recipe_name || '').trim().toLowerCase()
+  return name ? state.recipes.find(x => (x.name || '').trim().toLowerCase() === name) || null : null
+}
+
+// Open a recipe's card in cook mode from anywhere (Tonight banner, card Cook
+// button). Switches to the Recipes tab, and if the card isn't in the rendered
+// list — hidden by search, a tag filter, or archive state — clears those so it
+// is, rather than setting cook mode on a card nobody can see.
+function openCookMode(recipeId) {
+  const r = state.recipes.find(x => String(x.id) === String(recipeId))
+  if (!r) return
+  const rid = r.id  // native type — renderRecipeCard compares with ===
+  state.tab = 'recipes'
+  try { localStorage.setItem('mep_tab', 'recipes') } catch (e) {}
+  state.expandedRecipe = rid
+  state.cookMode = { recipeId: rid, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
+  render()
+  const sel = '[data-rid="' + (window.CSS && CSS.escape ? CSS.escape(String(rid)) : String(rid)) + '"]'
+  if (!document.querySelector(sel)) {
+    state.recipeSearch = ''
+    if (state.activeTagFilters) delete state.activeTagFilters['recipe']
+    state.showArchived = !!r.archived
+    render()
+  }
+  fetchStepAmounts(rid)
+  setTimeout(() => {
+    const card = document.querySelector(sel)
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, 80)
+}
+
 function renderTonightCard() {
   const today = new Date().toISOString().slice(0,10)
   let entries = getMealPlanEntries(today, 'Dinner')
@@ -2443,18 +2487,22 @@ function renderTonightCard() {
     '</div>'
   }
   const recipeNames = entries.map(e => {
-    const r = state.recipes.find(x => x.id === e.recipe_id)
+    const r = findPlannedRecipe(e)
     return r ? r.name : e.recipe_name || 'Recipe'
   })
   const nameDisplay = recipeNames.join(' · ')
   const isSingle = entries.length === 1
-  const singleId = isSingle ? entries[0].recipe_id : null
+  const singleRecipe = isSingle ? findPlannedRecipe(entries[0]) : null
+  const singleId = singleRecipe ? singleRecipe.id : null
   return '<div style="background:#1a1a1a;border-radius:14px;padding:16px;margin-bottom:14px">' +
     '<div style="font-size:10px;font-weight:700;letter-spacing:0.7px;color:rgba(255,255,255,0.38);text-transform:uppercase;margin-bottom:6px">Tonight&#39;s plan · ' + slotLabel + '</div>' +
     '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:3px;letter-spacing:-0.3px;line-height:1.3">' + esc(nameDisplay) + '</div>' +
     '<div style="font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px">' + entries.length + ' recipe' + (entries.length>1?'s':'') + ' planned</div>' +
-    (isSingle
-      ? '<button style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" data-cook-mode="' + singleId + '">Cook now</button>'
+    (isSingle && singleId != null
+      ? '<button style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" data-tonight-cook="' + esc(singleId) + '">Cook now</button>'
+      : isSingle
+      // Planned by name only (or the recipe was deleted) — nothing to cook from, so go to the Week tab
+      ? '<button class="tonight-plan-nav" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Open in Week →</button>'
       : '<button class="tonight-plan-btn" data-tonight-slot="' + slotLabel + '" style="background:#3d52c4;color:white;border:none;border-radius:8px;padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Game Plan →</button>') +
   '</div>'
 }
@@ -3554,13 +3602,15 @@ function renderCookModeInline(r) {
         '</div>' +
       '</div>'
     ).join('')
-    askHtml = '<div style="border-top:0.5px solid #e8e8e5;background:#fafafa">' +
+    askHtml = '<div style="border-bottom:0.5px solid #e8e8e5;background:#fafafa">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:0.5px solid #e8e8e5">' +
         '<div style="font-size:11px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px">Ask AI</div>' +
         '<button id="cook-ask-clear" style="font-size:11px;color:#a8a8a3;background:none;border:none;cursor:pointer;padding:2px 6px;font-family:inherit">Clear</button>' +
       '</div>' +
       '<div style="padding:12px 14px;max-height:260px;overflow-y:auto" id="cook-ask-messages">' +
-        (askMessages.length === 0 ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:16px 0">Ask anything about this recipe</div>' : bubbles) +
+        (askMessages.length === 0
+          ? '<div style="color:#a8a8a3;font-size:13px;font-style:italic;text-align:center;padding:16px 0">' + (String(state.cookAskHistoryLoading) === String(r.id) ? 'Loading earlier questions…' : 'Ask anything about this recipe') + '</div>'
+          : bubbles) +
         (askLoading ? '<div style="color:#6e6e69;font-size:13px;font-style:italic;padding:4px 0">thinking...</div>' : '') +
       '</div>' +
       '<div style="padding:8px 14px 12px;display:flex;gap:8px">' +
@@ -3578,13 +3628,13 @@ function renderCookModeInline(r) {
       '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px;margin-left:2px">📋 Plan</button>' +
       '<button id="cook-ask-toggle" data-rid="' + r.id + '" style="background:' + (state.cookAskOpen?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:2px">Ask AI</button>' +
     '</div>' +
+    askHtml +
     '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
       tabBtn('ingredients', 'Ingredients') +
       tabBtn('instructions', 'Instructions') +
       tabBtn('notes', 'Notes') +
     '</div>' +
     '<div style="padding:0 14px 16px">' + bodyContent + '</div>' +
-    askHtml +
   '</div>'
 }
 function gpChatKey() {
@@ -4636,6 +4686,14 @@ document.addEventListener('keydown', function gpKeyDelegation(e) {
   }
 })
 
+// Tonight banner "Cook now" — the banner renders on Recipes and List tabs
+document.addEventListener('click', function tonightCookDelegation(e) {
+  var btn = e.target.closest && e.target.closest('[data-tonight-cook]')
+  if (!btn) return
+  e.stopPropagation()
+  openCookMode(btn.dataset.tonightCook)
+})
+
 document.addEventListener('click', function chatDelegation(e) {
   if (e.target.id === 'chat-send' || e.target.closest('#chat-send')) {
     var input = document.getElementById('chat-input')
@@ -5545,6 +5603,9 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       var rid = el.dataset.planRecipe
+      // This button lives in the cook-mode header; cook mode wins over the game
+      // plan in renderRecipeCard, so leave it or the plan never shows.
+      state.cookMode = null
       var today = new Date().toISOString().slice(0, 10)
       var plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))
       var slot = plannedEntry?.meal_slot || 'Dinner'
@@ -5848,15 +5909,7 @@ function bindEvents() {
   document.querySelectorAll('[data-cook-mode]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation()
-      var recipeId = el.dataset.cookMode
-      state.expandedRecipe = recipeId
-      state.cookMode = { recipeId, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
-      render()
-      fetchStepAmounts(recipeId)
-      setTimeout(() => {
-        var card = document.querySelector('[data-rid="' + recipeId + '"]')
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 80)
+      openCookMode(el.dataset.cookMode)
     })
   })
   document.querySelectorAll('.tonight-plan-nav').forEach(el => {
@@ -6091,24 +6144,42 @@ function bindEvents() {
   })
 
   // cook-ask-toggle: open/close inline Ask AI
-  document.getElementById('cook-ask-toggle')?.addEventListener('click', async () => {
-    state.cookAskOpen = !state.cookAskOpen
+  // Render immediately — the history fetch used to run before the first
+  // render, so the tap looked dead and a second tap closed it again.
+  document.getElementById('cook-ask-toggle')?.addEventListener('click', () => {
     var rid = document.getElementById('cook-ask-toggle')?.dataset.rid
-    if (state.cookAskOpen && rid) {
-      // Load chat history
-      if (!state.recipeChatMessages[rid] || state.recipeChatMessages[rid].length === 0) {
-        var saved = await db.fetchRecipeChat(rid)
-        if (saved && saved.length > 0) state.recipeChatMessages[rid] = saved
-      }
-      render()
+    state.cookAskOpen = !state.cookAskOpen
+    var needHistory = state.cookAskOpen && rid &&
+      (!state.recipeChatMessages[rid] || state.recipeChatMessages[rid].length === 0)
+    if (needHistory) state.cookAskHistoryLoading = rid
+    render()
+    if (state.cookAskOpen) {
       setTimeout(() => {
         document.getElementById('cook-ask-input')?.focus()
         var msgs = document.getElementById('cook-ask-messages')
         if (msgs) msgs.scrollTop = msgs.scrollHeight
-      }, 100)
-    } else {
-      render()
+      }, 50)
     }
+    if (!needHistory) return
+    db.fetchRecipeChat(rid).then(saved => {
+      // Don't clobber messages sent while the fetch was in flight
+      if (saved && saved.length > 0 && !(state.recipeChatMessages[rid] || []).length) {
+        state.recipeChatMessages[rid] = saved
+      }
+    }).catch(err => console.warn('fetchRecipeChat failed:', err)).finally(() => {
+      if (state.cookAskHistoryLoading !== rid) return
+      state.cookAskHistoryLoading = null
+      // Only re-render if the panel is still showing — keeps a typed-in draft safe otherwise
+      if (!state.cookAskOpen) return
+      var inp = document.getElementById('cook-ask-input')
+      var draft = inp ? inp.value : ''
+      var hadFocus = inp && document.activeElement === inp
+      render()
+      var inp2 = document.getElementById('cook-ask-input')
+      if (inp2) { inp2.value = draft; if (hadFocus) inp2.focus() }
+      var msgs = document.getElementById('cook-ask-messages')
+      if (msgs) msgs.scrollTop = msgs.scrollHeight
+    })
   })
 
   // cook-ask-send
