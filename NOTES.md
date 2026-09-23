@@ -5,6 +5,72 @@ Claude reads this at the start of a session; keep entries short.
 
 ---
 
+## 2026-09-23
+
+**Shipped** — `src/main.js` (all three confirmed working on device)
+
+**Tonight banner "Cook now" did nothing in some cases.** The happy path
+worked; it silently failed when the recipe was hidden by search / tag filter /
+archive (cook mode set on a card that wasn't rendered), when tapped from the
+List tab (never switched tabs), or when the meal-plan entry had no
+`recipe_id` (`data-cook-mode="null"`).
+
+- New module-level `openCookMode(recipeId)`: switches to Recipes, sets
+  expanded + cook mode using the recipe's native id, and if the card isn't in
+  the DOM after render, clears search / tag filter / sets `showArchived` to
+  match, then re-renders and scrolls. The card's own Cook button uses it too.
+- New `findPlannedRecipe(entry)`: id match (string-compared), falls back to
+  exact name match. Banner uses it; truly unlinked entries show
+  "Open in Week →" instead of a dead button.
+- Banner button is now `data-tonight-cook`, handled by document-level
+  delegation (`tonightCookDelegation`, next to `chatDelegation`).
+
+**Week tab: slot 📋 Plan opened two plan windows** when the recipe's inline
+preview was open. `renderRecipeCard`'s `gpMatchesCard` fallback matches any
+expanded card for a plan with no `recipeId`; the calendar preview reuses
+`renderRecipeCard`, so the plan drew in the preview and under the slot.
+Fallback now skipped when `state.tab === 'calendar'`.
+
+Also: the 📋 Plan button in the cook-mode header opened **zero** windows on
+both tabs — cook mode is checked before the game plan in `renderRecipeCard`.
+The `data-plan-recipe` handler now sets `state.cookMode = null` first.
+
+**Cook mode Ask AI: opened below the tabs, and double-taps closed it.** The
+toggle awaited `db.fetchRecipeChat` before the first render, so the tap looked
+dead; a second tap flipped `cookAskOpen` back and the late render drew it
+closed.
+
+- Panel now renders between the dark header and the tabs.
+- Toggle renders immediately; history loads in the background with a
+  "Loading earlier questions…" line (`state.cookAskHistoryLoading`). The
+  post-fetch re-render only runs if still open, won't overwrite messages sent
+  meanwhile, and preserves the input's draft and focus.
+
+**Learned**
+- `renderRecipeCard` is reused inside the Week tab preview. Any card-level
+  "show this panel" condition that isn't keyed to the recipe id will also fire
+  there — check both tabs when touching its early-return branches.
+- Never `await` a network call before the first render of a toggle. Render the
+  new state, then fetch.
+- Repro harness that worked well: esbuild-bundle `src/main.js` with stubbed
+  `db.js` / `supabase.js` (window-backed `fetchRecipes` / `fetchMealPlan`),
+  run in jsdom, click real buttons. Not in the repo — rebuild if needed.
+- Verified: syntax check clean, `npm test` 10/10 on each change.
+
+**Open / next**
+- "Today" is computed with `new Date().toISOString().slice(0,10)` (UTC)
+  throughout. In New York after 8pm EDT that's tomorrow — the Tonight banner
+  and Week tab can show the wrong day in the evening. App-wide; needs a local
+  date helper.
+- Leftover debug logging in the Plan path fires on every tap:
+  `console.log('Plan button: key=…')`, `console.log/trace` in
+  `generateGamePlan`. Remove.
+- Still open from 09-20: confirm Serious Eats clip works post-deploy.
+- Still open from 09-18: "▶ Start Cooking" sets `gamePlanView = 'fullscreen'`
+  with no renderer.
+
+---
+
 ## 2026-09-20
 
 **Shipped** — `src/main.js`, `api/scrape.js`
