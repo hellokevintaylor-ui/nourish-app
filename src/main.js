@@ -501,6 +501,16 @@ function wcPhaseRate(startWeight, targetWeight, dailyCals, tdee) {
   if (targetWeight > startWeight) return perDay < 0 ? -perDay : 0
   return 0
 }
+// The two range boxes are stored exactly as typed, so the user can move a
+// range upward (low first) without the values being swapped mid-edit. Order is
+// resolved here instead; one box filled means a single baseline line.
+function wcPhaseRange(phase) {
+  if (!phase) return null
+  var lo = phase.range_low, hi = phase.range_high
+  if (lo == null && hi == null) return null
+  var a = lo == null ? hi : lo, b = hi == null ? lo : hi
+  return { low: Math.min(a, b), high: Math.max(a, b) }
+}
 function wcPhaseDirection(phase) {
   return phase.target_weight < phase.start_weight ? 'lose' : phase.target_weight > phase.start_weight ? 'gain' : 'maintain'
 }
@@ -1856,7 +1866,7 @@ function renderShop() {
   '</div>'
 }
 
-// Healthy range + phase history, inside the Goals panel on the Log tab
+// Target weight range + phase history, inside the Goals panel on the Log tab
 function renderGoalRangeAndPhases() {
   const ap = activePhase()
   const avail = state.phasesAvailable
@@ -1867,16 +1877,16 @@ function renderGoalRangeAndPhases() {
 
   const range =
     '<div class="goals-grid" style="margin-top:14px">' +
-      '<div class="goal-field"><label>Healthy Range Low (lbs)</label>' +
+      '<div class="goal-field"><label>Target Range Low (lbs)</label>' +
         '<input type="number" step="0.5" id="goal-range-low" data-range="low" value="' + val(ap && ap.range_low) + '" placeholder="e.g. 148"' + (avail ? '' : ' disabled') + ' /></div>' +
-      '<div class="goal-field"><label>Healthy Range High (lbs)</label>' +
+      '<div class="goal-field"><label>Target Range High (lbs)</label>' +
         '<input type="number" step="0.5" id="goal-range-high" data-range="high" value="' + val(ap && ap.range_high) + '" placeholder="e.g. 152"' + (avail ? '' : ' disabled') + ' /></div>' +
     '</div>' +
     '<div style="' + muted + ';margin-top:4px">Shaded on every weight chart. For a single baseline weight, fill in one box. Your target can sit above, below, or inside it.</div>'
 
   if (!avail) {
     return range +
-      '<div style="' + muted + ';margin-top:10px;padding:8px 10px;background:#f4f4f2;border-radius:8px">Healthy range and goal history need a one-time database update (the goal_phases table). Until then the chart uses your current goals only.</div>'
+      '<div style="' + muted + ';margin-top:10px;padding:8px 10px;background:#f4f4f2;border-radius:8px">The target weight range and goal history need a one-time database update (the goal_phases table). Until then the chart uses your current goals only.</div>'
   }
 
   const phases = state.goalPhases.slice().reverse()
@@ -1884,7 +1894,7 @@ function renderGoalRangeAndPhases() {
     '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid #eeeeec">' +
       '<span style="color:#1a1a1a;font-weight:' + (i === 0 ? '700' : '500') + '">' + (p.end_date ? shortDate(p.start_date) + ' – ' + shortDate(p.end_date) : 'Since ' + shortDate(p.start_date)) + '</span>' +
       '<span style="color:#6e6e69;text-align:right">' + dirWord(p) + ' · ' + p.start_weight + (p.target_weight !== p.start_weight ? ' → ' + p.target_weight : '') +
-        (p.range_low != null ? ' · range ' + p.range_low + (p.range_high !== p.range_low ? '–' + p.range_high : '') : '') + '</span>' +
+        (() => { const r = wcPhaseRange(p); return r ? ' · range ' + (r.low === r.high ? r.low : r.low + '–' + r.high) : '' })() + '</span>' +
     '</div>'
   ).join('') + (phases.length > 6 ? '<div style="' + muted + ';padding-top:4px">+ ' + (phases.length - 6) + ' earlier</div>' : '')
 
@@ -1947,7 +1957,7 @@ function renderGoalsPanel() {
         '<input type="number" data-goal="weight" value="' + (state.goals.weight||'') + '" placeholder="e.g. 186" /></div>' +
     '</div>' +
     '<div class="goals-grid" style="margin-top:8px">' +
-      '<div class="goal-field"><label>Target Weight (lbs)</label>' +
+      '<div class="goal-field"><label>Goal Target Weight (lbs)</label>' +
         '<input type="number" data-goal="target_weight" value="' + (state.goals.target_weight||'') + '" placeholder="e.g. 165" /></div>' +
       '<div class="goal-field"><label>Current Weight (lbs)</label>' +
         '<input type="text" readonly value="' + (state.weightLog&&state.weightLog.length>0 ? state.weightLog[state.weightLog.length-1].weight+' lbs' : 'Log a weigh-in') + '" style="opacity:' + (state.weightLog&&state.weightLog.length>0?'1':'0.5') + ';cursor:default" /></div>' +
@@ -2076,8 +2086,6 @@ function renderLogInner() {
       }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
-    '<button id="log-goals-btn" style="width:100%;margin-bottom:' + (state.showGoals?'0':'12') + 'px;padding:10px 14px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">' + (state.showGoals ? '▲ Close' : 'Calories · Weight · Activity →') + '</span></button>' +
-    (state.showGoals ? renderGoalsPanel() : '') +
 
     // 1. Day navigation + today summary banner
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
@@ -2196,7 +2204,10 @@ function renderLogInner() {
       ).join('')
     : '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">No exercise logged' + (isToday ? ' today' : ' this day') + '</div>') +
 
-    // 7. Weight progress chart
+    // 7. Goals & targets (drop-down), then the weight progress chart it configures
+    '<button id="log-goals-btn" style="width:100%;margin-top:16px;margin-bottom:' + (state.showGoals?'0':'12') + 'px;padding:10px 14px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">' + (state.showGoals ? '▲ Close' : 'Calories · Weight · Activity →') + '</span></button>' +
+    (state.showGoals ? renderGoalsPanel() : '') +
+
     renderWeightProgress() +
 
     // Today's calorie summary (compact, between chart and log weight)
@@ -2336,7 +2347,7 @@ async function saveGoalsAndPhase() {
 }
 
 // Close the active phase the day before start_date and open a new one.
-// The healthy range carries over until it's edited.
+// The target range carries over until it's edited.
 async function startNewPhase(np) {
   state.goals.goal_start_date = np.start_date
   state.goals.weight = np.start_weight
@@ -2364,9 +2375,6 @@ async function saveActiveRange(low, high) {
   if (!state.phasesAvailable) return
   const active = state.goalPhases[state.goalPhases.length - 1]
   if (!active) return
-  if (low == null) low = high
-  if (high == null) high = low
-  if (low != null && high != null && low > high) { const t = low; low = high; high = t }
   active.range_low = low
   active.range_high = high
   await db.updateGoalPhase(active.id, { range_low: low, range_high: high })
@@ -2433,7 +2441,9 @@ function renderWeightProgress() {
   const dir = active ? wcPhaseDirection(active) : 'maintain'
   const tgt = active ? active.target_weight : latestW
   const rate = active ? active.lbs_per_day : 0
-  const hasRange = p => p && p.range_low != null && p.range_high != null
+  const rangeOf = p => wcPhaseRange(p)
+  const hasRange = p => !!rangeOf(p)
+  const rangeText = p => { const r = rangeOf(p); return r ? (r.low === r.high ? String(r.low) : r.low + '–' + r.high) : '' }
   const reached = dir === 'lose' ? latestW <= tgt : dir === 'gain' ? latestW >= tgt : false
   const f1 = n => (Math.round(n * 10) / 10).toFixed(1)
   const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + f1(Math.abs(n))
@@ -2446,7 +2456,7 @@ function renderWeightProgress() {
     stats = stat(latestW, 'Current', 'var(--forest)') +
       stat(tgt, 'Baseline', 'var(--ink2)') +
       stat(signed(latestW - tgt), 'From baseline', 'var(--ink2)') +
-      (hasRange(active) ? stat(active.range_low === active.range_high ? active.range_low : active.range_low + '–' + active.range_high, 'Range', 'var(--forest2)') : '')
+      (hasRange(active) ? stat(rangeText(active), 'Range', 'var(--forest2)') : '')
   } else {
     const change = latestW - active.start_weight
     const showChange = dir === 'lose' ? change < -0.1 : change > 0.1
@@ -2454,7 +2464,7 @@ function renderWeightProgress() {
       stat(latestW, 'Current', 'var(--forest)') +
       (showChange ? stat((dir === 'lose' ? '−' : '+') + f1(Math.abs(change)), dir === 'lose' ? 'Lost' : 'Gained', 'var(--forest2)') : '') +
       (reached ? stat('✓', 'Reached', 'var(--forest)') : stat(f1(Math.abs(latestW - tgt)), 'To go', 'var(--ink2)')) +
-      stat(tgt, 'Target', 'var(--terra)')
+      stat(tgt, 'Goal target', 'var(--terra)')
   }
 
   // ── Geometry ──
@@ -2517,16 +2527,17 @@ function renderWeightProgress() {
     // if it's within a few pounds; otherwise it gets the edge indicator.
     const mid = centerPhase.target_weight
     let half = Math.max(Math.abs(hi - mid) + 0.6, Math.abs(lo - mid) + 0.6, 2)
-    if (hasRange(centerPhase)) {
-      const reach = Math.max(Math.abs(centerPhase.range_low - mid), Math.abs(centerPhase.range_high - mid)) + 0.5
+    const cr = rangeOf(centerPhase)
+    if (cr) {
+      const reach = Math.max(Math.abs(cr.low - mid), Math.abs(cr.high - mid)) + 0.5
       if (reach <= half + 3) half = Math.max(half, reach)
-      else offBands.push({ lo: centerPhase.range_low, hi: centerPhase.range_high, below: centerPhase.range_high < mid })
+      else offBands.push({ lo: cr.low, hi: cr.high, below: cr.high < mid })
     }
     minW = Math.floor(mid - half); maxW = Math.ceil(mid + half)
   } else {
     const slack = Math.max(3, (hi - lo) * 0.5)
     segs.filter(s => hasRange(s.phase)).forEach(s => {
-      const bl = s.phase.range_low, bh = s.phase.range_high
+      const r = rangeOf(s.phase), bl = r.low, bh = r.high
       if (win === 'All' || (bh >= lo - slack && bl <= hi + slack)) { lo = Math.min(lo, bl); hi = Math.max(hi, bh) }
       else if (!offBands.some(o => o.lo === bl && o.hi === bh)) offBands.push({ lo: bl, hi: bh, below: bh < lo })
     })
@@ -2581,12 +2592,13 @@ function renderWeightProgress() {
     if (fx < W - padR) svg += '<rect x="' + fx.toFixed(1) + '" y="' + padT + '" width="' + (W - padR - fx).toFixed(1) + '" height="' + plotH + '" fill="var(--cream2)" opacity="0.7"/>'
   }
 
-  // Healthy range bands, one per phase segment
+  // Target range bands, one per phase segment
   svg += '<g clip-path="url(#wc-plot)">' + segs.filter(s => hasRange(s.phase)).map(s => {
     const x0 = Math.max(padL, xU(s.uA) - (s.uA === -0.5 ? 0 : halfDay))
     const x1 = Math.min(W - padR, xU(s.uB) + (s.uB === days - 0.5 ? 0 : halfDay))
-    const y0 = yS(s.phase.range_high), y1 = yS(s.phase.range_low)
-    return s.phase.range_low === s.phase.range_high
+    const r = rangeOf(s.phase)
+    const y0 = yS(r.high), y1 = yS(r.low)
+    return r.low === r.high
       ? '<line x1="' + x0.toFixed(1) + '" y1="' + y0.toFixed(1) + '" x2="' + x1.toFixed(1) + '" y2="' + y0.toFixed(1) + '" stroke="var(--forest2)" stroke-width="1.5" opacity="0.5"/>'
       : '<rect x="' + x0.toFixed(1) + '" y="' + y0.toFixed(1) + '" width="' + (x1 - x0).toFixed(1) + '" height="' + Math.max(1, y1 - y0).toFixed(1) + '" fill="var(--forest2)" opacity="0.13"/>'
   }).join('') + '</g>'
@@ -2655,8 +2667,9 @@ function renderWeightProgress() {
     if (onePhase(pPhase) && wcPhaseDirection(pPhase) === 'maintain' && inP.length) {
       const avg = inP.reduce((s, e) => s + e.weight, 0) / inP.length
       summary = periodName + ' average <strong>' + f1(avg) + ' lb</strong> · ' + signed(avg - pPhase.target_weight) + ' vs baseline' +
-        (hasRange(pPhase) ? ' · ' + (avg >= pPhase.range_low && avg <= pPhase.range_high ? 'in range'
-          : avg > pPhase.range_high ? f1(avg - pPhase.range_high) + ' above range' : f1(pPhase.range_low - avg) + ' below range') : '')
+        (hasRange(pPhase) ? ' · ' + (() => { const r = rangeOf(pPhase)
+          return avg >= r.low && avg <= r.high ? 'in range'
+            : avg > r.high ? f1(avg - r.high) + ' above range' : f1(r.low - avg) + ' below range' })() : '')
     } else {
       const ch = wcPeriodChange(entries, phases, period)
       if (ch) {
@@ -2681,12 +2694,13 @@ function renderWeightProgress() {
         (updatedFinish ? ' · At current pace: <strong style="color:var(--forest2)">' + longDate(updatedFinish) + '</strong>' : '')
     }
     if (dir !== 'maintain' && reached) {
-      nudgeMsg = '🎯 Target reached!' + (hasRange(active) ? ' Your healthy range is ' + active.range_low + (active.range_high !== active.range_low ? '–' + active.range_high : '') + ' — start a maintain phase in Goals when you’re ready.' : '')
+      nudgeMsg = '🎯 Goal target reached!' + (hasRange(active) ? ' Your target range is ' + rangeText(active) + ' — start a maintain phase in Goals when you’re ready.' : '')
       nudgeColor = 'var(--forest)'
     } else if (dir === 'maintain' && hasRange(active) && latest) {
-      if (latestW > active.range_high) { nudgeMsg = f1(latestW - active.range_high) + ' lb above your range'; nudgeColor = 'var(--gold)' }
-      else if (latestW < active.range_low) { nudgeMsg = f1(active.range_low - latestW) + ' lb below your range'; nudgeColor = 'var(--gold)' }
-      else { nudgeMsg = '✅ In your range'; nudgeColor = 'var(--forest)' }
+      const r = rangeOf(active)
+      if (latestW > r.high) { nudgeMsg = f1(latestW - r.high) + ' lb above your target range'; nudgeColor = 'var(--gold)' }
+      else if (latestW < r.low) { nudgeMsg = f1(r.low - latestW) + ' lb below your target range'; nudgeColor = 'var(--gold)' }
+      else { nudgeMsg = '✅ In your target range'; nudgeColor = 'var(--forest)' }
     } else if (dir === 'maintain' && latest) {
       const off = latestW - tgt
       if (Math.abs(off) <= 1) { nudgeMsg = '✅ Holding steady at your baseline'; nudgeColor = 'var(--forest)' }
@@ -2726,7 +2740,7 @@ function renderWeightProgress() {
     legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2"/></svg>', weekly ? 'Weekly average' : 'Weigh-ins') +
     (segs.some(s => s.pts.length > 1) ? legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3"/></svg>', segs.every(sg => wcPhaseDirection(sg.phase) === 'maintain') ? 'Baseline' : 'Plan') : '') +
     (adjPts.length > 1 ? legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="3,2"/></svg>', 'At current pace') : '') +
-    (segs.some(s => hasRange(s.phase)) || offBands.length ? legendItem('<svg width="12" height="8"><rect width="12" height="8" fill="var(--forest2)" opacity="0.2"/></svg>', 'Healthy range') : '') +
+    (segs.some(s => hasRange(s.phase)) || offBands.length ? legendItem('<svg width="12" height="8"><rect width="12" height="8" fill="var(--forest2)" opacity="0.2"/></svg>', 'Target range') : '') +
   '</div>'
 
   return '<div style="margin-top:16px">' +
@@ -5215,11 +5229,26 @@ document.addEventListener('keydown', function calRowKeyDelegation(e) {
     e.preventDefault(); e.target.click()
   }
 })
+// Range boxes save on commit but never re-render while either is being edited —
+// render() rebuilds the panel, which would drop focus and close the keyboard
+// mid-edit (and a value typed into the other box would be lost).
+function readRangeInputs() {
+  const num = id => { const v = document.getElementById(id)?.value; const n = parseFloat(v); return (v === '' || isNaN(n)) ? null : n }
+  return { low: num('goal-range-low'), high: num('goal-range-high') }
+}
+function rangeInputFocused() {
+  const a = document.activeElement
+  return !!(a && a.matches && a.matches('input[data-range]'))
+}
 document.addEventListener('change', function goalRangeDelegation(e) {
   if (!e.target.matches || !e.target.matches('input[data-range]')) return
-  const lo = parseFloat(document.getElementById('goal-range-low')?.value)
-  const hi = parseFloat(document.getElementById('goal-range-high')?.value)
-  saveActiveRange(isNaN(lo) ? null : lo, isNaN(hi) ? null : hi).then(() => render())
+  const r = readRangeInputs()
+  saveActiveRange(r.low, r.high).then(() => { if (!rangeInputFocused()) render() })
+})
+document.addEventListener('focusout', function goalRangeBlurDelegation(e) {
+  if (!e.target.matches || !e.target.matches('input[data-range]')) return
+  // Let focus settle first: moving between the two boxes must not re-render.
+  setTimeout(() => { if (!rangeInputFocused()) render() }, 0)
 })
 
 async function handlePhaseAction(action, btn) {
