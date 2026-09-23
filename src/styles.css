@@ -935,3 +935,48 @@ html, body {
   padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
 }
 .prep-time-estimate-btn:hover { background: var(--black); color: var(--white); border-color: var(--black); }
+
+/* ── Weight chart period navigation (Log tab) ── */
+.wc-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+.wc-period-label {
+  min-width: 128px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.wc-nav-btn {
+  width: 32px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: white;
+  color: var(--ink2);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+.wc-nav-btn:disabled { opacity: 0.3; cursor: default; }
+.wc-nav-btn:focus-visible, .wc-today-btn:focus-visible, [data-cal-expand]:focus-visible {
+  outline: 2px solid var(--forest);
+  outline-offset: 2px;
+}
+.wc-today-btn {
+  margin-left: 4px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--forest);
+  background: white;
+  color: var(--forest);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}

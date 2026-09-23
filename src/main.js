@@ -14,6 +14,13 @@ const state = {
   recipeSort: 'recent',  // 'recent', 'newest', 'az', 'za'
   cookMode: null,  // { recipeId, tab: 'ingredients'|'instructions' }
   chartWindow: '1W',  // '1W', '2W', '1M', '3M', 'All'
+  chartOffset: 0,      // 0 = period containing today, -1 = previous, +1 = next
+  goalPhases: [],      // rows from goal_phases, oldest first; last one is active
+  phasesAvailable: false, // false until the goal_phases table answers
+  calCache: {},        // 'start|end' -> { food, ex, loading } for the Log tab period view
+  calDayOverride: {},  // date -> { food, ex } freshest known data for a single day
+  calExpanded: null,   // week/month chunk start whose day rows are open
+  newPhaseForm: null,  // { start_date, start_weight, target_weight } while the form is open
   expandedRecipe: null,
   calendarRecipePreview: null, // recipe id to show in modal from week tab
   activeCategory: 'All',
@@ -352,9 +359,8 @@ async function init() {
   state.historyLog = freshHistoryLog || []
   state.weightLog = freshWeightLog || []
   state.historyExerciseLog = freshHistoryExercise || []
-  state._weekDataLoaded = false
-  state._weekByDate = {}
-  state._weekExByDate = {}
+  state.calCache = {}
+  await loadGoalPhases()
 
   // Purge shop items checked more than 1 hour ago
   purgeStaleCheckedItems()
@@ -414,6 +420,201 @@ function calcProjection(tdee, current_weight, target_weight, daily_calories) {
     date: target_date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
     lbs_per_week: Math.round((daily_deficit * 7 / 3500) * 10) / 10
   }
+}
+
+// ── WEIGHT CHART / PERIOD MATH (wc*) ─────────────────────────────────
+// Pure functions: no state, no DOM. Dates are local 'YYYY-MM-DD' strings and
+// all arithmetic is done on noon-anchored dates, so daylight-saving changes
+// can never shift a day. Tested by wc_test.js (extracted from this file).
+
+function wcLocalDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+function wcAddDays(dateStr, n) {
+  var d = new Date(dateStr + 'T12:00:00')
+  d.setDate(d.getDate() + n)
+  return wcLocalDateStr(d)
+}
+function wcDayDiff(a, b) {
+  // whole days from a to b (b - a)
+  return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000)
+}
+function wcMondayOf(dateStr) {
+  var dow = (new Date(dateStr + 'T12:00:00').getDay() + 6) % 7  // Mon=0 … Sun=6
+  return wcAddDays(dateStr, -dow)
+}
+function wcMonthStart(year, month0) {
+  // month0 may overflow either way (-1 = Dec of previous year, 12 = Jan of next)
+  return wcLocalDateStr(new Date(year, month0, 1, 12))
+}
+function wcFmt(dateStr, opts) {
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', opts)
+}
+function wcRangeLabel(start, end, today) {
+  var sameMonth = start.slice(0, 7) === end.slice(0, 7)
+  var label = wcFmt(start, { month: 'short', day: 'numeric' }) + ' – ' +
+    (sameMonth ? wcFmt(end, { day: 'numeric' }) : wcFmt(end, { month: 'short', day: 'numeric' }))
+  if (end.slice(0, 4) !== today.slice(0, 4) || start.slice(0, 4) !== today.slice(0, 4)) label += ', ' + end.slice(0, 4)
+  return label
+}
+
+// Calendar period for a chart window.
+//   1W  = Mon–Sun week containing today (offset steps 1 week)
+//   2W  = last week + this week, ending this Sunday (offset steps 2 weeks)
+//   1M  = calendar month (offset steps 1 month)
+//   3M  = this month + the two before it (offset steps 3 months)
+//   All = allRange {start, end}; offset ignored
+function wcPeriodBounds(win, offset, today, allRange) {
+  offset = offset || 0
+  var start, end, label
+  if (win === '1W' || win === '2W') {
+    var n = win === '1W' ? 1 : 2
+    var lastMon = wcAddDays(wcMondayOf(today), offset * 7 * n)
+    start = wcAddDays(lastMon, -7 * (n - 1))
+    end = wcAddDays(lastMon, 6)
+    label = wcRangeLabel(start, end, today)
+  } else if (win === '1M' || win === '3M') {
+    var m = win === '1M' ? 1 : 3
+    var y = parseInt(today.slice(0, 4), 10), mo = parseInt(today.slice(5, 7), 10) - 1
+    var endM = mo + offset * m
+    start = wcMonthStart(y, endM - (m - 1))
+    end = wcAddDays(wcMonthStart(y, endM + 1), -1)
+    var yearSuffix = (start.slice(0, 4) !== today.slice(0, 4) || end.slice(0, 4) !== today.slice(0, 4)) ? ' ' + end.slice(0, 4) : ''
+    label = m === 1
+      ? wcFmt(start, { month: 'long' }) + yearSuffix
+      : wcFmt(start, { month: 'short' }) + ' – ' + wcFmt(end, { month: 'short' }) + yearSuffix
+  } else {
+    start = (allRange && allRange.start) || today
+    end = (allRange && allRange.end) || today
+    if (end < start) end = start
+    label = 'All time'
+  }
+  return { win: win, offset: offset, start: start, end: end, days: wcDayDiff(start, end) + 1, label: label }
+}
+
+// Planned daily rate (lbs/day, always >= 0) for a phase. 0 means "no plan line"
+// (missing TDEE inputs, or calories point the wrong way for the goal).
+function wcPhaseRate(startWeight, targetWeight, dailyCals, tdee) {
+  if (!tdee || !dailyCals) return 0
+  var perDay = (tdee - dailyCals) / 3500   // + = losing
+  if (targetWeight < startWeight) return perDay > 0 ? perDay : 0
+  if (targetWeight > startWeight) return perDay < 0 ? -perDay : 0
+  return 0
+}
+function wcPhaseDirection(phase) {
+  return phase.target_weight < phase.start_weight ? 'lose' : phase.target_weight > phase.start_weight ? 'gain' : 'maintain'
+}
+// Planned weight t days after the phase started (t may be fractional). Once the
+// target is reached the line stays flat at the target. null = no plan.
+function wcPlanWeightAtDay(phase, t) {
+  if (t < 0) return null
+  var s = phase.start_weight, g = phase.target_weight, r = phase.lbs_per_day
+  if (g === s) return g
+  if (!(r > 0)) return null
+  return g < s ? Math.max(s - r * t, g) : Math.min(s + r * t, g)
+}
+// Days from phase start until the plan reaches target (0 for maintain, null if no plan)
+function wcPhaseHitDay(phase) {
+  if (phase.target_weight === phase.start_weight) return 0
+  if (!(phase.lbs_per_day > 0)) return null
+  return Math.abs(phase.start_weight - phase.target_weight) / phase.lbs_per_day
+}
+function wcPhaseForDate(phases, dateStr) {
+  if (!phases || !phases.length) return null
+  for (var i = phases.length - 1; i >= 0; i--) {
+    var p = phases[i]
+    if (p.start_date <= dateStr && (!p.end_date || dateStr <= p.end_date)) return p
+  }
+  if (dateStr < phases[0].start_date) return null
+  // after a closed final phase, or in a gap between phases: use the latest that started
+  for (var j = phases.length - 1; j >= 0; j--) if (phases[j].start_date <= dateStr) return phases[j]
+  return null
+}
+function wcPlanAtDate(phases, dateStr) {
+  var p = wcPhaseForDate(phases, dateStr)
+  if (!p) return null
+  return wcPlanWeightAtDay(p, wcDayDiff(p.start_date, dateStr))
+}
+
+// Plan-line segments for a period, one per phase that overlaps it.
+// Positions are in "u" units: u = days since periodStart, where day k's dot sits
+// at u = k and the chart's edges are u = -0.5 and u = days - 0.5.
+function wcPlanSegments(phases, periodStart, days) {
+  var out = []
+  ;(phases || []).forEach(function(p, i) {
+    var ps = wcDayDiff(periodStart, p.start_date)
+    var pe = p.end_date ? wcDayDiff(periodStart, p.end_date) : Infinity
+    var uA = Math.max(-0.5, ps), uB = Math.min(days - 0.5, pe)
+    if (uA > uB) return
+    var pts = []
+    var add = function(u) { var w = wcPlanWeightAtDay(p, u - ps); if (w != null) pts.push({ u: u, w: w }) }
+    add(uA)
+    var hit = wcPhaseHitDay(p)
+    if (hit != null && hit > 0 && ps + hit > uA && ps + hit < uB) add(ps + hit)
+    if (uB > uA) add(uB)
+    out.push({ index: i, phase: p, uA: uA, uB: uB, pts: pts })
+  })
+  return out
+}
+
+// entries: [{date, weight}] sorted by date. 'day' keeps the last weigh-in per
+// day; 'week' averages Mon–Sun weeks and places the point mid-week (Thursday).
+function wcBucketWeights(entries, mode) {
+  var map = {}, order = []
+  ;(entries || []).forEach(function(e) {
+    var key = mode === 'week' ? wcMondayOf(e.date) : e.date
+    if (!map[key]) { map[key] = { sum: 0, count: 0, last: null }; order.push(key) }
+    map[key].sum += e.weight; map[key].count++; map[key].last = e.weight
+  })
+  return order.map(function(k) {
+    var b = map[k]
+    return mode === 'week'
+      ? { date: wcAddDays(k, 3), weight: Math.round((b.sum / b.count) * 10) / 10, count: b.count, weekStart: k }
+      : { date: k, weight: b.last, count: b.count }
+  })
+}
+
+// Change over a period: from the last weigh-in BEFORE the period (so a Monday
+// weigh-in already shows movement), or the first in-period weigh-in if none,
+// to the last weigh-in in the period. plan = what the plan called for over the
+// same dates.
+function wcPeriodChange(entries, phases, period) {
+  var inP = (entries || []).filter(function(e) { return e.date >= period.start && e.date <= period.end })
+  if (!inP.length) return null
+  var last = inP[inP.length - 1]
+  var before = entries.filter(function(e) { return e.date < period.start })
+  var base = before.length ? before[before.length - 1] : inP[0]
+  if (base === last) return null
+  var pl = wcPlanAtDate(phases, last.date), pb = wcPlanAtDate(phases, base.date)
+  // A plan comparison across two phases is meaningless (e.g. maintain at 165
+  // then a new phase starting at 176 would read as "plan +11 lb")
+  var phBase = wcPhaseForDate(phases, base.date), phLast = wcPhaseForDate(phases, last.date)
+  var crosses = !!(phBase && phLast && phBase !== phLast)
+  return {
+    actual: Math.round((last.weight - base.weight) * 10) / 10,
+    plan: (!crosses && pl != null && pb != null) ? Math.round((pl - pb) * 10) / 10 : null,
+    crossesPhase: crosses,
+    from: base.date, to: last.date
+  }
+}
+
+// Split a date range into Mon–Sun week chunks (clipped to the range), or
+// calendar-month chunks. Returns [{start, end}] oldest first.
+function wcChunks(start, end, mode) {
+  var out = [], cur = start
+  while (cur <= end) {
+    var chunkEnd
+    if (mode === 'month') {
+      var y = parseInt(cur.slice(0, 4), 10), mo = parseInt(cur.slice(5, 7), 10) - 1
+      chunkEnd = wcAddDays(wcMonthStart(y, mo + 1), -1)
+    } else {
+      chunkEnd = wcAddDays(wcMondayOf(cur), 6)
+    }
+    if (chunkEnd > end) chunkEnd = end
+    out.push({ start: cur, end: chunkEnd })
+    cur = wcAddDays(chunkEnd, 1)
+  }
+  return out
 }
 
 function buildGoalsSuggestions() {
@@ -950,88 +1151,8 @@ function render() {
 
       <!-- CONTENT -->
       <div class="content">
-      ${state.showGoals ? `
-
-      <div class="goals-panel">
-        <div class="goals-title">Your Goals</div>
-
-        <!-- Row 1: Start date + Start weight -->
-        <div class="goals-grid">
-          <div class="goal-field">
-            <label>Goal Start Date</label>
-            <input type="date" id="goal-start-date-input" value="${state.goals.goal_start_date || new Date().toISOString().slice(0,10)}" />
-          </div>
-          <div class="goal-field">
-            <label>Goal Start Weight (lbs)</label>
-            <input type="number" data-goal="weight" value="${state.goals.weight||''}" placeholder="e.g. 186" />
-          </div>
-        </div>
-
-        <!-- Row 2: Target weight + Current weight (read-only) -->
-        <div class="goals-grid" style="margin-top:8px">
-          <div class="goal-field">
-            <label>Target Weight (lbs)</label>
-            <input type="number" data-goal="target_weight" value="${state.goals.target_weight||''}" placeholder="e.g. 165" />
-          </div>
-          <div class="goal-field">
-            <label>Current Weight (lbs)</label>
-            <input type="text" readonly value="${state.weightLog&&state.weightLog.length>0 ? state.weightLog[state.weightLog.length-1].weight+' lbs' : 'Log a weigh-in'}" style="opacity:${state.weightLog&&state.weightLog.length>0?'1':'0.5'};cursor:default" />
-          </div>
-        </div>
-
-        <!-- Row 3: Height + Age -->
-        <div class="goals-grid" style="margin-top:8px">
-          <div class="goal-field">
-            <label>Height (inches)</label>
-            <input type="number" data-goal="height_inches" value="${state.goals.height_inches||''}" placeholder="e.g. 70" />
-          </div>
-          <div class="goal-field">
-            <label>Age</label>
-            <input type="number" data-goal="age" value="${state.goals.age||''}" placeholder="e.g. 35" />
-          </div>
-        </div>
-
-        <!-- Activity level -->
-        <div class="goal-field" style="margin-top:8px">
-          <label>Activity Level</label>
-          <select data-goal="activity_level" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #d4d4d0;background:#f9f9f8;color:#1a1a1a;font-size:13px;font-family:inherit">
-            <option value="sedentary" ${state.goals.activity_level==='sedentary'?'selected':''}>Sedentary (desk job, little exercise)</option>
-            <option value="light" ${state.goals.activity_level==='light'?'selected':''}>Lightly Active (1-3 days/week)</option>
-            <option value="moderate" ${state.goals.activity_level==='moderate'?'selected':''}>Moderately Active (3-5 days/week)</option>
-            <option value="active" ${state.goals.activity_level==='active'?'selected':''}>Very Active (6-7 days/week)</option>
-            <option value="very_active" ${state.goals.activity_level==='very_active'?'selected':''}>Extremely Active (physical job + exercise)</option>
-          </select>
-        </div>
-
-        <!-- Pace cards -->
-        ${(() => {
-          const s = buildGoalsSuggestions()
-          if (!s) return '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:10px">Fill in start weight, target weight, height, and age to see your calorie targets.</div>'
-          return `
-          <div style="margin-top:12px;font-size:11px;color:rgba(255,255,255,0.5)">Maintenance calories (TDEE): ~${s.tdee} cal/day</div>
-          <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-            <div class="goal-pace-card ${state.goals.loss_pace==='moderate'?'active':''}" data-pace="moderate" data-calories="${s.moderate.calories}">
-              <div style="display:flex;justify-content:space-between;align-items:baseline">
-                <span style="font-weight:700">Moderate</span>
-                <span style="font-size:15px;font-weight:800">${s.moderate.calories} cal/day</span>
-              </div>
-              <div style="font-size:11px;opacity:0.8">~${s.moderate.lbs_per_week} lbs/week · Reach ${state.goals.target_weight} lbs by ${s.moderate.date}</div>
-            </div>
-            <div class="goal-pace-card ${state.goals.loss_pace==='faster'?'active':''}" data-pace="faster" data-calories="${s.faster.calories}">
-              <div style="display:flex;justify-content:space-between;align-items:baseline">
-                <span style="font-weight:700">Faster</span>
-                <span style="font-size:15px;font-weight:800">${s.faster.calories} cal/day</span>
-              </div>
-              <div style="font-size:11px;opacity:0.8">~${s.faster.lbs_per_week} lbs/week · Reach ${state.goals.target_weight} lbs by ${s.faster.date}</div>
-            </div>
-          </div>
-          <div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.5)">Tap a plan to select it. Current goal: <strong style="color:white">${state.goals.calories} cal/day</strong></div>`
-        })()}
-
-        <button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:white;color:var(--forest);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>
-
-      </div>
-      ` : ''}
+      <!-- Goals panel lives in the Log tab (renderGoalsPanel). The old copy here
+           rendered alongside it with duplicate ids, which left the Log tab's Save dead. -->
         ${state.showSync ? `
         <div class="sync-panel">
           <div class="sync-title">Sync Devices</div>
@@ -1735,6 +1856,65 @@ function renderShop() {
   '</div>'
 }
 
+// Healthy range + phase history, inside the Goals panel on the Log tab
+function renderGoalRangeAndPhases() {
+  const ap = activePhase()
+  const avail = state.phasesAvailable
+  const muted = 'font-size:11px;color:#6e6e69'
+  const val = v => (v === null || v === undefined) ? '' : v
+  const dirWord = p => ({ lose: 'Lose', gain: 'Gain', maintain: 'Maintain' })[wcPhaseDirection(p)]
+  const shortDate = d => wcFmt(d, { month: 'short', day: 'numeric', year: 'numeric' })
+
+  const range =
+    '<div class="goals-grid" style="margin-top:14px">' +
+      '<div class="goal-field"><label>Healthy Range Low (lbs)</label>' +
+        '<input type="number" step="0.5" id="goal-range-low" data-range="low" value="' + val(ap && ap.range_low) + '" placeholder="e.g. 148"' + (avail ? '' : ' disabled') + ' /></div>' +
+      '<div class="goal-field"><label>Healthy Range High (lbs)</label>' +
+        '<input type="number" step="0.5" id="goal-range-high" data-range="high" value="' + val(ap && ap.range_high) + '" placeholder="e.g. 152"' + (avail ? '' : ' disabled') + ' /></div>' +
+    '</div>' +
+    '<div style="' + muted + ';margin-top:4px">Shaded on every weight chart. For a single baseline weight, fill in one box. Your target can sit above, below, or inside it.</div>'
+
+  if (!avail) {
+    return range +
+      '<div style="' + muted + ';margin-top:10px;padding:8px 10px;background:#f4f4f2;border-radius:8px">Healthy range and goal history need a one-time database update (the goal_phases table). Until then the chart uses your current goals only.</div>'
+  }
+
+  const phases = state.goalPhases.slice().reverse()
+  const list = phases.slice(0, 6).map((p, i) =>
+    '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid #eeeeec">' +
+      '<span style="color:#1a1a1a;font-weight:' + (i === 0 ? '700' : '500') + '">' + (p.end_date ? shortDate(p.start_date) + ' – ' + shortDate(p.end_date) : 'Since ' + shortDate(p.start_date)) + '</span>' +
+      '<span style="color:#6e6e69;text-align:right">' + dirWord(p) + ' · ' + p.start_weight + (p.target_weight !== p.start_weight ? ' → ' + p.target_weight : '') +
+        (p.range_low != null ? ' · range ' + p.range_low + (p.range_high !== p.range_low ? '–' + p.range_high : '') : '') + '</span>' +
+    '</div>'
+  ).join('') + (phases.length > 6 ? '<div style="' + muted + ';padding-top:4px">+ ' + (phases.length - 6) + ' earlier</div>' : '')
+
+  const f = state.newPhaseForm
+  const inputStyle = 'width:100%;padding:8px;border-radius:8px;border:1.5px solid #d4d4d0;background:#f9f9f8;font-size:13px;font-family:inherit;box-sizing:border-box'
+  const form = f
+    ? '<div style="margin-top:10px;padding:10px;background:#f4f4f2;border-radius:10px">' +
+        '<div style="font-size:12px;font-weight:700;color:#1a1a1a;margin-bottom:6px">New phase</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">' +
+          '<label style="' + muted + '">Starts<input type="date" id="np-date" value="' + f.start_date + '" style="' + inputStyle + '"/></label>' +
+          '<label style="' + muted + '">Start weight<input type="number" step="0.1" id="np-start" value="' + val(f.start_weight) + '" style="' + inputStyle + '"/></label>' +
+          '<label style="' + muted + '">Target<input type="number" step="0.1" id="np-target" value="' + val(f.target_weight) + '" placeholder="same = maintain" style="' + inputStyle + '"/></label>' +
+        '</div>' +
+        '<div style="' + muted + ';margin-top:6px">The current phase ends the day before. Set the target equal to the start weight to maintain. Your range carries over.</div>' +
+        '<div id="np-error" style="font-size:11px;color:var(--terra);margin-top:4px"></div>' +
+        '<div style="display:flex;gap:6px;margin-top:6px">' +
+          '<button data-phase-action="create" style="flex:1;padding:9px;background:#1a1a1a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Start phase</button>' +
+          '<button data-phase-action="cancel" style="padding:9px 14px;background:white;color:#3a3a38;border:1.5px solid #d4d4d0;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">Cancel</button>' +
+        '</div>' +
+      '</div>'
+    : '<button data-phase-action="open" style="width:100%;margin-top:10px;padding:9px;background:white;color:#1a1a1a;border:1.5px solid #d4d4d0;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Start a new phase</button>'
+
+  return range +
+    '<div style="margin-top:14px;padding-top:12px;border-top:1px solid #e8e8e5">' +
+      '<div style="font-size:12px;font-weight:700;color:#1a1a1a">Phases</div>' +
+      '<div style="' + muted + ';margin:2px 0 6px">Editing the fields above adjusts the current phase. Starting a new phase keeps the old plan and range on your charts for the dates they covered.</div>' +
+      list + form +
+    '</div>'
+}
+
 function renderGoalsPanel() {
   const s = buildGoalsSuggestions()
   const paceCards = !s
@@ -1786,7 +1966,10 @@ function renderGoalsPanel() {
         '<option value="active" ' + (state.goals.activity_level==='active'?'selected':'') + '>Very Active (6-7 days/week)</option>' +
         '<option value="very_active" ' + (state.goals.activity_level==='very_active'?'selected':'') + '>Extremely Active (physical job + exercise)</option>' +
       '</select></div>' +
+    '<div class="goal-field" style="margin-top:8px"><label>Daily Calorie Goal</label>' +
+      '<input type="number" data-goal="calories" value="' + (state.goals.calories||'') + '" placeholder="e.g. 2000" /></div>' +
     paceCards +
+    renderGoalRangeAndPhases() +
     '<button id="save-goals-btn" style="width:100%;margin-top:14px;padding:12px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">💾 Save Goals</button>' +
   '</div>'
 }
@@ -1849,73 +2032,6 @@ function renderLogInner() {
   // Day label
   const dayLabel = isToday ? 'Today' : offset === -1 ? 'Yesterday'
     : viewedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
-  const toLocalDateStr = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
-  const today = toLocalDateStr(now)
-  const weekDays = []
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date(now)
-    d.setDate(now.getDate() - i)
-    weekDays.push(toLocalDateStr(d))
-  }
-
-  // Build byDate using local date of each entry (same logic as fetchLogForDate)
-  const byDate = {}
-  ;(state.historyLog || []).forEach(e => {
-    const d = new Date(e.logged_at)
-    // Use local date components — same as fetchLogForDate's T00:00:00 local boundary
-    const key = toLocalDateStr(d)
-    if (!byDate[key]) byDate[key] = []
-    byDate[key].push(e)
-  })
-
-  const byDateExercise = {}
-  ;(state.historyExerciseLog || []).forEach(e => {
-    const d = new Date(e.logged_at)
-    const key = toLocalDateStr(d)
-    if (!byDateExercise[key]) byDateExercise[key] = []
-    byDateExercise[key].push(e)
-  })
-
-  // Override with freshly-fetched day data when available (guaranteed accurate)
-  if (state.viewedDayLog && state._viewedDateStr) {
-    byDate[state._viewedDateStr] = state.viewedDayLog
-  }
-  if (state.viewedDayExercise && state._viewedDateStr) {
-    byDateExercise[state._viewedDateStr] = state.viewedDayExercise
-  }
-
-  // Pre-fetch all 7 days if we don't have them cached yet
-  if (!state._weekDataLoaded) {
-    state._weekDataLoaded = true
-    Promise.all(weekDays.map(async d => {
-      const [log, ex] = await Promise.all([db.fetchLogForDate(d), db.fetchExerciseForDate(d)])
-      state._weekByDate = state._weekByDate || {}
-      state._weekExByDate = state._weekExByDate || {}
-      state._weekByDate[d] = log
-      state._weekExByDate[d] = ex
-      render()
-    }))
-  }
-  // Use pre-fetched week data if available (most accurate)
-  if (state._weekByDate) {
-    weekDays.forEach(d => {
-      if (state._weekByDate[d]) byDate[d] = state._weekByDate[d]
-      if (state._weekExByDate && state._weekExByDate[d]) byDateExercise[d] = state._weekExByDate[d]
-    })
-  }
-
-  const weeklyIn = weekDays.reduce((sum, d) => sum + (byDate[d] || []).reduce((s,e) => s+(e.calories||0), 0), 0)
-  const weeklyOut = weekDays.reduce((sum, d) => sum + (byDateExercise[d] || []).reduce((s,e) => s+(e.calories_burned||0), 0), 0)
-
-  const weeklyNet = weeklyIn - weeklyOut
-  const weeklyGoal = goal * 7
-  const weeklyDiff = weeklyNet - weeklyGoal
-  const deficitSurplus = weeklyDiff < 0
-    ? { label: Math.abs(weeklyDiff).toLocaleString() + ' cal deficit', color: 'var(--forest)', bg: 'var(--sage4)' }
-    : weeklyDiff > 0
-    ? { label: weeklyDiff.toLocaleString() + ' cal surplus', color: 'var(--terra)', bg: '#fff5f2' }
-    : { label: 'On target', color: 'var(--forest)', bg: 'var(--sage4)' }
-
   const search = state.logSearch || ''
   const logTagFilter = state.logTagFilter || null
   const recipeTags = getTagsForNamespace('recipe')
@@ -1958,29 +2074,6 @@ function renderLogInner() {
           '<button class="remove-btn" data-log-del="' + e.id + '" style="flex-shrink:0">x</button>' +
         '</div>'
       }).join('')
-
-  // Weekly breakdown rows
-  const weekRows = weekDays.map(d => {
-    const entries = byDate[d] || []
-    const exercise = byDateExercise[d] || []
-    const dayCalsIn = entries.reduce((s, e) => s + (e.calories || 0), 0)
-    const dayBurned = exercise.reduce((s, e) => s + (e.calories_burned || 0), 0)
-    const dayCals = dayCalsIn - dayBurned
-    const isDayToday = d === today
-    const diff = dayCals - goal
-    const wDayLabel = isDayToday ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    const foods = entries.slice(0, 3).map(e => esc(e.food)).join(', ') + (entries.length > 3 ? ' +' + (entries.length - 3) + ' more' : '')
-    const barPct = Math.min((dayCals / goal) * 100, 100)
-    const barColor = diff > 200 ? 'var(--terra)' : diff > 0 ? 'var(--gold)' : 'var(--forest2)'
-    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (isDayToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
-      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
-        '<span style="font-size:12px;font-weight:' + (isDayToday ? '700' : '500') + ';color:' + (isDayToday ? 'var(--forest)' : 'var(--ink)') + '">' + wDayLabel + '</span>' +
-        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (dayCalsIn > 0 ? dayCals + ' net cal' + (dayBurned > 0 ? ' <span style="font-size:10px;color:var(--forest)">(-' + dayBurned + ' burned)</span>' : '') : '--') + '</span>' +
-      '</div>' +
-      (dayCalsIn > 0 ? '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>' : '') +
-      (foods ? '<div style="font-size:10px;color:var(--ink3)">' + foods + '</div>' : '') +
-    '</div>'
-  }).join('')
 
   return '<div class="tab-content" id="log-tab-content">' +
     '<button id="log-goals-btn" style="width:100%;margin-bottom:' + (state.showGoals?'0':'12') + 'px;padding:10px 14px;background:#1a1a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between"><span>⚙️ Goals &amp; Targets</span><span style="opacity:0.55;font-size:11px">' + (state.showGoals ? '▲ Close' : 'Calories · Weight · Activity →') + '</span></button>' +
@@ -2118,16 +2211,8 @@ function renderLogInner() {
       '<div style="font-size:11px;color:var(--ink3)">' + (rem >= 0 ? rem + ' left' : Math.abs(rem) + ' over') + ' · goal ' + goal + '</div>' +
     '</div>' +
 
-    // 8. Last 7 days summary bar
-    '<div style="background:' + deficitSurplus.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">' +
-      '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Last 7 days</div>' +
-      '<div style="font-size:12px;font-weight:700;color:' + deficitSurplus.color + '">' + deficitSurplus.label + '</div>' +
-      '<div style="font-size:11px;color:var(--ink3)">' + weeklyIn.toLocaleString() + ' / ' + weeklyGoal.toLocaleString() + ' cal</div>' +
-    '</div>' +
-
-    // 9. Day-by-day breakdown of last 7 days
-    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px">Day by day</div>' +
-    weekRows +
+    // 8–9. Calories for the chart's selected period (same arrows drive both)
+    renderPeriodCalories() +
 
     // 10. AI Coach
     renderCoachPanel() +
@@ -2135,272 +2220,683 @@ function renderLogInner() {
   '</div>'
 }
 
+// ── GOAL PHASES (stateful) ───────────────────────────────────────────
+// A phase is one chapter of the program. Editing Goals fields adjusts the
+// ACTIVE phase in place; "Start a new phase" closes it and opens another, so
+// the old plan line and range stay on the chart for the dates they covered.
+
+function wcNormalizePhase(row) {
+  if (!row) return null
+  const num = v => (v === null || v === undefined || v === '') ? null : parseFloat(v)
+  return {
+    id: row.id ?? null,
+    start_date: String(row.start_date).slice(0, 10),
+    end_date: row.end_date ? String(row.end_date).slice(0, 10) : null,
+    start_weight: num(row.start_weight),
+    target_weight: num(row.target_weight),
+    daily_calories: row.daily_calories == null ? null : parseInt(row.daily_calories, 10),
+    lbs_per_day: num(row.lbs_per_day) || 0,
+    range_low: num(row.range_low),
+    range_high: num(row.range_high)
+  }
+}
+
+// Weigh-ins as [{date, weight, id}] by LOCAL date, oldest first, one per day.
+function sortedWeighIns() {
+  const byDay = {}
+  ;(state.weightLog || []).forEach(e => {
+    const w = parseFloat(e.weight)
+    if (!(w > 0)) return
+    const d = wcLocalDateStr(new Date(e.logged_at))
+    byDay[d] = { date: d, weight: w, id: e.id }
+  })
+  return Object.keys(byDay).sort().map(k => byDay[k])
+}
+
+// The phase the current Goals fields describe. The planned rate uses TDEE at
+// the phase's START weight, so it doesn't drift every time a weigh-in lands.
+function buildPhaseFromGoals() {
+  const g = state.goals || {}
+  const wl = sortedWeighIns()
+  const start = parseFloat(g.weight) || (wl[0] && wl[0].weight)
+  if (!start) return null
+  const target = parseFloat(g.target_weight) || start
+  const start_date = g.goal_start_date || (wl[0] && wl[0].date) || wcLocalDateStr(new Date())
+  const cals = parseInt(g.calories, 10) || null
+  const tdee = calcTDEE(start, g.height_inches, g.age, g.activity_level)
+  return {
+    start_date: String(start_date).slice(0, 10), end_date: null,
+    start_weight: start, target_weight: target, daily_calories: cals,
+    lbs_per_day: Math.round(wcPhaseRate(start, target, cals, tdee) * 100000) / 100000,
+    range_low: null, range_high: null
+  }
+}
+
+function getPhases() {
+  if (state.phasesAvailable && state.goalPhases.length) return state.goalPhases
+  const p = buildPhaseFromGoals()
+  return p ? [p] : []
+}
+function activePhase() {
+  const ph = getPhases()
+  return ph.length ? ph[ph.length - 1] : null
+}
+
+async function loadGoalPhases() {
+  const res = await db.fetchGoalPhases()
+  state.phasesAvailable = !!res.ok
+  let phases = (res.phases || []).map(wcNormalizePhase)
+  if (res.ok && phases.length === 0) {
+    const seed = buildPhaseFromGoals()
+    if (seed) {
+      const saved = await db.insertGoalPhase(seed)
+      if (saved) phases = [wcNormalizePhase(saved)]
+    }
+  }
+  state.goalPhases = phases
+}
+
+// After any Goals edit: bring the active phase in line with the Goals fields.
+async function syncActivePhaseFromGoals() {
+  if (!state.phasesAvailable) return
+  const fresh = buildPhaseFromGoals()
+  if (!fresh) return
+  const phases = state.goalPhases
+  const active = phases[phases.length - 1]
+  if (!active) {
+    const saved = await db.insertGoalPhase(fresh)
+    if (saved) state.goalPhases = [wcNormalizePhase(saved)]
+    return
+  }
+  const fields = {}
+  ;['start_date', 'start_weight', 'target_weight', 'daily_calories', 'lbs_per_day'].forEach(k => {
+    if (String(active[k]) !== String(fresh[k])) fields[k] = fresh[k]
+  })
+  if (active.end_date) fields.end_date = null
+  if (!Object.keys(fields).length) return
+  // Moving the start date back past the previous phase's end trims that phase
+  const prev = phases[phases.length - 2]
+  if (prev && fields.start_date && prev.end_date && prev.end_date >= fresh.start_date) {
+    const newEnd = wcAddDays(fresh.start_date, -1)
+    if (newEnd < prev.start_date) {
+      await db.deleteGoalPhase(prev.id)
+      phases.splice(phases.length - 2, 1)
+    } else {
+      await db.updateGoalPhase(prev.id, { end_date: newEnd })
+      prev.end_date = newEnd
+    }
+  }
+  Object.assign(active, fields)
+  await db.updateGoalPhase(active.id, fields)
+}
+
+async function saveGoalsAndPhase() {
+  await db.saveGoals(state.goals)
+  await syncActivePhaseFromGoals()
+}
+
+// Close the active phase the day before start_date and open a new one.
+// The healthy range carries over until it's edited.
+async function startNewPhase(np) {
+  state.goals.goal_start_date = np.start_date
+  state.goals.weight = np.start_weight
+  state.goals.target_weight = np.target_weight
+  await db.saveGoals(state.goals)
+  if (!state.phasesAvailable) return
+  const fresh = buildPhaseFromGoals()
+  if (!fresh) return
+  const active = state.goalPhases[state.goalPhases.length - 1]
+  if (active && active.start_date < fresh.start_date) {
+    const end = wcAddDays(fresh.start_date, -1)
+    await db.updateGoalPhase(active.id, { end_date: end })
+    active.end_date = end
+    fresh.range_low = active.range_low
+    fresh.range_high = active.range_high
+    const saved = await db.insertGoalPhase(fresh)
+    if (saved) state.goalPhases.push(wcNormalizePhase(saved))
+  } else {
+    // Same or earlier start than the active phase: that's a correction, not a new chapter
+    await syncActivePhaseFromGoals()
+  }
+}
+
+async function saveActiveRange(low, high) {
+  if (!state.phasesAvailable) return
+  const active = state.goalPhases[state.goalPhases.length - 1]
+  if (!active) return
+  if (low == null) low = high
+  if (high == null) high = low
+  if (low != null && high != null && low > high) { const t = low; low = high; high = t }
+  active.range_low = low
+  active.range_high = high
+  await db.updateGoalPhase(active.id, { range_low: low, range_high: high })
+}
+
+// Chart period currently selected on the Log tab (shared by chart + calories)
+function chartEarliestDate() {
+  const cands = [wcLocalDateStr(new Date())]
+  const ph = getPhases()
+  if (ph.length) cands.push(ph[0].start_date)
+  const wl = sortedWeighIns()
+  if (wl.length) cands.push(wl[0].date)
+  return cands.sort()[0]
+}
+function currentChartPeriod() {
+  const today = wcLocalDateStr(new Date())
+  let allEnd = today
+  const a = activePhase()
+  if (a) {
+    const hit = wcPhaseHitDay(a)
+    if (hit != null && hit > 0) {
+      const finish = wcAddDays(a.start_date, Math.ceil(hit))
+      const cap = wcAddDays(today, 365)
+      if (finish > allEnd) allEnd = finish < cap ? finish : cap
+    }
+  }
+  return wcPeriodBounds(state.chartWindow || '1W', state.chartOffset || 0, today,
+    { start: chartEarliestDate(), end: allEnd })
+}
+
 function renderWeightProgress() {
-  const { target_weight, calories: dailyCals, weight: goalsWeight, goal_start_date } = state.goals
+  const today = wcLocalDateStr(new Date())
+  const entries = sortedWeighIns()
+  const phases = getPhases()
+  const active = phases.length ? phases[phases.length - 1] : null
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  // Recent weigh-ins list (unchanged behaviour: newest 5, deletable)
   const weightLog = state.weightLog || []
+  const recentList = weightLog.length > 0
+    ? '<div style="margin-top:8px">' +
+        weightLog.slice().reverse().slice(0, 5).map(e =>
+          '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
+            '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
+            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: tz}) + '</span>' +
+            '<button class="remove-btn" data-weight-del="' + e.id + '">x</button>' +
+          '</div>'
+        ).join('') +
+      '</div>'
+    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0">Log your first weigh-in to start tracking.</div>'
 
-  // Start weight = goals weight field (what user entered as their starting weight)
-  // Fall back to first weigh-in if goals weight not set
-  const startWeight = parseFloat(goalsWeight || (weightLog.length > 0 ? weightLog[0].weight : 0))
-  if (!startWeight || !target_weight || startWeight <= parseFloat(target_weight)) return ''
+  if (!active && entries.length === 0) {
+    return '<div style="margin-top:16px">' +
+      '<div style="font-size:12px;color:var(--ink3);padding:10px 0">Set a start weight in Goals, or log a weigh-in, to see your progress chart.</div>' +
+      recentList + '</div>'
+  }
 
-  // Latest weigh-in
-  const latestWeight = weightLog.length > 0 ? parseFloat(weightLog[weightLog.length-1].weight) : startWeight
-  const lostSoFar = startWeight - latestWeight
-  const toGo = Math.max(latestWeight - parseFloat(target_weight), 0)
+  const win = state.chartWindow || '1W'
+  const period = currentChartPeriod()
+  const days = period.days
+  const periodHasToday = today >= period.start && today <= period.end
+  const latest = entries.length ? entries[entries.length - 1] : null
+  const latestW = latest ? latest.weight : active.start_weight
+  const dir = active ? wcPhaseDirection(active) : 'maintain'
+  const tgt = active ? active.target_weight : latestW
+  const rate = active ? active.lbs_per_day : 0
+  const hasRange = p => p && p.range_low != null && p.range_high != null
+  const reached = dir === 'lose' ? latestW <= tgt : dir === 'gain' ? latestW >= tgt : false
+  const f1 = n => (Math.round(n * 10) / 10).toFixed(1)
+  const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + f1(Math.abs(n))
 
-  // Start date from goals
-  const startDate = goal_start_date
-    ? new Date(goal_start_date + 'T12:00:00')
-    : (weightLog.length > 0 ? new Date(weightLog[0].logged_at) : new Date())
-  startDate.setHours(0, 0, 0, 0)
-
-  // Projection
-  const tdee = calcTDEE(latestWeight, state.goals.height_inches, state.goals.age, state.goals.activity_level)
-  const projection = tdee ? calcProjection(tdee, startWeight, target_weight, dailyCals) : null
-
-  // End date = projected finish or 6 months
-  let endDate = new Date(startDate)
-  if (projection) {
-    endDate.setDate(startDate.getDate() + projection.days)
+  // ── Stats row (always about now, not the viewed period) ──
+  const stat = (val, label, color) =>
+    '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:' + color + '">' + val + '</div><div style="font-size:10px;color:var(--ink3)">' + label + '</div></div>'
+  let stats = ''
+  if (dir === 'maintain') {
+    stats = stat(latestW, 'Current', 'var(--forest)') +
+      stat(tgt, 'Baseline', 'var(--ink2)') +
+      stat(signed(latestW - tgt), 'From baseline', 'var(--ink2)') +
+      (hasRange(active) ? stat(active.range_low === active.range_high ? active.range_low : active.range_low + '–' + active.range_high, 'Range', 'var(--forest2)') : '')
   } else {
-    endDate.setMonth(startDate.getMonth() + 6)
+    const change = latestW - active.start_weight
+    const showChange = dir === 'lose' ? change < -0.1 : change > 0.1
+    stats = stat(active.start_weight, 'Start', 'var(--ink3)') +
+      stat(latestW, 'Current', 'var(--forest)') +
+      (showChange ? stat((dir === 'lose' ? '−' : '+') + f1(Math.abs(change)), dir === 'lose' ? 'Lost' : 'Gained', 'var(--forest2)') : '') +
+      (reached ? stat('✓', 'Reached', 'var(--forest)') : stat(f1(Math.abs(latestW - tgt)), 'To go', 'var(--ink2)')) +
+      stat(tgt, 'Target', 'var(--terra)')
   }
 
-  // Compare updated plan end date vs original to show ahead/behind message
-  let nudgeMsg = '', nudgeColor = 'var(--ink3)'
+  // ── Geometry ──
+  const W = 320, H = 170, padL = 32, padR = 12, padT = 14, padB = 26
+  const plotW = W - padL - padR, plotH = H - padT - padB
+  const xU = u => padL + ((u + 0.5) / days) * plotW
+  const uOf = d => wcDayDiff(period.start, d)
+  const halfDay = plotW / days / 2
 
-  const totalDays = Math.max(Math.round((endDate - startDate) / 86400000), 30)
-  const lbsPerDay = projection ? (startWeight - parseFloat(target_weight)) / projection.days : 0
+  // ── Data in view ──
+  const inP = entries.filter(e => e.date >= period.start && e.date <= period.end)
+  const weekly = win === '3M' || win === 'All'
+  const clampDate = d => d < period.start ? period.start : d > period.end ? period.end : d
+  const shown = weekly
+    ? wcBucketWeights(inP, 'week').map(p => Object.assign({}, p, { date: clampDate(p.date) }))
+    : inP
+  const prevEntry = (() => { let p = null; for (const e of entries) { if (e.date < period.start) p = e; else break } return p })()
 
-  // Original projected line — starts at startWeight on startDate, goes to target
-  const projPoints = projection ? Array.from({length: Math.min(totalDays, projection.days) + 1}, (_, i) => ({
-    day: i,
-    weight: Math.max(parseFloat((startWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
-  })) : []
-
-  // Adjusted projection — same daily rate, but starting from current weight at today
-  const todayDay = Math.round((new Date() - startDate) / 86400000)
-  const daysToTargetFromNow = lbsPerDay > 0 ? Math.ceil((latestWeight - parseFloat(target_weight)) / lbsPerDay) : 0
-  const adjustedProjPoints = (projection && latestWeight !== startWeight && daysToTargetFromNow > 0) ?
-    Array.from({length: daysToTargetFromNow + 1}, (_, i) => ({
-      day: todayDay + i,
-      weight: Math.max(parseFloat((latestWeight - lbsPerDay * i).toFixed(2)), parseFloat(target_weight))
-    })) : []
-
-  // Extend endDate if adjusted projection goes further
-  if (adjustedProjPoints.length > 0) {
-    const adjEnd = new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000)
-    if (adjEnd > endDate) endDate = adjEnd
+  // Faint connector from the last weigh-in before this period, so a lone
+  // Monday dot isn't orphaned.
+  let ghost = null
+  if (prevEntry && shown.length) {
+    const u0 = uOf(prevEntry.date), u1 = uOf(shown[0].date)
+    const edgeW = prevEntry.weight + (shown[0].weight - prevEntry.weight) * ((-0.5 - u0) / (u1 - u0))
+    ghost = { u0: -0.5, w0: edgeW, u1: u1, w1: shown[0].weight }
   }
 
-  // Helper — get local YYYY-MM-DD string from a date
-  const toLocalDate = (d) => d.toLocaleDateString('sv')
-  const startDateStr = toLocalDate(startDate)
+  const segs = wcPlanSegments(phases, period.start, days)
 
-  // Actual weigh-in points plotted by date — use local date to avoid timezone shift
-  const allActualPoints = weightLog
-    .filter(e => parseFloat(e.weight) > 0)
-    .map(e => {
-      const localDate = toLocalDate(new Date(e.logged_at))
-      // Calculate day offset by comparing local date strings
-      const entryDate = new Date(localDate + 'T12:00:00')
-      const startMidnight = new Date(startDateStr + 'T12:00:00')
-      const day = Math.round((entryDate - startMidnight) / 86400000)
-      return { day, weight: parseFloat(e.weight), id: e.id, date: new Date(e.logged_at) }
-    }).filter(p => p.day >= 0)
-
-  // Apply window filter
-  const windowDays = state.chartWindow === '1W' ? 7 : state.chartWindow === '2W' ? 14 : state.chartWindow === '1M' ? 30 : state.chartWindow === '3M' ? 90 : null
-  const windowStartDay = windowDays ? Math.max(0, (allActualPoints.length > 0 ? allActualPoints[allActualPoints.length-1].day : 0) - windowDays) : 0
-  const actualPoints = windowDays ? allActualPoints.filter(p => p.day >= windowStartDay) : allActualPoints
-
-  // Recalculate totalDays based on window
-  const windowTotalDays = windowDays ? windowDays : totalDays
-  const windowStartDate = new Date(startDate.getTime() + windowStartDay * 86400000)
-
-  // Month/week labels for window
-  const windowLabels = []
-  if (windowDays && windowDays <= 14) {
-    // 1W/2W — show day labels
-    const step = windowDays <= 7 ? 1 : 2
-    for (let d = 0; d <= windowTotalDays; d += step) {
-      const labelDate = new Date(startDate.getTime() + (windowStartDay + d) * 86400000)
-      windowLabels.push({ day: windowStartDay + d, label: labelDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) })
+  // "At current pace" line: only on the period containing today
+  let adjPts = [], updatedFinish = null
+  if (periodHasToday && latest && dir !== 'maintain' && rate > 0 && !reached) {
+    const uL = uOf(latest.date)
+    const wAt = u => dir === 'lose' ? Math.max(latestW - rate * (u - uL), tgt) : Math.min(latestW + rate * (u - uL), tgt)
+    const uStart = Math.max(uL, -0.5), uEnd = days - 0.5
+    const uHit = uL + Math.abs(latestW - tgt) / rate
+    if (uEnd > uStart) {
+      adjPts.push({ u: uStart, w: wAt(uStart) })
+      if (uHit > uStart && uHit < uEnd) adjPts.push({ u: uHit, w: tgt })
+      adjPts.push({ u: uEnd, w: wAt(uEnd) })
     }
-  } else {
-    // 1M, 3M, All — show month labels
-    const cursor = new Date(windowStartDate)
-    cursor.setDate(1); cursor.setMonth(cursor.getMonth() + 1)
-    const windowEndDate = new Date(startDate.getTime() + (windowStartDay + windowTotalDays) * 86400000)
-    while (cursor <= windowEndDate) {
-      windowLabels.push({ day: Math.round((cursor - startDate) / 86400000), label: cursor.toLocaleDateString('en-US', {month:'short'}) })
-      cursor.setMonth(cursor.getMonth() + 1)
-    }
+    updatedFinish = wcAddDays(latest.date, Math.ceil(Math.abs(latestW - tgt) / rate))
   }
 
-  // SVG — Y range
-  // For windowed views (not All), zoom axis to expected range for that period
-  // so small daily/weekly changes are actually visible
-  const targetW = parseFloat(target_weight)
+  // ── Y range ──
+  const vals = shown.map(p => p.weight)
+  if (win === '3M') inP.forEach(e => vals.push(e.weight))
+  segs.forEach(s => s.pts.forEach(p => vals.push(p.w)))
+  if (ghost) vals.push(ghost.w0)
+  if (!vals.length) vals.push(latestW)
+  let lo = Math.min(...vals), hi = Math.max(...vals)
+  const offBands = []
   let minW, maxW
-  if (windowDays && lbsPerDay > 0) {
-    // Calculate expected weight at start and end of current window
-    const windowStartExpected = Math.max(startWeight - lbsPerDay * windowStartDay, targetW)
-    const windowEndExpected = Math.max(startWeight - lbsPerDay * (windowStartDay + windowDays), targetW)
-    // Include actual logged weights in window too
-    const windowActualWeights = actualPoints.map(p => p.weight)
-    const allWindowWeights = [windowStartExpected, windowEndExpected, ...windowActualWeights]
-    // Zoom in: axis spans the expected range + small padding (2 lbs each side)
-    const padding = Math.max(1, (windowStartExpected - windowEndExpected) * 0.3)
-    minW = Math.floor(Math.min(...allWindowWeights) - padding)
-    maxW = Math.ceil(Math.max(...allWindowWeights) + padding)
+  const spanEnd = periodHasToday ? today : period.end
+  const onePhase = p => p && p === wcPhaseForDate(phases, period.start) ? p : null
+  const centerPhase = onePhase(wcPhaseForDate(phases, spanEnd))
+  if (centerPhase && wcPhaseDirection(centerPhase) === 'maintain' && win !== 'All') {
+    // Maintenance: the baseline (maintain weight) is the centre line, so the
+    // chart reads as variance above/below it. The range joins the axis only
+    // if it's within a few pounds; otherwise it gets the edge indicator.
+    const mid = centerPhase.target_weight
+    let half = Math.max(Math.abs(hi - mid) + 0.6, Math.abs(lo - mid) + 0.6, 2)
+    if (hasRange(centerPhase)) {
+      const reach = Math.max(Math.abs(centerPhase.range_low - mid), Math.abs(centerPhase.range_high - mid)) + 0.5
+      if (reach <= half + 3) half = Math.max(half, reach)
+      else offBands.push({ lo: centerPhase.range_low, hi: centerPhase.range_high, below: centerPhase.range_high < mid })
+    }
+    minW = Math.floor(mid - half); maxW = Math.ceil(mid + half)
   } else {
-    // All view: full journey from start to target
-    const visibleWeights = [startWeight, latestWeight, targetW, ...actualPoints.map(p => p.weight)]
-    minW = Math.floor(Math.min(...visibleWeights)) - 1
-    maxW = Math.ceil(Math.max(...visibleWeights)) + 1
+    const slack = Math.max(3, (hi - lo) * 0.5)
+    segs.filter(s => hasRange(s.phase)).forEach(s => {
+      const bl = s.phase.range_low, bh = s.phase.range_high
+      if (win === 'All' || (bh >= lo - slack && bl <= hi + slack)) { lo = Math.min(lo, bl); hi = Math.max(hi, bh) }
+      else if (!offBands.some(o => o.lo === bl && o.hi === bh)) offBands.push({ lo: bl, hi: bh, below: bh < lo })
+    })
+    const pad = Math.max(0.8, (hi - lo) * 0.1)
+    minW = Math.floor(lo - pad); maxW = Math.ceil(hi + pad)
+    if (maxW - minW < 4) { const c = (minW + maxW) / 2; minW = Math.floor(c - 2); maxW = Math.ceil(c + 2) }
   }
-  const W = 320, H = 155, padL = 32, padR = 12, padT = 12, padB = 28
+  const yS = w => padT + ((maxW - w) / (maxW - minW)) * plotH
+  const span = maxW - minW
+  const yStep = span <= 8 ? 1 : span <= 20 ? 2 : span <= 50 ? 5 : 10
+  const yGrid = []
+  for (let w = Math.ceil(minW / yStep) * yStep; w <= maxW; w += yStep) yGrid.push(w)
 
-  // X scale based on window — map day offsets within the window
-  const xScale = d => padL + (Math.min(Math.max(d - windowStartDay, 0), windowTotalDays) / windowTotalDays) * (W - padL - padR)
-  const yScale = w => padT + ((maxW - w) / (maxW - minW)) * (H - padT - padB)
+  const path = pts => pts.map((p, i) => (i ? 'L' : 'M') + xU(p.u).toFixed(1) + ' ' + yS(p.w).toFixed(1)).join(' ')
 
-  const yStep = (maxW - minW) <= 10 ? 2 : 5
-  const yGridLines = []
-  for (let w = Math.ceil(minW / yStep) * yStep; w <= maxW; w += yStep) yGridLines.push(w)
-
-  const mkPath = pts => pts.map((p,i) => (i===0?'M':'L') + xScale(p.day).toFixed(1) + ' ' + yScale(p.weight).toFixed(1)).join(' ')
-
-  const projPath = projPoints.length > 1 ? mkPath(projPoints.filter((_,i)=>i%3===0||i===projPoints.length-1)) : ''
-  const adjProjPath = adjustedProjPoints.length > 1 ? mkPath(adjustedProjPoints.filter((_,i)=>i%3===0||i===adjustedProjPoints.length-1)) : ''
-  const actualPath = actualPoints.length > 1 ? mkPath(actualPoints) : ''
-
-  // Nudge message — compare adjusted end date vs original
-  if (projection && adjustedProjPoints.length > 0 && latestWeight !== startWeight) {
-    const origEndDay = projection.days
-    const adjEndDay = todayDay + daysToTargetFromNow
-    const diffDays = origEndDay - adjEndDay
-    const diffWeeks = Math.round(Math.abs(diffDays) / 7)
-    if (diffDays > 14) { nudgeMsg = '🎉 ' + diffWeeks + 'w ahead of plan!'; nudgeColor = 'var(--forest)' }
-    else if (diffDays > 0) { nudgeMsg = '✅ Slightly ahead of plan!'; nudgeColor = 'var(--forest2)' }
-    else if (diffDays < -14) { nudgeMsg = '💪 ' + diffWeeks + 'w behind plan — keep at it.'; nudgeColor = 'var(--terra)' }
-    else if (diffDays < 0) { nudgeMsg = '📊 Slightly behind plan — keep going!'; nudgeColor = 'var(--gold)' }
-    else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
+  // ── X labels ──
+  const xl = []
+  if (win === '1W') {
+    for (let i = 0; i < days; i++) {
+      const d = wcAddDays(period.start, i)
+      xl.push({ u: i, text: wcFmt(d, { weekday: 'short' }) + ' ' + parseInt(d.slice(8), 10), bold: d === today })
+    }
+  } else if (win === '2W') {
+    for (let i = 0; i < days; i++) {
+      const d = wcAddDays(period.start, i)
+      xl.push({ u: i, text: String(parseInt(d.slice(8), 10)), bold: d === today, grid: i === 7 })
+    }
+  } else if (win === '1M') {
+    for (let i = 0; i < days; i++) {
+      const d = wcAddDays(period.start, i)
+      if (wcMondayOf(d) === d) xl.push({ u: i, text: wcFmt(d, { month: 'short', day: 'numeric' }), grid: true })
+    }
+  } else {
+    const months = wcChunks(period.start, period.end, 'month')
+    const every = months.length > 16 ? 3 : months.length > 8 ? 2 : 1
+    const multiYear = period.start.slice(0, 4) !== period.end.slice(0, 4)
+    months.forEach((m, i) => {
+      if (i % every) return
+      if (xU(uOf(m.start) - 0.5) > W - padR - 26) return   // no room for the label at the right edge
+      const isJan = m.start.slice(5, 7) === '01'
+      xl.push({ u: uOf(m.start) - 0.5, text: wcFmt(m.start, { month: 'short' }) + (multiYear && (isJan || i === 0) ? " '" + m.start.slice(2, 4) : ''), grid: i > 0, anchor: 'start' })
+    })
   }
 
-  // Start dot (at startWeight on startDate)
-  const startDotY = yScale(startWeight)
-  const startDotX = xScale(0)
+  // ── SVG ──
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" role="img" aria-label="Weight chart, ' + period.label + '">' +
+    '<defs><clipPath id="wc-plot"><rect x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + plotH + '"/></clipPath></defs>'
+
+  // Future days tinted, so empty days read as "not yet", not "missed"
+  if (periodHasToday && win !== 'All') {
+    const fx = xU(uOf(today)) + halfDay
+    if (fx < W - padR) svg += '<rect x="' + fx.toFixed(1) + '" y="' + padT + '" width="' + (W - padR - fx).toFixed(1) + '" height="' + plotH + '" fill="var(--cream2)" opacity="0.7"/>'
+  }
+
+  // Healthy range bands, one per phase segment
+  svg += '<g clip-path="url(#wc-plot)">' + segs.filter(s => hasRange(s.phase)).map(s => {
+    const x0 = Math.max(padL, xU(s.uA) - (s.uA === -0.5 ? 0 : halfDay))
+    const x1 = Math.min(W - padR, xU(s.uB) + (s.uB === days - 0.5 ? 0 : halfDay))
+    const y0 = yS(s.phase.range_high), y1 = yS(s.phase.range_low)
+    return s.phase.range_low === s.phase.range_high
+      ? '<line x1="' + x0.toFixed(1) + '" y1="' + y0.toFixed(1) + '" x2="' + x1.toFixed(1) + '" y2="' + y0.toFixed(1) + '" stroke="var(--forest2)" stroke-width="1.5" opacity="0.5"/>'
+      : '<rect x="' + x0.toFixed(1) + '" y="' + y0.toFixed(1) + '" width="' + (x1 - x0).toFixed(1) + '" height="' + Math.max(1, y1 - y0).toFixed(1) + '" fill="var(--forest2)" opacity="0.13"/>'
+  }).join('') + '</g>'
+
+  // Grid + axes
+  svg += yGrid.map(w =>
+    '<line x1="' + padL + '" y1="' + yS(w).toFixed(1) + '" x2="' + (W - padR) + '" y2="' + yS(w).toFixed(1) + '" stroke="var(--cream3)" stroke-width="1"/>' +
+    '<text x="' + (padL - 4) + '" y="' + (yS(w) + 3).toFixed(1) + '" text-anchor="end" font-size="7" fill="var(--ink3)">' + w + '</text>'
+  ).join('')
+  svg += xl.map(l => {
+    const x = xU(l.u)
+    return (l.grid ? '<line x1="' + x.toFixed(1) + '" y1="' + padT + '" x2="' + x.toFixed(1) + '" y2="' + (H - padB) + '" stroke="var(--cream3)" stroke-width="1" stroke-dasharray="2,3"/>' : '') +
+      '<text x="' + (l.anchor === 'start' ? x + 2 : x).toFixed(1) + '" y="' + (H - padB + 12) + '" text-anchor="' + (l.anchor || 'middle') + '" font-size="7"' + (l.bold ? ' font-weight="bold" fill="var(--forest)"' : ' fill="var(--ink3)"') + '>' + l.text + '</text>'
+  }).join('')
+
+  // Today marker
+  if (periodHasToday && win !== 'All') {
+    const tx = xU(uOf(today))
+    svg += '<line x1="' + tx.toFixed(1) + '" y1="' + padT + '" x2="' + tx.toFixed(1) + '" y2="' + (H - padB) + '" stroke="var(--forest2)" stroke-width="1" opacity="0.35"/>'
+  }
+
+  // Plan line(s), at-current-pace line, ghost connector
+  svg += '<g clip-path="url(#wc-plot)">' +
+    segs.filter(s => s.pts.length > 1).map(s => '<path d="' + path(s.pts) + '" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.9"/>').join('') +
+    // Phase start marker when a phase begins inside this period
+    segs.filter(s => s.uA > -0.5 && s.pts.length).map(s =>
+      '<circle cx="' + xU(s.uA).toFixed(1) + '" cy="' + yS(s.pts[0].w).toFixed(1) + '" r="3" fill="white" stroke="#999" stroke-width="1.5"/>').join('') +
+    (adjPts.length > 1 ? '<path d="' + path(adjPts) + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.85"/>' : '') +
+    (ghost ? '<path d="' + path([{ u: ghost.u0, w: ghost.w0 }, { u: ghost.u1, w: ghost.w1 }]) + '" fill="none" stroke="var(--forest)" stroke-width="1.5" opacity="0.3"/>' : '') +
+  '</g>'
+
+  // Daily readings as faint marks under the weekly averages (3M only)
+  if (win === '3M') svg += inP.map(e => '<circle cx="' + xU(uOf(e.date)).toFixed(1) + '" cy="' + yS(e.weight).toFixed(1) + '" r="1.4" fill="var(--forest)" opacity="0.3"/>').join('')
+
+  // Weigh-ins
+  if (shown.length > 1) svg += '<path d="' + path(shown.map(p => ({ u: uOf(p.date), w: p.weight }))) + '" fill="none" stroke="var(--forest)" stroke-width="2" stroke-linejoin="round"/>'
+  const dense = shown.length > 40
+  svg += shown.map((p, i) => {
+    const cx = xU(uOf(p.date)), cy = yS(p.weight)
+    const isLastShown = i === shown.length - 1
+    if (dense && !isLastShown) return ''
+    const isNewest = !weekly && latest && p.date === latest.date
+    const r = weekly ? 2.6 : isNewest ? 4.5 : 3.5
+    const label = (win === '1W' || isLastShown)
+      ? '<text x="' + (cx > W - 30 ? cx - 6 : cx < padL + 20 ? cx + 6 : cx).toFixed(1) + '" y="' + (cy > padT + 14 ? cy - 7 : cy + 13).toFixed(1) + '" text-anchor="' + (cx > W - 30 ? 'end' : cx < padL + 20 ? 'start' : 'middle') + '" font-size="' + (isLastShown ? 8 : 7) + '"' + (isLastShown ? ' font-weight="bold" fill="var(--forest)"' : ' fill="var(--ink3)"') + '>' + (weekly ? f1(p.weight) : p.weight) + '</text>'
+      : ''
+    return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + r + '" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' + label
+  }).join('')
+
+  // Range off-screen indicator
+  offBands.forEach((b, i) => {
+    const y = b.below ? H - padB - 4 - i * 10 : padT + 8 + i * 10
+    svg += '<text x="' + (W - padR - 3) + '" y="' + y + '" text-anchor="end" font-size="7.5" fill="var(--forest2)">Range ' + (b.lo === b.hi ? b.lo : b.lo + '–' + b.hi) + (b.below ? ' ↓' : ' ↑') + '</text>'
+  })
+
+  if (!shown.length && !segs.some(s => s.pts.length)) {
+    svg += '<text x="' + (padL + plotW / 2) + '" y="' + (padT + plotH / 2) + '" text-anchor="middle" font-size="9" fill="var(--ink3)">No weigh-ins in this period</text>'
+  }
+  svg += '</svg>'
+
+  // ── Period summary ──
+  const periodName = { '1W': 'Week', '2W': '2 weeks', '1M': 'Month', '3M': '3 months' }[win]
+  let summary = ''
+  if (win !== 'All') {
+    const pPhase = wcPhaseForDate(phases, spanEnd)
+    if (onePhase(pPhase) && wcPhaseDirection(pPhase) === 'maintain' && inP.length) {
+      const avg = inP.reduce((s, e) => s + e.weight, 0) / inP.length
+      summary = periodName + ' average <strong>' + f1(avg) + ' lb</strong> · ' + signed(avg - pPhase.target_weight) + ' vs baseline' +
+        (hasRange(pPhase) ? ' · ' + (avg >= pPhase.range_low && avg <= pPhase.range_high ? 'in range'
+          : avg > pPhase.range_high ? f1(avg - pPhase.range_high) + ' above range' : f1(pPhase.range_low - avg) + ' below range') : '')
+    } else {
+      const ch = wcPeriodChange(entries, phases, period)
+      if (ch) {
+        const pDir = pPhase ? wcPhaseDirection(pPhase) : 'lose'
+        const onPlan = ch.plan == null ? null : (pDir === 'gain' ? ch.actual >= ch.plan : ch.actual <= ch.plan)
+        summary = '<span style="color:' + (onPlan === null ? 'var(--ink2)' : onPlan ? 'var(--forest)' : 'var(--terra)') + ';font-weight:700">' + periodName + ': ' + signed(ch.actual) + ' lb</span>' +
+          (ch.plan != null ? ' <span style="color:var(--ink3)">· plan ' + signed(ch.plan) + ' lb</span>' : '') +
+          (ch.crossesPhase ? ' <span style="color:var(--ink3)">· new phase started</span>' : '')
+      } else {
+        summary = '<span style="color:var(--ink3)">' + (inP.length ? 'One weigh-in so far' : periodHasToday ? 'No weigh-ins yet this ' + periodName.toLowerCase() : 'No weigh-ins in this period') + '</span>'
+      }
+    }
+  }
+
+  // ── Finish dates + nudge (only when looking at the present) ──
+  const longDate = d => wcFmt(d, { month: 'long', day: 'numeric', year: 'numeric' })
+  let datesLine = '', nudgeMsg = '', nudgeColor = 'var(--ink3)'
+  if (periodHasToday && active) {
+    const hit = wcPhaseHitDay(active)
+    if (dir !== 'maintain' && hit != null && !reached) {
+      datesLine = 'Planned: <strong>' + longDate(wcAddDays(active.start_date, Math.ceil(hit))) + '</strong>' +
+        (updatedFinish ? ' · At current pace: <strong style="color:var(--forest2)">' + longDate(updatedFinish) + '</strong>' : '')
+    }
+    if (dir !== 'maintain' && reached) {
+      nudgeMsg = '🎯 Target reached!' + (hasRange(active) ? ' Your healthy range is ' + active.range_low + (active.range_high !== active.range_low ? '–' + active.range_high : '') + ' — start a maintain phase in Goals when you’re ready.' : '')
+      nudgeColor = 'var(--forest)'
+    } else if (dir === 'maintain' && hasRange(active) && latest) {
+      if (latestW > active.range_high) { nudgeMsg = f1(latestW - active.range_high) + ' lb above your range'; nudgeColor = 'var(--gold)' }
+      else if (latestW < active.range_low) { nudgeMsg = f1(active.range_low - latestW) + ' lb below your range'; nudgeColor = 'var(--gold)' }
+      else { nudgeMsg = '✅ In your range'; nudgeColor = 'var(--forest)' }
+    } else if (dir === 'maintain' && latest) {
+      const off = latestW - tgt
+      if (Math.abs(off) <= 1) { nudgeMsg = '✅ Holding steady at your baseline'; nudgeColor = 'var(--forest)' }
+      else { nudgeMsg = f1(Math.abs(off)) + ' lb ' + (off > 0 ? 'above' : 'below') + ' your baseline'; nudgeColor = 'var(--gold)' }
+    } else if (dir !== 'maintain' && rate > 0 && latest && latest.date >= active.start_date) {
+      const planNow = wcPlanAtDate(phases, latest.date)
+      if (planNow != null) {
+        const aheadLbs = dir === 'lose' ? planNow - latestW : latestW - planNow
+        const aheadDays = aheadLbs / rate
+        const wks = Math.round(Math.abs(aheadDays) / 7)
+        if (aheadDays > 14) { nudgeMsg = '🎉 ' + wks + 'w ahead of plan!'; nudgeColor = 'var(--forest)' }
+        else if (aheadDays > 2) { nudgeMsg = '✅ Slightly ahead of plan!'; nudgeColor = 'var(--forest2)' }
+        else if (aheadDays < -14) { nudgeMsg = '💪 ' + wks + 'w behind plan — keep at it.'; nudgeColor = 'var(--terra)' }
+        else if (aheadDays < -2) { nudgeMsg = '📊 Slightly behind plan — keep going!'; nudgeColor = 'var(--gold)' }
+        else { nudgeMsg = '🎯 Right on track!'; nudgeColor = 'var(--forest)' }
+      }
+    }
+  }
+
+  // ── Period navigation ──
+  const earliest = chartEarliestDate()
+  const canBack = win !== 'All' && period.start > earliest
+  const canFwd = win !== 'All' && period.offset < 1
+  const navBtn = (dirn, enabled, glyph, label) =>
+    '<button class="wc-nav-btn" data-chart-nav="' + dirn + '" aria-label="' + label + '"' + (enabled ? '' : ' disabled') + '>' + glyph + '</button>'
+  const nav = win === 'All'
+    ? '<div class="wc-nav"><span class="wc-period-label">' + period.label + '</span></div>'
+    : '<div class="wc-nav">' +
+        navBtn(-1, canBack, '‹', 'Previous period') +
+        '<span class="wc-period-label">' + period.label + '</span>' +
+        navBtn(1, canFwd, '›', 'Next period') +
+        (periodHasToday ? '' : '<button class="wc-today-btn" data-chart-today>Today</button>') +
+      '</div>'
+
+  const legendItem = (svgLine, text) => '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)">' + svgLine + text + '</div>'
+  const legend = '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
+    legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2"/></svg>', weekly ? 'Weekly average' : 'Weigh-ins') +
+    (segs.some(s => s.pts.length > 1) ? legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3"/></svg>', segs.every(sg => wcPhaseDirection(sg.phase) === 'maintain') ? 'Baseline' : 'Plan') : '') +
+    (adjPts.length > 1 ? legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="3,2"/></svg>', 'At current pace') : '') +
+    (segs.some(s => hasRange(s.phase)) || offBands.length ? legendItem('<svg width="12" height="8"><rect width="12" height="8" fill="var(--forest2)" opacity="0.2"/></svg>', 'Healthy range') : '') +
+  '</div>'
 
   return '<div style="margin-top:16px">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
       '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">&#9878; Weight Progress</div>' +
       '<div style="display:flex;gap:3px">' +
-        ['1W','2W','1M','3M','All'].map(w =>
-          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (state.chartWindow===w?'var(--forest)':'var(--border)') + ';background:' + (state.chartWindow===w?'var(--forest)':'white') + ';color:' + (state.chartWindow===w?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
+        ['1W', '2W', '1M', '3M', 'All'].map(w =>
+          '<button class="chart-window-btn" data-window="' + w + '" style="font-size:11px;padding:3px 8px;border-radius:5px;border:1.5px solid ' + (win === w ? 'var(--forest)' : 'var(--border)') + ';background:' + (win === w ? 'var(--forest)' : 'white') + ';color:' + (win === w ? 'white' : 'var(--ink3)') + ';cursor:pointer;font-family:inherit">' + w + '</button>'
         ).join('') +
       '</div>' +
     '</div>' +
     '<div style="background:white;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
-
-      // Stats: Start · Current · Lost · To go · Target
-      '<div style="display:flex;justify-content:space-between;margin-bottom:12px">' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink3)">' + startWeight + '</div><div style="font-size:10px;color:var(--ink3)">Start</div></div>' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest)">' + latestWeight + '</div><div style="font-size:10px;color:var(--ink3)">Current</div></div>' +
-        (lostSoFar > 0.1 ? '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--forest2)">-' + lostSoFar.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">Lost</div></div>' : '') +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--ink2)">' + toGo.toFixed(1) + '</div><div style="font-size:10px;color:var(--ink3)">To go</div></div>' +
-        '<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--terra)">' + target_weight + '</div><div style="font-size:10px;color:var(--ink3)">Target</div></div>' +
-      '</div>' +
-
-      // SVG Graph
-      '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block">' +
-
-        // Grid lines + Y labels
-        yGridLines.map(w =>
-          '<line x1="' + padL + '" y1="' + yScale(w).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(w).toFixed(1) + '" stroke="var(--cream3)" stroke-width="1"/>' +
-          '<text x="' + (padL-4) + '" y="' + (yScale(w)+3).toFixed(1) + '" text-anchor="end" font-size="7" fill="var(--ink3)">' + w + '</text>'
-        ).join('') +
-
-        // Target line
-        '<line x1="' + padL + '" y1="' + yScale(parseFloat(target_weight)).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + yScale(parseFloat(target_weight)).toFixed(1) + '" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7"/>' +
-
-        // Start date marker — only show on All view
-        (!windowDays ? (
-          '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (H-padB) + '" stroke="var(--forest2)" stroke-width="1" opacity="0.4"/>' +
-          '<text x="' + padL + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" font-weight="bold" fill="var(--forest2)">' + startDate.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + '</text>'
-        ) : '') +
-
-        // Window labels
-        windowLabels.map(m =>
-          '<line x1="' + xScale(m.day).toFixed(1) + '" y1="' + padT + '" x2="' + xScale(m.day).toFixed(1) + '" y2="' + (H-padB) + '" stroke="var(--cream3)" stroke-width="1" stroke-dasharray="2,3"/>' +
-          '<text x="' + xScale(m.day).toFixed(1) + '" y="' + (H-padB+12) + '" text-anchor="middle" font-size="8" fill="var(--ink3)">' + m.label + '</text>'
-        ).join('') +
-
-        // Start weight dot (anchor of the projected line)
-        '<circle cx="' + startDotX.toFixed(1) + '" cy="' + startDotY.toFixed(1) + '" r="4" fill="var(--ink3)" stroke="white" stroke-width="1.5"/>' +
-        '<text x="' + (startDotX+7).toFixed(1) + '" y="' + (startDotY-5).toFixed(1) + '" font-size="8" font-weight="bold" fill="var(--ink3)">' + startWeight + '</text>' +
-
-        // Plan line (solid grey — the ideal straight path from start to goal)
-        // Original projection line (darker grey dashed, more visible)
-        (projPath ? '<path d="' + projPath + '" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.9"/>' : '') +
-        // Adjusted projection from current weight — same rate, new starting point (green dashed)
-        (adjProjPath ? '<path d="' + adjProjPath + '" fill="none" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.85"/>' : '') +
-
-        // Actual trajectory forward (colored dashed — extrapolated from your actual pace)
-
-        // Actual logged weights (dotted green — your real journey connecting weigh-ins)
-        (actualPath ? '<path d="' + actualPath + '" fill="none" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3" stroke-linejoin="round"/>' : '') +
-
-        // Actual dots with date labels
-        actualPoints.map((p, i) => {
-          const cx = xScale(p.day), cy = yScale(p.weight)
-          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-          const dateLabel = p.date.toLocaleDateString('en-US', {month:'short', day:'numeric', timeZone: tz})
-          const labelX = cx > W - 50 ? cx - 6 : cx + 6
-          const anchor = cx > W - 50 ? 'end' : 'start'
-          const labelY = cy > H - padB - 20 ? cy - 10 : cy + 14
-          const isLatest = i === actualPoints.length - 1
-          return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + (isLatest ? 4.5 : 3.5) + '" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' +
-            '<text x="' + labelX.toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="' + anchor + '" font-size="7" fill="var(--ink3)">' + dateLabel + '</text>' +
-            (isLatest ? '<text x="' + (cx > W-60 ? cx-6 : cx+6).toFixed(1) + '" y="' + (cy-7).toFixed(1) + '" text-anchor="' + (cx>W-60?'end':'start') + '" font-size="8" font-weight="bold" fill="var(--forest)">' + p.weight + '</text>' : '')
-        }).join('') +
-
-      '</svg>' +
-
-      // Dates line
-      (projection ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">Original: <strong>' + projection.date + '</strong>' +
-        (adjProjPath && daysToTargetFromNow > 0 ? ' &nbsp;·&nbsp; Updated: <strong style="color:var(--forest2)">' + new Date(startDate.getTime() + (todayDay + daysToTargetFromNow) * 86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'}) + '</strong>' : '') +
-      '</div>' : '') +
-
-      // Nudge
+      '<div style="display:flex;justify-content:space-between;margin-bottom:10px">' + stats + '</div>' +
+      nav +
+      svg +
+      (summary ? '<div style="font-size:12px;margin-top:6px;text-align:center">' + summary + '</div>' : '') +
+      (datesLine ? '<div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:center">' + datesLine + '</div>' : '') +
       (nudgeMsg ? '<div style="font-size:12px;font-weight:600;color:' + nudgeColor + ';margin-top:8px;text-align:center;padding:6px 10px;background:var(--cream2);border-radius:8px">' + nudgeMsg + '</div>' : '') +
-
-      // Legend
-      '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2" stroke-dasharray="4,3"/></svg>Your weigh-ins</div>' +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--ink4)" stroke-width="1.5" stroke-dasharray="5,4" opacity="0.6"/></svg>Original plan</div>' +
-        (adjProjPath ? '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Updated plan</div>' : '') +
-        '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink3)"><svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--terra)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>Target</div>' +
-      '</div>' +
-
+      legend +
     '</div>' +
-
-    // Recent weigh-ins list
-    (weightLog.length > 0 ?
-      '<div style="margin-top:8px">' +
-        weightLog.slice().reverse().slice(0, 5).map(e =>
-          '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--cream2)">' +
-            '<span style="font-size:13px;font-weight:600">' + e.weight + ' lbs</span>' +
-            '<span style="font-size:11px;color:var(--ink3)">' + new Date(e.logged_at).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone}) + '</span>' +
-            '<button class="remove-btn" data-weight-del="' + e.id + '">x</button>' +
-          '</div>'
-        ).join('') +
-      '</div>'
-    : '<div style="font-size:12px;color:var(--ink4);padding:4px 0">Log your first weigh-in to start tracking!</div>') +
-
+    recentList +
   '</div>'
+}
+
+// ── LOG TAB: CALORIES FOR THE SELECTED PERIOD ────────────────────────
+// Driven by the same period as the weight chart. Data comes from one range
+// query per period (cached by 'start|end'); while it loads, preloaded history
+// fills in whatever it covers. Today always reads live state.log, and the day
+// open in the Log tab's day navigator always reads its freshly fetched data.
+
+function calGroupByDate(rows) {
+  const m = {}
+  ;(rows || []).forEach(e => {
+    const k = wcLocalDateStr(new Date(e.logged_at))
+    ;(m[k] = m[k] || []).push(e)
+  })
+  return m
+}
+
+// Called by the Log tab day navigator after it fetches a day
+function calNoteDay(dateStr) {
+  state._calViewedDate = dateStr
+}
+
+function getPeriodCalData(period) {
+  const key = period.start + '|' + period.end
+  state.calCache = state.calCache || {}
+  let c = state.calCache[key]
+  if (!c) {
+    c = state.calCache[key] = { loading: true, error: false, food: {}, ex: {} }
+    Promise.all([db.fetchLogRange(period.start, period.end), db.fetchExerciseRange(period.start, period.end)])
+      .then(([food, ex]) => { c.food = calGroupByDate(food); c.ex = calGroupByDate(ex); c.loading = false })
+      .catch(err => { console.error('period calories:', err); c.loading = false; c.error = true })
+      .finally(() => { if (state.tab === 'log') render() })
+  }
+  return c
+}
+
+function renderPeriodCalories() {
+  const today = wcLocalDateStr(new Date())
+  const period = currentChartPeriod()
+  const win = period.win
+  const data = getPeriodCalData(period)
+  const phases = getPhases()
+
+  // Freshest data for the day open in the day navigator
+  state.calDayOverride = state.calDayOverride || {}
+  if (state._calViewedDate && state._calViewedDate === state._viewedDateStr && state.viewedDayLog) {
+    state.calDayOverride[state._calViewedDate] = { food: state.viewedDayLog, ex: state.viewedDayExercise || [] }
+  }
+  let hist = null
+  const histFor = () => hist || (hist = { food: calGroupByDate(state.historyLog), ex: calGroupByDate(state.historyExerciseLog) })
+
+  const dayInfo = d => {
+    let food, ex
+    if (d === today) { food = state.log || []; ex = state.exerciseLog || [] }
+    else if (state.calDayOverride[d]) { food = state.calDayOverride[d].food || []; ex = state.calDayOverride[d].ex || [] }
+    else if (!data.loading) { food = data.food[d] || []; ex = data.ex[d] || [] }
+    else { food = histFor().food[d] || []; ex = histFor().ex[d] || [] }
+    const calsIn = food.reduce((s, e) => s + (e.calories || 0), 0)
+    const burned = ex.reduce((s, e) => s + (e.calories_burned || 0), 0)
+    const ph = wcPhaseForDate(phases, d)
+    const goal = (ph && ph.daily_calories) || state.goals.calories || 2000
+    return { date: d, food, calsIn, burned, net: calsIn - burned, goal, logged: calsIn > 0, isToday: d === today }
+  }
+
+  // Days that have happened (future days are left out entirely)
+  const lastDay = period.end < today ? period.end : today
+  const allDays = []
+  for (let d = period.start; d <= lastDay; d = wcAddDays(d, 1)) allDays.push(dayInfo(d))
+
+  // Summary: completed, logged days only. Today isn't counted until it's over,
+  // and unlogged days are skipped rather than counted as zero-calorie days.
+  const counted = allDays.filter(x => !x.isToday && x.logged)
+  const completed = allDays.filter(x => !x.isToday).length
+  const net = counted.reduce((s, x) => s + x.net, 0)
+  const goalSum = counted.reduce((s, x) => s + x.goal, 0)
+  const diff = net - goalSum
+  const ds = !counted.length ? { label: 'No completed days logged', color: 'var(--ink3)', bg: 'var(--cream2)' }
+    : diff < 0 ? { label: Math.abs(diff).toLocaleString() + ' cal deficit', color: 'var(--forest)', bg: 'var(--sage4)' }
+    : diff > 0 ? { label: diff.toLocaleString() + ' cal surplus', color: 'var(--terra)', bg: '#fff5f2' }
+    : { label: 'On target', color: 'var(--forest)', bg: 'var(--sage4)' }
+  const hasToday = allDays.some(x => x.isToday)
+  const footnote = (counted.length + ' of ' + completed + ' day' + (completed === 1 ? '' : 's') + ' logged') + (hasToday ? ' · today counts tomorrow' : '')
+
+  const summaryBar =
+    '<div style="background:' + ds.bg + ';border-radius:10px;padding:8px 12px;margin-bottom:4px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center">' +
+        '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">' + period.label + '</div>' +
+        '<div style="font-size:12px;font-weight:700;color:' + ds.color + '">' + ds.label + '</div>' +
+        '<div style="font-size:11px;color:var(--ink3)">' + (counted.length ? net.toLocaleString() + ' / ' + goalSum.toLocaleString() + ' cal' : '') + '</div>' +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--ink3);margin-top:2px">' + footnote + (data.loading ? ' · loading…' : '') + (data.error ? ' · couldn’t load older days' : '') + '</div>' +
+    '</div>'
+
+  const bar = (net, goal) => {
+    const pct = Math.max(0, Math.min((net / goal) * 100, 100))
+    const color = net - goal > 200 ? 'var(--terra)' : net - goal > 0 ? 'var(--gold)' : 'var(--forest2)'
+    return '<div style="height:3px;background:var(--cream3);border-radius:2px;margin-bottom:3px"><div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:2px"></div></div>'
+  }
+
+  const dayRow = x => {
+    const label = x.isToday ? 'Today · so far' : wcFmt(x.date, { weekday: 'short', month: 'short', day: 'numeric' })
+    const foods = x.food.slice(0, 3).map(e => esc(e.food)).join(', ') + (x.food.length > 3 ? ' +' + (x.food.length - 3) + ' more' : '')
+    return '<div style="padding:8px 0;border-bottom:1px solid var(--cream2)' + (x.isToday ? ';background:var(--sage4);border-radius:8px;padding:8px;margin:-2px 0' : '') + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
+        '<span style="font-size:12px;font-weight:' + (x.isToday ? '700' : '500') + ';color:' + (x.isToday ? 'var(--forest)' : 'var(--ink)') + '">' + label + '</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--ink2)">' + (x.logged ? x.net + ' net cal' + (x.burned > 0 ? ' <span style="font-size:10px;color:var(--forest)">(−' + x.burned + ' ex)</span>' : '') : '<span style="color:var(--ink4);font-weight:400">Nothing logged</span>') + '</span>' +
+      '</div>' +
+      (x.logged ? bar(x.net, x.goal) : '') +
+      (foods ? '<div style="font-size:10px;color:var(--ink3)">' + foods + '</div>' : '') +
+    '</div>'
+  }
+
+  // 1W / 2W: one row per day. 1M / 3M: one row per week, tap to open its days.
+  // All: one row per month.
+  let rows = '', heading = 'Day by day'
+  if (win === '1W' || win === '2W') {
+    rows = allDays.slice().reverse().map(dayRow).join('')
+  } else {
+    const mode = win === 'All' ? 'month' : 'week'
+    heading = mode === 'month' ? 'Month by month' : 'Week by week'
+    const chunks = wcChunks(period.start, lastDay, mode).reverse()
+    rows = chunks.map(ch => {
+      const ds2 = allDays.filter(x => x.date >= ch.start && x.date <= ch.end)
+      const done = ds2.filter(x => !x.isToday && x.logged)
+      const nNet = done.reduce((s, x) => s + x.net, 0), nGoal = done.reduce((s, x) => s + x.goal, 0)
+      const avg = done.length ? Math.round(nNet / done.length) : 0
+      const avgGoal = done.length ? Math.round(nGoal / done.length) : 0
+      const d2 = nNet - nGoal
+      const label = mode === 'month' ? wcFmt(ch.start, { month: 'long', year: 'numeric' }) : wcRangeLabel(ch.start, ch.end, today)
+      const open = mode === 'week' && state.calExpanded === ch.start
+      return '<div style="border-bottom:1px solid var(--cream2)">' +
+        '<div ' + (mode === 'week' ? 'data-cal-expand="' + ch.start + '" role="button" tabindex="0" aria-expanded="' + open + '" ' : '') + 'style="padding:8px 0;' + (mode === 'week' ? 'cursor:pointer' : '') + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">' +
+            '<span style="font-size:12px;font-weight:600;color:var(--ink)">' + (mode === 'week' ? (open ? '▾ ' : '▸ ') : '') + label + '</span>' +
+            '<span style="font-size:12px;font-weight:600;color:' + (!done.length ? 'var(--ink4)' : d2 <= 0 ? 'var(--forest)' : 'var(--terra)') + '">' +
+              (done.length ? (d2 <= 0 ? Math.abs(d2).toLocaleString() + ' deficit' : d2.toLocaleString() + ' surplus') : 'Nothing logged') + '</span>' +
+          '</div>' +
+          (done.length ? bar(avg, avgGoal) : '') +
+          '<div style="font-size:10px;color:var(--ink3)">' + (done.length ? 'avg ' + avg.toLocaleString() + ' net/day · ' : '') + done.length + ' of ' + ds2.filter(x => !x.isToday).length + ' days logged</div>' +
+        '</div>' +
+        (open ? '<div style="padding:0 0 6px 12px">' + ds2.slice().reverse().map(dayRow).join('') + '</div>' : '') +
+      '</div>'
+    }).join('')
+  }
+
+  return summaryBar +
+    '<div style="font-size:11px;color:var(--ink3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px">' + heading + '</div>' +
+    (rows || '<div style="font-size:12px;color:var(--ink4);padding:4px 0 8px">Nothing to show for this period yet.</div>')
 }
 
 function getWeekDates(offset) {
@@ -4687,6 +5183,73 @@ document.addEventListener('keydown', function gpKeyDelegation(e) {
 })
 
 // Tonight banner "Cook now" — the banner renders on Recipes and List tabs
+// Weight chart period controls, calorie week rows, and goal phases.
+// Document-level so re-renders never stack duplicate listeners.
+document.addEventListener('click', function weightChartDelegation(e) {
+  if (!e.target.closest) return
+  const winBtn = e.target.closest('.chart-window-btn[data-window]')
+  if (winBtn) {
+    state.chartWindow = winBtn.dataset.window
+    state.chartOffset = 0
+    state.calExpanded = null
+    render(); return
+  }
+  const nav = e.target.closest('[data-chart-nav]')
+  if (nav) {
+    if (nav.disabled) return
+    state.chartOffset = (state.chartOffset || 0) + parseInt(nav.dataset.chartNav, 10)
+    state.calExpanded = null
+    render(); return
+  }
+  if (e.target.closest('[data-chart-today]')) { state.chartOffset = 0; state.calExpanded = null; render(); return }
+  const ex = e.target.closest('[data-cal-expand]')
+  if (ex) {
+    state.calExpanded = state.calExpanded === ex.dataset.calExpand ? null : ex.dataset.calExpand
+    render(); return
+  }
+  const pa = e.target.closest('[data-phase-action]')
+  if (pa) { handlePhaseAction(pa.dataset.phaseAction, pa); return }
+})
+document.addEventListener('keydown', function calRowKeyDelegation(e) {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-cal-expand]')) {
+    e.preventDefault(); e.target.click()
+  }
+})
+document.addEventListener('change', function goalRangeDelegation(e) {
+  if (!e.target.matches || !e.target.matches('input[data-range]')) return
+  const lo = parseFloat(document.getElementById('goal-range-low')?.value)
+  const hi = parseFloat(document.getElementById('goal-range-high')?.value)
+  saveActiveRange(isNaN(lo) ? null : lo, isNaN(hi) ? null : hi).then(() => render())
+})
+
+async function handlePhaseAction(action, btn) {
+  if (action === 'open') {
+    const latest = sortedWeighIns().slice(-1)[0]
+    state.newPhaseForm = {
+      start_date: wcLocalDateStr(new Date()),
+      start_weight: latest ? latest.weight : (state.goals.weight || ''),
+      target_weight: state.goals.target_weight || ''
+    }
+    render(); return
+  }
+  if (action === 'cancel') { state.newPhaseForm = null; render(); return }
+  if (action === 'create') {
+    const date = document.getElementById('np-date')?.value
+    const start = parseFloat(document.getElementById('np-start')?.value)
+    const targetRaw = parseFloat(document.getElementById('np-target')?.value)
+    const errEl = document.getElementById('np-error')
+    const fail = msg => { if (errEl) errEl.textContent = msg }
+    if (!date) return fail('Pick a start date.')
+    if (!(start > 0)) return fail('Enter a start weight.')
+    const target = targetRaw > 0 ? targetRaw : start
+    if (btn) { btn.disabled = true; btn.textContent = 'Starting…' }
+    await startNewPhase({ start_date: date, start_weight: start, target_weight: target })
+    state.newPhaseForm = null
+    state.chartOffset = 0
+    render()
+  }
+}
+
 document.addEventListener('click', function tonightCookDelegation(e) {
   var btn = e.target.closest && e.target.closest('[data-tonight-cook]')
   if (!btn) return
@@ -4977,7 +5540,7 @@ function bindEvents() {
     })
     var btn = document.getElementById('save-goals-btn')
     if (btn) { btn.textContent = '✓ Saved!'; btn.style.background = 'var(--sage4)' }
-    await db.saveGoals(state.goals)
+    await saveGoalsAndPhase()
     setTimeout(() => render(), 1200)
   })
 
@@ -5148,7 +5711,7 @@ function bindEvents() {
     el.addEventListener('click', async () => {
       var p = GOAL_PRESETS[el.dataset.preset]
       state.goals = { calories: p.calories, goal: el.dataset.preset }
-      render(); await db.saveGoals(state.goals)
+      render(); await saveGoalsAndPhase()
     })
   })
   document.querySelectorAll('input[data-goal]').forEach(el => {
@@ -5162,7 +5725,7 @@ function bindEvents() {
       if (f === 'target_weight' && el.value && !state.goals.goal_start_date) {
         state.goals.goal_start_date = new Date().toISOString().slice(0, 10)
       }
-      await db.saveGoals(state.goals)
+      await saveGoalsAndPhase()
       render()
     }
     el.addEventListener('change', saveGoalField)
@@ -5170,21 +5733,21 @@ function bindEvents() {
   })
   document.querySelector('select[data-goal="activity_level"]')?.addEventListener('change', async e => {
     state.goals.activity_level = e.target.value
-    await db.saveGoals(state.goals)
+    await saveGoalsAndPhase()
     render()
   })
   document.getElementById('goal-start-date-input')?.addEventListener('change', async e => {
     var val = e.target.value
     if (!val) return
     state.goals.goal_start_date = val
-    await db.saveGoals(state.goals)
+    await saveGoalsAndPhase()
     render()
   })
   document.querySelectorAll('[data-pace]').forEach(el => {
     el.addEventListener('click', async () => {
       state.goals.loss_pace = el.dataset.pace
       state.goals.calories = parseInt(el.dataset.calories)
-      await db.saveGoals(state.goals)
+      await saveGoalsAndPhase()
       render()
     })
   })
@@ -6053,9 +6616,7 @@ function bindEvents() {
   document.getElementById('tag-organizer-bg')?.addEventListener('click', e => {
     if (e.target.id === 'tag-organizer-bg') { state.tagOrganizerModal = false; render() }
   })
-  document.querySelectorAll('.chart-window-btn[data-window]').forEach(el => {
-    el.addEventListener('click', () => { state.chartWindow = el.dataset.window; render() })
-  })
+  // .chart-window-btn, period arrows, calorie rows, phases: see weightChartDelegation
 
   document.querySelectorAll('.recipe-sort-btn[data-sort]').forEach(el => {
     el.addEventListener('click', () => { state.recipeSort = el.dataset.sort; render() })
@@ -6663,6 +7224,7 @@ async function estimateCaloriesAI(description) {
     state._viewedDateStr = dateStr
     state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
     state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
+    calNoteDay(dateStr)
     render()
   })
   document.getElementById('log-next-day')?.addEventListener('click', async () => {
@@ -6680,6 +7242,7 @@ async function estimateCaloriesAI(description) {
       state._viewedDateStr = dateStr
       state.viewedDayLog = await db.fetchLogForDate(d.toLocaleDateString('sv'))
       state.viewedDayExercise = await db.fetchExerciseForDate(d.toLocaleDateString('sv'))
+      calNoteDay(dateStr)
     }
     render()
   })

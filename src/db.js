@@ -111,9 +111,33 @@ export async function markAllGotIt(items, pantryItems) {
 }
 
 // ── WEIGHT LOG ────────────────────────────────────────────────────────────────
+// Supabase returns at most 1000 rows per select by default. Anything that can
+// grow without bound must page through with .range(), or it silently truncates
+// (weight_log is sorted oldest-first, so truncation would drop the NEWEST rows).
+async function selectAllPages(build, pageSize = 1000) {
+  const out = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await build().range(from, from + pageSize - 1)
+    if (error) { console.error('selectAllPages:', error.message || error); break }
+    if (!data || data.length === 0) break
+    out.push(...data)
+    if (data.length < pageSize) break
+  }
+  return out
+}
+
+// Local-day boundaries. A day is [local midnight, next local midnight) — using
+// "< next midnight" rather than "<= 23:59:59" so the last second isn't dropped.
+function localDayStart(dateStr) { return new Date(dateStr + 'T00:00:00') }
+function nextLocalDayStart(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + 1)
+  return d
+}
+
 export async function fetchWeightLog() {
-  const { data } = await supabase.from('weight_log').select('*').eq('user_id', uid()).order('logged_at', { ascending: true })
-  return data || []
+  return selectAllPages(() => supabase.from('weight_log').select('*').eq('user_id', uid())
+    .order('logged_at', { ascending: true }).order('id', { ascending: true }))
 }
 export async function addWeightEntry(weight, notes, dateStr) {
   const logged_at = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString()
@@ -130,17 +154,13 @@ export async function deleteWeightEntry(id) {
 
 // ── EXERCISE LOG ──────────────────────────────────────────────────────────────
 export async function fetchLogForDate(dateStr) {
-  const start = new Date(dateStr + 'T00:00:00')
-  const end = new Date(dateStr + 'T23:59:59')
   const { data } = await supabase.from('food_log').select('*').eq('user_id', uid())
-    .gte('logged_at', start.toISOString()).lte('logged_at', end.toISOString()).order('logged_at')
+    .gte('logged_at', localDayStart(dateStr).toISOString()).lt('logged_at', nextLocalDayStart(dateStr).toISOString()).order('logged_at')
   return data || []
 }
 export async function fetchExerciseForDate(dateStr) {
-  const start = new Date(dateStr + 'T00:00:00')
-  const end = new Date(dateStr + 'T23:59:59')
   const { data } = await supabase.from('exercise_log').select('*').eq('user_id', uid())
-    .gte('logged_at', start.toISOString()).lte('logged_at', end.toISOString()).order('logged_at')
+    .gte('logged_at', localDayStart(dateStr).toISOString()).lt('logged_at', nextLocalDayStart(dateStr).toISOString()).order('logged_at')
   return data || []
 }
 export async function fetchExerciseLog() {
@@ -264,22 +284,64 @@ export async function deleteMealPlanEntry(id) {
 export async function fetchFullLog(days) {
   const since = new Date()
   since.setDate(since.getDate() - (days || 90))
-  const { data } = await supabase.from('food_log')
+  return selectAllPages(() => supabase.from('food_log')
     .select('*')
     .eq('user_id', uid())
     .gte('logged_at', since.toISOString())
-    .order('logged_at', { ascending: false })
-  return data || []
+    .order('logged_at', { ascending: false }).order('id', { ascending: false }))
 }
 export async function fetchFullExerciseLog(days) {
   const since = new Date()
   since.setDate(since.getDate() - (days || 30))
-  const { data } = await supabase.from('exercise_log')
+  return selectAllPages(() => supabase.from('exercise_log')
     .select('*')
     .eq('user_id', uid())
     .gte('logged_at', since.toISOString())
-    .order('logged_at', { ascending: false })
-  return data || []
+    .order('logged_at', { ascending: false }).order('id', { ascending: false }))
+}
+
+// Inclusive local-date range, e.g. ('2026-09-21', '2026-09-27'). Used by the
+// Log tab's period view (week / month / 3 months / all) so scrolling back never
+// depends on how much history was preloaded at startup.
+export async function fetchLogRange(startStr, endStr) {
+  return selectAllPages(() => supabase.from('food_log').select('*').eq('user_id', uid())
+    .gte('logged_at', localDayStart(startStr).toISOString())
+    .lt('logged_at', nextLocalDayStart(endStr).toISOString())
+    .order('logged_at', { ascending: true }).order('id', { ascending: true }))
+}
+export async function fetchExerciseRange(startStr, endStr) {
+  return selectAllPages(() => supabase.from('exercise_log').select('*').eq('user_id', uid())
+    .gte('logged_at', localDayStart(startStr).toISOString())
+    .lt('logged_at', nextLocalDayStart(endStr).toISOString())
+    .order('logged_at', { ascending: true }).order('id', { ascending: true }))
+}
+
+// ── GOAL PHASES ──────────────────────────────────────────────────────────────
+// One row per chapter of the program (lose / gain / maintain). The active phase
+// has end_date = null. Requires the goal_phases table (goal_phases.sql at the repo root); if it
+// doesn't exist yet, fetchGoalPhases returns ok:false and the app falls back to
+// a single phase built from the goals row.
+export async function fetchGoalPhases() {
+  const { data, error } = await supabase.from('goal_phases').select('*').eq('user_id', uid())
+    .order('start_date', { ascending: true }).order('id', { ascending: true })
+  if (error) { console.warn('goal_phases unavailable:', error.message || error); return { ok: false, phases: [] } }
+  return { ok: true, phases: data || [] }
+}
+export async function insertGoalPhase(phase) {
+  const { data, error } = await supabase.from('goal_phases')
+    .insert({ ...phase, user_id: uid() }).select()
+  if (error) { console.error('insertGoalPhase:', error.message || error); return null }
+  return data?.[0] || null
+}
+export async function updateGoalPhase(id, fields) {
+  const { data, error } = await supabase.from('goal_phases')
+    .update({ ...fields, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', uid()).select()
+  if (error) { console.error('updateGoalPhase:', error.message || error); return null }
+  return data?.[0] || null
+}
+export async function deleteGoalPhase(id) {
+  const { error } = await supabase.from('goal_phases').delete().eq('id', id).eq('user_id', uid())
+  if (error) console.error('deleteGoalPhase:', error.message || error)
 }
 
 export async function fetchFullMealPlan(days) {
