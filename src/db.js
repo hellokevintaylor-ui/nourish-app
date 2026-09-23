@@ -324,7 +324,10 @@ export async function fetchExerciseRange(startStr, endStr) {
 export async function fetchGoalPhases() {
   const { data, error } = await supabase.from('goal_phases').select('*').eq('user_id', uid())
     .order('start_date', { ascending: true }).order('id', { ascending: true })
-  if (error) { console.warn('goal_phases unavailable:', error.message || error); return { ok: false, phases: [] } }
+  if (error) {
+    console.warn('goal_phases unavailable:', error.message || error)
+    return { ok: false, phases: [], error: error.message || String(error), code: error.code || '' }
+  }
   return { ok: true, phases: data || [] }
 }
 export async function insertGoalPhase(phase) {

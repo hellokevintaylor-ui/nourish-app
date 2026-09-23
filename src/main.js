@@ -17,6 +17,7 @@ const state = {
   chartOffset: 0,      // 0 = period containing today, -1 = previous, +1 = next
   goalPhases: [],      // rows from goal_phases, oldest first; last one is active
   phasesAvailable: false, // false until the goal_phases table answers
+  phasesError: null,   // why goal_phases couldn't be read, shown in the Goals panel
   calCache: {},        // 'start|end' -> { food, ex, loading } for the Log tab period view
   calDayOverride: {},  // date -> { food, ex } freshest known data for a single day
   calExpanded: null,   // week/month chunk start whose day rows are open
@@ -1886,7 +1887,12 @@ function renderGoalRangeAndPhases() {
 
   if (!avail) {
     return range +
-      '<div style="' + muted + ';margin-top:10px;padding:8px 10px;background:#f4f4f2;border-radius:8px">The target weight range and goal history need a one-time database update (the goal_phases table). Until then the chart uses your current goals only.</div>'
+      '<div style="margin-top:10px;padding:10px 12px;background:#fff5f2;border:1.5px solid var(--terra);border-radius:8px">' +
+        '<div style="font-size:12px;font-weight:700;color:var(--terra)">Target range is switched off</div>' +
+        '<div style="' + muted + ';margin-top:4px">These two boxes stay greyed out until the <strong>goal_phases</strong> table exists in Supabase. Run <strong>goal_phases.sql</strong> (repo root) in the Supabase SQL Editor, then tap Retry. The rest of the chart works without it.</div>' +
+        (state.phasesError ? '<div style="font-size:10px;color:var(--ink3);margin-top:6px;word-break:break-word">Supabase said: ' + esc(state.phasesError) + '</div>' : '') +
+        '<button data-phase-action="retry" style="margin-top:8px;padding:7px 12px;background:white;color:#1a1a1a;border:1.5px solid #d4d4d0;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Retry</button>' +
+      '</div>'
   }
 
   const phases = state.goalPhases.slice().reverse()
@@ -2296,6 +2302,7 @@ function activePhase() {
 async function loadGoalPhases() {
   const res = await db.fetchGoalPhases()
   state.phasesAvailable = !!res.ok
+  state.phasesError = res.ok ? null : (res.error || 'Could not read the goal_phases table.')
   let phases = (res.phases || []).map(wcNormalizePhase)
   if (res.ok && phases.length === 0) {
     const seed = buildPhaseFromGoals()
@@ -5252,6 +5259,11 @@ document.addEventListener('focusout', function goalRangeBlurDelegation(e) {
 })
 
 async function handlePhaseAction(action, btn) {
+  if (action === 'retry') {
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking…' }
+    await loadGoalPhases()
+    render(); return
+  }
   if (action === 'open') {
     const latest = sortedWeighIns().slice(-1)[0]
     state.newPhaseForm = {
