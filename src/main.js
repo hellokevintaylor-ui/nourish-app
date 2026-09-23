@@ -2655,12 +2655,6 @@ function renderWeightProgress() {
     return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + r + '" fill="var(--forest)" stroke="white" stroke-width="1.5"/>' + label
   }).join('')
 
-  // Range off-screen indicator
-  offBands.forEach((b, i) => {
-    const y = b.below ? H - padB - 4 - i * 10 : padT + 8 + i * 10
-    svg += '<text x="' + (W - padR - 3) + '" y="' + y + '" text-anchor="end" font-size="7.5" fill="var(--forest2)">Range ' + (b.lo === b.hi ? b.lo : b.lo + '–' + b.hi) + (b.below ? ' ↓' : ' ↑') + '</text>'
-  })
-
   if (!shown.length && !segs.some(s => s.pts.length)) {
     svg += '<text x="' + (padL + plotW / 2) + '" y="' + (padT + plotH / 2) + '" text-anchor="middle" font-size="9" fill="var(--ink3)">No weigh-ins in this period</text>'
   }
@@ -2747,7 +2741,17 @@ function renderWeightProgress() {
     legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest)" stroke-width="2"/></svg>', weekly ? 'Weekly average' : 'Weigh-ins') +
     (segs.some(s => s.pts.length > 1) ? legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3"/></svg>', segs.every(sg => wcPhaseDirection(sg.phase) === 'maintain') ? 'Baseline' : 'Plan') : '') +
     (adjPts.length > 1 ? legendItem('<svg width="16" height="4"><line x1="0" y1="2" x2="16" y2="2" stroke="var(--forest2)" stroke-width="1.5" stroke-dasharray="3,2"/></svg>', 'At current pace') : '') +
-    (segs.some(s => hasRange(s.phase)) || offBands.length ? legendItem('<svg width="12" height="8"><rect width="12" height="8" fill="var(--forest2)" opacity="0.2"/></svg>', 'Target range') : '') +
+    (() => {
+      // Range lives in the legend, never inside the plot — in the chart it sat
+      // over the data. Shown on every view, with a note when it's off-scale.
+      const rp = segs.map(sg => sg.phase).filter(hasRange)
+      if (!rp.length && !offBands.length) return ''
+      const r = rangeOf(rp[rp.length - 1]) || offBands[offBands.length - 1] && { low: offBands[0].lo, high: offBands[0].hi }
+      if (!r) return ''
+      const off = offBands.length ? (offBands[offBands.length - 1].below ? ' (below this view)' : ' (above this view)') : ''
+      return legendItem('<svg width="12" height="8"><rect width="12" height="8" fill="var(--forest2)" opacity="0.2"/></svg>',
+        'Target range ' + (r.low === r.high ? r.low : r.low + '–' + r.high) + off)
+    })() +
   '</div>'
 
   return '<div style="margin-top:16px">' +
