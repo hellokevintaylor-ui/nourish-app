@@ -5464,6 +5464,107 @@ async function sendGpChatMessage(text) {
   saveGamePlanToDb()
 }
 
+// Context for the Log tab AI Coach. Reads the same sources the charts use:
+// full weigh-in history, 90 days of food, 30 days of exercise, and the active
+// goal phase. (The old version read fields that don't exist on these rows —
+// e.date, e.type, e.duration — from state.log/state.exerciseLog, which hold
+// today only, so the coach saw one day and reported "nothing logged".)
+function buildCoachContext() {
+  const today = wcLocalDateStr(new Date())
+  const f1 = n => (Math.round(n * 10) / 10).toFixed(1)
+  const signed = n => (n > 0 ? '+' : '') + f1(n)
+  const byDate = rows => {
+    const m = {}
+    ;(rows || []).forEach(e => { const k = wcLocalDateStr(new Date(e.logged_at)); (m[k] = m[k] || []).push(e) })
+    return m
+  }
+
+  // ── Weight ──
+  const wl = sortedWeighIns()
+  const phases = getPhases()
+  const active = phases.length ? phases[phases.length - 1] : null
+  let weightBlock = 'No weigh-ins logged.'
+  if (wl.length) {
+    const first = wl[0], last = wl[wl.length - 1]
+    const recent = wl.slice(-14).reverse().map(e => e.date + ' ' + e.weight).join(', ')
+    const weeks = wcBucketWeights(wl, 'week').slice(-8).map(b => b.weekStart + ' avg ' + f1(b.weight)).join(', ')
+    weightBlock =
+      'Logged ' + wl.length + ' weigh-ins from ' + first.date + ' to ' + last.date + '.\n' +
+      'Current: ' + last.weight + ' lbs (logged ' + last.date + (last.date === today ? ', today' : '') + ')\n' +
+      'First logged: ' + first.weight + ' lbs on ' + first.date + ' (net ' + signed(last.weight - first.weight) + ' lbs)\n' +
+      'Last 14 weigh-ins (newest first): ' + recent + '\n' +
+      'Weekly averages (oldest first): ' + weeks
+  }
+
+  // ── Goal / phase ──
+  let goalBlock = 'No goal set.'
+  if (active) {
+    const dir = wcPhaseDirection(active)
+    const r = wcPhaseRange(active)
+    const hit = wcPhaseHitDay(active)
+    const last = wl.length ? wl[wl.length - 1] : null
+    const planNow = last ? wcPlanAtDate(phases, last.date) : null
+    goalBlock =
+      'Mode: ' + dir + ' | Phase started ' + active.start_date + ' at ' + active.start_weight + ' lbs\n' +
+      'Goal target weight: ' + active.target_weight + ' lbs\n' +
+      'Daily calorie target: ' + (active.daily_calories || state.goals.calories || 'not set') + '\n' +
+      'Planned rate: ' + (active.lbs_per_day > 0 ? f1(active.lbs_per_day * 7) + ' lbs/week' : 'none set') + '\n' +
+      (hit != null && hit > 0 ? 'Planned target date: ' + wcAddDays(active.start_date, Math.ceil(hit)) + '\n' : '') +
+      (r ? 'Target weight range: ' + (r.low === r.high ? r.low : r.low + '–' + r.high) + ' lbs\n' : '') +
+      (planNow != null && last ? 'On ' + last.date + ' the plan called for ' + f1(planNow) + ' lbs; actual was ' + last.weight +
+        ' (' + (dir === 'gain' ? (last.weight >= planNow ? 'ahead of' : 'behind') : (last.weight <= planNow ? 'ahead of' : 'behind')) + ' plan by ' +
+        f1(Math.abs(last.weight - planNow)) + ' lbs)\n' : '') +
+      (phases.length > 1 ? 'Earlier phases: ' + phases.slice(0, -1).map(p =>
+        p.start_date + '–' + (p.end_date || '') + ' ' + p.start_weight + '→' + p.target_weight).join('; ') + '\n' : '')
+  }
+
+  // ── Food and exercise, from history (not just today) ──
+  const foodByDate = byDate(state.historyLog)
+  const exByDate = byDate(state.historyExerciseLog)
+  // today's live state is fresher than the preloaded history
+  if ((state.log || []).length) foodByDate[today] = state.log
+  if ((state.exerciseLog || []).length) exByDate[today] = state.exerciseLog
+
+  const dayTotals = []
+  for (let i = 0; i < 30; i++) {
+    const d = wcAddDays(today, -i)
+    const fs = foodByDate[d], es = exByDate[d]
+    if (!fs && !es) continue
+    const inCal = (fs || []).reduce((s, e) => s + (e.calories || 0), 0)
+    const burn = (es || []).reduce((s, e) => s + (e.calories_burned || 0), 0)
+    dayTotals.push({ date: d, inCal, burn, net: inCal - burn, items: (fs || []).length, ex: (es || []).map(e => e.activity).filter(Boolean) })
+  }
+  const logged = dayTotals.filter(d => d.items > 0 && d.date !== today)
+  const avgNet = logged.length ? Math.round(logged.reduce((s, d) => s + d.net, 0) / logged.length) : null
+  const calTarget = (active && active.daily_calories) || state.goals.calories || null
+
+  const foodBlock = dayTotals.length
+    ? 'Last 30 days, days with anything logged (newest first):\n' +
+      dayTotals.map(d => '  ' + d.date + (d.date === today ? ' (today, still in progress)' : '') + ': ' +
+        d.inCal + ' cal in' + (d.burn ? ', ' + d.burn + ' burned' : '') + ', net ' + d.net +
+        ', ' + d.items + ' item' + (d.items === 1 ? '' : 's') + (d.ex.length ? ' | exercise: ' + d.ex.join(', ') : '')).join('\n') +
+      '\nCompleted days with food logged: ' + logged.length + ' of the last 30' +
+      (avgNet != null ? '\nAverage net calories on those days: ' + avgNet + (calTarget ? ' (target ' + calTarget + ')' : '') : '')
+    : 'No food or exercise logged in the last 30 days.'
+
+  const topFoods = (() => {
+    const c = {}
+    ;(state.historyLog || []).forEach(e => { if (e.food) c[e.food] = (c[e.food] || 0) + 1 })
+    return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([f, n]) => f + ' (' + n + 'x)').join(', ')
+  })()
+
+  return 'You are a supportive, knowledgeable nutrition and fitness coach. Today is ' + today + '. The user\'s real data:\n\n' +
+    'GOAL\n' + goalBlock + '\n' +
+    'WEIGHT\n' + weightBlock + '\n\n' +
+    'FOOD AND EXERCISE\n' + foodBlock + '\n' +
+    (topFoods ? 'Most logged foods (90 days): ' + topFoods + '\n' : '') + '\n' +
+    'DATA COVERAGE — read carefully before saying anything is missing:\n' +
+    '- Food history above covers the last 90 days; exercise the last 30. Older entries exist but are not shown here.\n' +
+    '- A date missing from the list means nothing was logged that day. Days ARE listed when logged, so do not claim the user logs nothing unless the list is empty.\n' +
+    '- Today is still in progress; do not read a low number for today as a full day.\n\n' +
+    'Be honest, data-driven, and encouraging. Reference their actual numbers and dates. Keep responses concise — 2-4 sentences unless they ask for detail.'
+}
+
 async function sendLogChat(text) {
   if (!text.trim()) return
   state.logChatMessages = [...(state.logChatMessages||[]), { role: 'user', content: text }]
@@ -5471,21 +5572,7 @@ async function sendLogChat(text) {
   render()
   setTimeout(() => { var el = document.getElementById('log-chat-messages'); if (el) el.scrollTop = el.scrollHeight }, 50)
 
-  var goals = state.goals || {}
-  var recentWeight = (state.weightLog || []).slice(-7).map(function(e) { return e.date + ': ' + e.weight + 'lbs' }).join(', ')
-  var recentCals = {}
-  ;(state.log || []).slice(-21).forEach(function(e) {
-    var d = e.date || 'today'; if (!recentCals[d]) recentCals[d] = 0; recentCals[d] += (e.calories||0)
-  })
-  var calsStr = Object.entries(recentCals).slice(-7).map(function(kv) { return kv[0]+': '+kv[1]+' cal' }).join(', ')
-  var exerciseStr = (state.exerciseLog || []).slice(-7).map(function(e) { return (e.date||'')+': '+(e.type||'')+' '+(e.duration||0)+'min'+(e.calories_burned?' '+(e.calories_burned)+' cal burned':'') }).join('; ')
-
-  var ctx = 'You are a supportive, knowledgeable nutrition and fitness coach. The user\'s real data:\n\n' +
-    'GOALS — Target weight: ' + (goals.target_weight||'not set') + 'lbs | Daily calories: ' + (goals.daily_calories||'not set') + ' | Target date: ' + (goals.target_date||'not set') + '\n' +
-    'RECENT WEIGHT (newest first): ' + (recentWeight||'none logged') + '\n' +
-    'RECENT DAILY CALORIES: ' + (calsStr||'none logged') + '\n' +
-    'RECENT EXERCISE: ' + (exerciseStr||'none logged') + '\n\n' +
-    'Be honest, data-driven, and encouraging. Reference their actual numbers. Keep responses concise — 2-4 sentences unless they ask for detail.'
+  var ctx = buildCoachContext()
 
   try {
     var resp = await fetch('/api/chat', {
