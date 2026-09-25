@@ -5,6 +5,150 @@ Claude reads this at the start of a session; keep entries short.
 
 ---
 
+## 2026-09-25
+
+**Shipped** — `src/main.js`, `src/db.js`, `src/styles.css`, `wc_test.js` (new),
+`package.json`, `goal_phases.sql` (new, run once in Supabase).
+Uploaded in stages through the session; the target-range legend move and the
+AI Coach context fix were the last two — confirm both are on main.
+
+### Weight chart: calendar periods instead of a rolling window
+
+Was "last 7 days ending at the most recent weigh-in" (anchored to the last log,
+not to today — skipping 3 days silently shifted the whole window). Now every
+view is a calendar period with ‹ › navigation and a Today button.
+
+- `1W` Mon–Sun · `2W` last week + this week · `1M` calendar month ·
+  `3M` this month + 2 before · `All`. Offset steps by the period size.
+- Back as far as history goes, one period forward. Switching views resets to 0.
+- `3M` / `All` plot weekly averages (daily readings as faint marks in `3M`);
+  >40 points draws the line only. Future days tinted, today marked, faint
+  connector back to the last weigh-in before the period.
+- New pure `wc*` functions (period bounds, plan segments, buckets, chunks,
+  phase lookup). All date math is noon-anchored — `+ n * 86400000` on local
+  midnight breaks on the Nov 1 DST change and would have put Monday's log in
+  the wrong column.
+
+### Log tab calories follow the same period
+
+`renderPeriodCalories()` replaced the old rolling 7-day block (which ran
+`i = 1..7`, so it never included today — that's why `isDayToday` never fired).
+
+- One range query per period via new `fetchLogRange` / `fetchExerciseRange`,
+  cached by `start|end` (was 14 separate day queries + a `render()` each).
+- `1W`/`2W` daily rows; `1M`/`3M` weekly rows, tap to expand; `All` monthly.
+- Deficit/surplus counts only completed days that have food logged — otherwise
+  every Monday reads as a huge deficit. Today reads live `state.log`.
+
+### Goal phases (`goal_phases` table)
+
+`goals` is one row and `saveGoals` overwrites it, so changing start weight /
+target / start date rewrote history: old weigh-ins were filtered out
+(`p.day >= 0`) and the chart returned `''` outright when start ≤ target, which
+made the whole weight section vanish in maintenance.
+
+- Each phase = one chapter (lose / gain / maintain) with its own dates, start
+  and target weight, calories, **frozen** `lbs_per_day`, and target range.
+  Editing Goals adjusts the active phase; "Start a new phase" closes it
+  (`end_date`) and opens another. Old plan lines stay on old dates.
+- Rate is now computed once from the phase's *start* weight. It used to be
+  recalculated from the latest weight on every render, so the plan line and the
+  projected finish date drifted with each weigh-in. **The planned finish date
+  shifted once on upgrade** — expected.
+- Maintain phases centre the y-axis on the baseline weight so the chart reads
+  as variance. Gain direction supported.
+- Table is optional: `fetchGoalPhases` returns `ok:false` and the app falls
+  back to a single phase built from `goals`. When unavailable the panel shows
+  a red block with the real Supabase error and a Retry button — the first
+  version buried this in grey text, and a disabled input reads as a broken one
+  ("I still can't input target range low and high" → table hadn't been created).
+
+### Target weight range
+
+Two inputs on the active phase, shaded band on every chart.
+
+- Renamed from "healthy range" at user request; "Target Weight" → "Goal Target
+  Weight". No "healthy" anywhere in the UI now.
+- **Stored exactly as typed.** Sorting low/high at save time scrambled the
+  entry: moving a range up (typing 160 into Low while High was 158) instantly
+  swapped them. `wcPhaseRange()` normalises at render instead; one box filled
+  = single baseline line, both empty = no band.
+- **No re-render while either box has focus.** Saving on `change` re-rendered
+  the panel and destroyed the input — on mobile that closes the keyboard
+  mid-edit. Now renders on `focusout` only once focus has left both.
+- The "Range 148–152 ↓" indicator was drawn inside the plot and sat on top of
+  the data. Moved to the legend, with "(below/above this view)" when off-scale.
+
+### AI Coach was flying blind
+
+`sendLogChat` built its own context, separate from everything else, and nearly
+every field it read didn't exist. It reported "you're not logging calories or
+exercise" to a user with 90 days of logs.
+
+- Read `e.date` (food/weight rows have `logged_at`), `e.type` / `e.duration`
+  (exercise has `activity` / `calories_burned`), `goals.daily_calories` and
+  `goals.target_date` (neither exists → "not set").
+- Pulled food and exercise from `state.log` / `state.exerciseLog` = **today
+  only**, and weight from `.slice(-7)` labelled "newest first" but sent
+  oldest-first, so it described the trend backwards.
+- New `buildCoachContext()` reads the same sources as the charts: full
+  weigh-in history (last 14 + 8 weekly averages), 30 days of per-day
+  calories in / burned / net / exercise names, top foods, and the active phase
+  incl. plan-vs-actual. Explicitly tells the model that a missing date means
+  nothing was logged and that today is partial.
+- Note `buildClaudeContext()` (the Recipes chat) is a *different* builder and
+  was already fine — don't confuse the two.
+
+### Other fixes found along the way
+
+- **Two goals panels rendered on the Log tab** (a legacy copy in the header
+  block) with duplicate ids, so the Save button and start-date field the user
+  could see did nothing. Legacy copy removed.
+- **Supabase 1000-row cap**: `fetchWeightLog` was unpaged and sorted
+  oldest-first, so past ~1000 weigh-ins it would silently drop the *newest*
+  rows and current weight would stop updating. New `selectAllPages()` helper;
+  also applied to the full food/exercise history.
+- Day queries used `<= 23:59:59`, dropping anything in the last second of a
+  day. Now `< next local midnight`.
+- Goals & Targets bar moved to sit directly above the chart it configures.
+
+**Learned**
+- Never `querySelectorAll().forEach(addEventListener)` for the new controls —
+  period arrows, calorie rows and phase buttons all go through
+  `weightChartDelegation` (document-level, set up once).
+- Rendering the chart with realistic data caught four things the unit tests
+  couldn't: a "plan +10 lb" summary across a phase reset, maintain centring on
+  the range middle instead of the baseline, dots piling into a chain in `All`,
+  and a clipped month label. Rasterise and *look* at it.
+- Mutation-testing the new tests (breaking `wcMondayOf`, swapping the DST-safe
+  day diff for a midnight/floor one) confirmed they actually fail — worth the
+  two minutes.
+
+**Testing**
+- `wc_test.js` added at repo root, same runtime-extraction pattern as
+  `gp_test.js` (do NOT paste copies of `main.js` functions into it). Pins
+  `process.env.TZ = 'America/New_York'` so DST cases are real.
+- `npm test` now runs `gp_test.js && wc_test.js` — 10 + 27 passing.
+- Harness rebuilt again (esbuild + jsdom, stubbed `db.js`/`supabase.js`,
+  SVG → PNG via cairosvg). Not in the repo.
+
+**Open / next**
+- Confirm `goal_phases.sql` ran cleanly and the range boxes are live. If the
+  Retry block still shows, the policy lines at the bottom of the SQL are the
+  likely cause — other tables' policies may differ.
+- Exercise history preloads 30 days, food 90. The coach is told so, but a
+  question about last spring's training gets nothing. Widen or query on demand.
+- `2W` is currently last week + this week. Revisit if "this + next" reads
+  better in use.
+- Still open from 09-23: app-wide UTC `toISOString().slice(0,10)` for "today"
+  (the new chart/calorie code uses local `wcLocalDateStr`, the rest doesn't);
+  debug logging in the Plan path.
+- Still open from 09-20: confirm Serious Eats clip works post-deploy.
+- Still open from 09-18: "▶ Start Cooking" sets `gamePlanView = 'fullscreen'`
+  with no renderer.
+
+---
+
 ## 2026-09-23
 
 **Shipped** — `src/main.js` (all three confirmed working on device)
