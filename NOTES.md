@@ -5,6 +5,25 @@ Claude reads this at the start of a session; keep entries short.
 
 ---
 
+## 2026-09-29
+
+**Shipped** — `src/main.js`, `src/styles.css`.
+
+- Expanded recipe card header now has **Edit** and **✨ AI** buttons (next to
+  the chevron). They open Cook mode with edit on / Ask AI open; if Cook mode is
+  already open for that recipe they just switch it on. Expanded cards only.
+- Ask-AI open logic moved into `setCookAskOpen(rid, open)`, shared by the
+  Cook-bar toggle and the card button.
+- The header's collapse handler ignores clicks on `[data-card-edit]` /
+  `[data-card-ai]` — any future button placed in `.recipe-card-header` needs
+  the same exclusion or tapping it collapses the card.
+
+**Open / next**
+- Restore block in project instructions is missing `wc_test.js` (and
+  `package.json`); `npm test` runs both test files.
+
+---
+
 ## 2026-09-25
 
 **Shipped** — `src/main.js`, `src/db.js`, `src/styles.css`, `wc_test.js` (new),
