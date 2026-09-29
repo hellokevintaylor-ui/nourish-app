@@ -1381,6 +1381,12 @@ function renderRecipeCard(r) {
         prepSummary +
         (r.clippedFrom ? '<div class="recipe-meta" style="margin-top:2px"><a href="' + esc(r.clippedFrom) + '" target="_blank" rel="noopener" style="color:#3d52c4;text-decoration:none;font-size:11px">📎 ' + esc(sourceHost(r.clippedFrom)) + '</a></div>' : '') +
       '</div>' +
+      (isExpanded
+        ? '<div class="recipe-card-quick">' +
+            '<button class="rc-quick-btn" data-card-edit="' + r.id + '">Edit</button>' +
+            '<button class="rc-quick-btn" data-card-ai="' + r.id + '">✨ AI</button>' +
+          '</div>'
+        : '') +
       '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
     '</div>'
 
@@ -2967,6 +2973,45 @@ function findPlannedRecipe(entry) {
 // button). Switches to the Recipes tab, and if the card isn't in the rendered
 // list — hidden by search, a tag filter, or archive state — clears those so it
 // is, rather than setting cook mode on a card nobody can see.
+// Open/close the inline Ask AI panel in cook mode, loading saved history on first open.
+// Shared by the Cook-bar "Ask AI" toggle and the recipe card's "✨ AI" button.
+// Render immediately — the history fetch used to run before the first
+// render, so the tap looked dead and a second tap closed it again.
+function setCookAskOpen(rid, open) {
+  state.cookAskOpen = open
+  var needHistory = state.cookAskOpen && rid &&
+    (!state.recipeChatMessages[rid] || state.recipeChatMessages[rid].length === 0)
+  if (needHistory) state.cookAskHistoryLoading = rid
+  render()
+  if (state.cookAskOpen) {
+    setTimeout(() => {
+      document.getElementById('cook-ask-input')?.focus()
+      var msgs = document.getElementById('cook-ask-messages')
+      if (msgs) msgs.scrollTop = msgs.scrollHeight
+    }, 50)
+  }
+  if (!needHistory) return
+  db.fetchRecipeChat(rid).then(saved => {
+    // Don't clobber messages sent while the fetch was in flight
+    if (saved && saved.length > 0 && !(state.recipeChatMessages[rid] || []).length) {
+      state.recipeChatMessages[rid] = saved
+    }
+  }).catch(err => console.warn('fetchRecipeChat failed:', err)).finally(() => {
+    if (state.cookAskHistoryLoading !== rid) return
+    state.cookAskHistoryLoading = null
+    // Only re-render if the panel is still showing — keeps a typed-in draft safe otherwise
+    if (!state.cookAskOpen) return
+    var inp = document.getElementById('cook-ask-input')
+    var draft = inp ? inp.value : ''
+    var hadFocus = inp && document.activeElement === inp
+    render()
+    var inp2 = document.getElementById('cook-ask-input')
+    if (inp2) { inp2.value = draft; if (hadFocus) inp2.focus() }
+    var msgs = document.getElementById('cook-ask-messages')
+    if (msgs) msgs.scrollTop = msgs.scrollHeight
+  })
+}
+
 function openCookMode(recipeId) {
   const r = state.recipes.find(x => String(x.id) === String(recipeId))
   if (!r) return
@@ -5100,6 +5145,23 @@ init()
 
 document.addEventListener('click', function gpDelegation(e) {
   var t = e.target
+  // Recipe card header quick buttons → Cook mode with Edit or Ask AI already open
+  var cardEdit = t.closest('[data-card-edit]')
+  var cardAi = t.closest('[data-card-ai]')
+  if (cardEdit || cardAi) {
+    e.stopPropagation()
+    var qid = (cardEdit || cardAi).dataset[cardEdit ? 'cardEdit' : 'cardAi']
+    var inCook = state.cookMode && String(state.cookMode.recipeId) === String(qid)
+    if (!inCook) openCookMode(qid)
+    if (!state.cookMode) return
+    if (cardEdit) {
+      state.cookMode = { ...state.cookMode, editing: true }
+      render()
+    } else {
+      setCookAskOpen(state.cookMode.recipeId, true)
+    }
+    return
+  }
   if (t.closest('#gp-generate')) { gpGenerateHandler(); return }
   if (t.closest('#gp-regenerate')) {
     if (!state.gamePlanModal) return
@@ -6042,7 +6104,9 @@ function bindEvents() {
   })
 
   document.querySelectorAll('.recipe-card-header').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      // Edit / AI quick buttons live in the header — handled by delegation, don't collapse
+      if (e.target.closest('[data-card-edit], [data-card-ai]')) return
       var rid = el.closest('.recipe-card').dataset.rid
       var isCollapsing = state.expandedRecipe === rid
       // Track last viewed time for "Recent" sort — only after 3s so quick taps don't count
@@ -6841,38 +6905,7 @@ function bindEvents() {
   // render, so the tap looked dead and a second tap closed it again.
   document.getElementById('cook-ask-toggle')?.addEventListener('click', () => {
     var rid = document.getElementById('cook-ask-toggle')?.dataset.rid
-    state.cookAskOpen = !state.cookAskOpen
-    var needHistory = state.cookAskOpen && rid &&
-      (!state.recipeChatMessages[rid] || state.recipeChatMessages[rid].length === 0)
-    if (needHistory) state.cookAskHistoryLoading = rid
-    render()
-    if (state.cookAskOpen) {
-      setTimeout(() => {
-        document.getElementById('cook-ask-input')?.focus()
-        var msgs = document.getElementById('cook-ask-messages')
-        if (msgs) msgs.scrollTop = msgs.scrollHeight
-      }, 50)
-    }
-    if (!needHistory) return
-    db.fetchRecipeChat(rid).then(saved => {
-      // Don't clobber messages sent while the fetch was in flight
-      if (saved && saved.length > 0 && !(state.recipeChatMessages[rid] || []).length) {
-        state.recipeChatMessages[rid] = saved
-      }
-    }).catch(err => console.warn('fetchRecipeChat failed:', err)).finally(() => {
-      if (state.cookAskHistoryLoading !== rid) return
-      state.cookAskHistoryLoading = null
-      // Only re-render if the panel is still showing — keeps a typed-in draft safe otherwise
-      if (!state.cookAskOpen) return
-      var inp = document.getElementById('cook-ask-input')
-      var draft = inp ? inp.value : ''
-      var hadFocus = inp && document.activeElement === inp
-      render()
-      var inp2 = document.getElementById('cook-ask-input')
-      if (inp2) { inp2.value = draft; if (hadFocus) inp2.focus() }
-      var msgs = document.getElementById('cook-ask-messages')
-      if (msgs) msgs.scrollTop = msgs.scrollHeight
-    })
+    setCookAskOpen(rid, !state.cookAskOpen)
   })
 
   // cook-ask-send
