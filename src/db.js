@@ -200,7 +200,9 @@ export async function deleteLogEntry(id) {
   await supabase.from('food_log').delete().eq('id', id)
 }
 export async function updateLogEntry(id, fields) {
-  await supabase.from('food_log').update(fields).eq('id', id)
+  const { error } = await supabase.from('food_log').update(fields).eq('id', id)
+  if (error) console.error('updateLogEntry:', error)
+  return error || null
 }
 
 // ── GOALS ─────────────────────────────────────────────────────────────────────

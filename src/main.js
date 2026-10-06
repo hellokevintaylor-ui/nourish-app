@@ -655,6 +655,20 @@ function removeExerciseEverywhere(id) {
     for (var i = list.length - 1; i >= 0; i--) if (String(list[i].id) === String(id)) list.splice(i, 1)
   })
 }
+// Food log entries live in the same kind of separate caches as exercise:
+// today, the viewed past day, the full history, and the period-calorie range
+// cache. An edit has to patch all of them or totals go stale until reload.
+function foodLogCaches() {
+  var lists = [state.log, state.viewedDayLog, state.historyLog]
+  Object.values(state.calCache || {}).forEach(c => Object.values((c && c.food) || {}).forEach(l => lists.push(l)))
+  Object.values(state.calDayOverride || {}).forEach(o => o && lists.push(o.food))
+  return lists.filter(Array.isArray)
+}
+function patchLogEverywhere(id, fields) {
+  var found = false
+  foodLogCaches().forEach(list => list.forEach(x => { if (String(x.id) === String(id)) { Object.assign(x, fields); found = true } }))
+  return found
+}
 function todayBurned() { return (state.exerciseLog || []).reduce((s,e) => s + (e.calories_burned||0), 0) }
 
 
@@ -7513,16 +7527,16 @@ async function estimateCaloriesAI(description) {
     el.addEventListener('click', async e => {
       e.stopPropagation()
       var id = el.dataset.saveLog
-      var entry = state.log.find(x => x.id === id)
-      if (!entry) return
       var food = document.getElementById('edit-log-food-' + id)?.value?.trim()
-      var cals = parseInt(document.getElementById('edit-log-cals-' + id)?.value) || 0
+      var cals = Math.max(0, parseInt(document.getElementById('edit-log-cals-' + id)?.value) || 0)
       if (!food) return
-      entry.food = food
-      entry.calories = cals
-      await db.updateLogEntry(id, { food, calories: cals })
+      // Was state.log.find(x => x.id === id): today-only and strict-equal on a
+      // dataset string, so past-day edits (or numeric ids) silently did nothing.
+      patchLogEverywhere(id, { food, calories: cals })
       state.editingLogId = null
       render()
+      var err = await db.updateLogEntry(id, { food, calories: cals })
+      if (err) alert('Couldn\'t save that change — please try again.')
     })
   })
   document.querySelectorAll('[data-cancel-log]').forEach(el => {
@@ -8099,9 +8113,7 @@ async function estimateCaloriesAI(description) {
       var id = el.dataset.addCalsId
       var calories = parseInt(cals)
       // Update in both today's log and viewed day log
-      var entry = [...(state.log || []), ...(state.viewedDayLog || [])].find(l => String(l.id) === String(id))
-      if (entry) {
-        entry.calories = calories
+      if (patchLogEverywhere(id, { calories })) {
         db.updateLogEntry(id, { calories })
         render()
       }
