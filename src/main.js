@@ -1532,7 +1532,8 @@ function renderRecipeCard(r) {
       '<button class="rc-mini" data-shop="' + r.id + '">+ List</button>' +
       '<button class="rc-mini accent" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
       '<button class="rc-mini ra-log" data-log-recipe="' + r.id + '">Log</button>' +
-      '<button class="rc-mini' + (aiOpen ? ' on' : '') + '" data-card-ai="' + r.id + '">AI</button>' +
+      // AI + Plan are a different kind of action — push them to the right
+      '<button class="rc-mini' + (aiOpen ? ' on' : '') + '" data-card-ai="' + r.id + '" style="margin-left:auto">AI</button>' +
       '<button class="rc-mini accent" data-plan-recipe="' + r.id + '">Plan</button>' +
     '</div>' +
   '</div>' +
