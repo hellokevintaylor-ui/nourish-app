@@ -1387,29 +1387,29 @@ function renderRecipeCard(r) {
       '</div>'
     : ''
 
+  const isEditingCard = isExpanded && state.cookMode && String(state.cookMode.recipeId) === String(r.id) && state.cookMode.editing
   const header = '<div class="recipe-card" data-rid="' + r.id + '">' +
-    '<div class="recipe-card-header">' +
-      '<div style="min-width:0;flex:1">' +
+    '<div class="recipe-card-header' + (isExpanded ? ' rc-expanded' : '') + '">' +
+      '<div class="rc-title">' +
         '<div class="recipe-name">' + esc(r.name) + (r.archived ? ' <span style="font-size:10px;color:#a8a8a3;font-weight:400">(archived)</span>' : '') + '</div>' +
-        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-preview" style="margin-top:4px">' + r.tags.map(t => '<span class="tag-chip-small">' + esc(t) + '</span>').join('') + '</div>' : '') +
+        ((r.tags&&r.tags.length) ? '<div class="recipe-tags-text">' + r.tags.map(t => esc(t)).join(' · ') + '</div>' : '') +
         prepSummary +
         (r.clippedFrom ? '<div class="recipe-meta" style="margin-top:2px"><a href="' + esc(r.clippedFrom) + '" target="_blank" rel="noopener" style="color:#3d52c4;text-decoration:none;font-size:11px">📎 ' + esc(sourceHost(r.clippedFrom)) + '</a></div>' : '') +
       '</div>' +
       (isExpanded
-        ? '<div class="recipe-card-quick">' +
-            '<button class="rc-quick-btn" data-card-edit="' + r.id + '">Edit</button>' +
-            '<button class="rc-quick-btn" data-card-ai="' + r.id + '">✨ AI</button>' +
+        ? '<div class="rc-mini-row rc-header-btns">' +
+            '<button class="rc-mini' + (isEditingCard ? ' on' : '') + '" data-card-edit="' + r.id + '">' + (isEditingCard ? 'Done' : 'Edit') + '</button>' +
+            '<button class="rc-mini tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe">+ Tag</button>' +
+            (r.archived
+              ? '<button class="rc-mini" data-restore-recipe="' + r.id + '">Restore</button>'
+              : '<button class="rc-mini" data-archive-recipe="' + r.id + '">Archive</button>') +
+            '<button class="rc-mini danger" data-del="' + r.id + '">Del</button>' +
+            '<div class="chevron open">▼</div>' +
           '</div>'
-        : '') +
-      '<div class="chevron ' + (isExpanded ? 'open' : '') + '">▼</div>' +
+        : '<div class="chevron">▼</div>') +
     '</div>'
 
   if (!isExpanded) return header + '</div>'
-
-  // Cook mode swaps in place of card body
-  if (state.cookMode && state.cookMode.recipeId === r.id) {
-    return header + renderCookModeInline(r) + '</div>'
-  }
 
   // Game plan swaps in place of card body
   // Match by recipeId OR by this recipe being in today's dinner slot.
@@ -1440,8 +1440,8 @@ function renderRecipeCard(r) {
     return header + renderLogInline(r) + '</div>'
   }
 
-  // Expanded: prep time box + Cook button + action row only
-  // No ingredients or instructions shown here — those are in Cook mode
+  // Expanded: source link + prep time + action row, then the recipe itself
+  // (ingredients / instructions / notes tabs) inline — no separate Cook step.
 
   // Tag picker
   const isPickerOpen = state.tagPickerOpen === r.id + '-recipe'
@@ -1450,7 +1450,7 @@ function renderRecipeCard(r) {
   const pickerStyles = mealTags.filter(t => t.tag_type === 'style')
   const hasTwoTiers = pickerStyles.length > 0
   const tagPicker = isPickerOpen ? (
-    '<div class="tag-picker-popover" id="tag-picker-popover">' +
+    '<div class="tag-picker-popover" id="tag-picker-popover" style="position:fixed">' +
     (hasTwoTiers ? (
       (pickerCategories.length ? '<div style="font-size:10px;font-weight:700;color:#6e6e69;text-transform:uppercase;letter-spacing:0.5px;padding:4px 0 2px">Category</div>' : '') +
       pickerCategories.map(t => {
@@ -1513,28 +1513,30 @@ function renderRecipeCard(r) {
             '<button data-source-edit="' + r.id + '" style="background:none;border:none;padding:0;cursor:pointer;font-family:inherit;font-size:12px;color:#3d52c4">+ Add source link</button>' +
           '</div>')
 
+  // Recipe content lives inside cookMode state (tab, scale, checked items,
+  // editing, step amounts). Every expanded card gets one, created on demand.
+  if (!state.cookMode || String(state.cookMode.recipeId) !== String(r.id)) {
+    state.cookMode = { recipeId: r.id, tab: 'ingredients', checkedIngredients: new Set(), stepAmounts: null, stepAmountsLoading: false }
+    state.cookAskOpen = false
+  }
+
+  const aiOpen = !!state.cookAskOpen
   const body = '<div class="recipe-body">' +
     sourceLink +
     // Tag picker (no chips — header already shows them)
     (tagPicker ? '<div style="position:relative;margin-bottom:4px">' + tagPicker + '</div>' : '') +
     // Prep time box
     prepBox +
-    // Cook — full width black button on its own row
-    '<div style="margin-top:12px">' +
-      '<button class="ra-btn" data-cook-mode="' + r.id + '" style="width:100%;background:#1a1a1a;color:white;border-color:#1a1a1a;font-size:12px;padding:8px 4px;font-weight:700;border-radius:8px">Cook</button>' +
+    // Action row — same compact size as the header buttons
+    '<div class="rc-mini-row" style="margin-top:10px">' +
+      '<button class="rc-mini" data-shop="' + r.id + '">+ List</button>' +
+      '<button class="rc-mini accent" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '">+ Week</button>' +
+      '<button class="rc-mini ra-log" data-log-recipe="' + r.id + '">Log</button>' +
+      '<button class="rc-mini' + (aiOpen ? ' on' : '') + '" data-card-ai="' + r.id + '">AI</button>' +
+      '<button class="rc-mini accent" data-plan-recipe="' + r.id + '">Plan</button>' +
     '</div>' +
-    // Secondary action row — all same grey style
-    '<div class="recipe-actions" style="margin-top:6px">' +
-      '<button class="ra-btn" data-shop="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">+ List</button>' +
-      '<button class="ra-btn" data-add-to-week="' + r.id + '" data-add-name="' + esc(r.name) + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">+ Week</button>' +
-      '<button class="ra-btn ra-log" data-log-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Log</button>' +
-      '<button class="tag-picker-btn" data-picker-id="' + r.id + '" data-picker-ns="recipe" style="flex:1;font-size:11px;padding:7px 4px;border-radius:8px;border:1.5px solid #d4d4d0;background:white;cursor:pointer;font-family:inherit;color:#3a3a38">+ Tag</button>' +
-      (r.archived
-        ? '<button class="ra-btn" data-restore-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Restore</button>'
-        : '<button class="ra-btn" data-archive-recipe="' + r.id + '" style="flex:1;font-size:11px;padding:7px 4px;color:#3a3a38;border-color:#d4d4d0">Archive</button>') +
-      '<button class="ra-btn ra-del" data-del="' + r.id + '" style="flex:0.8;font-size:11px;padding:7px 4px">Del</button>' +
-    '</div>' +
-  '</div>'
+  '</div>' +
+  renderCookModeInline(r)
 
   return header + body + '</div>'
 }
@@ -3026,6 +3028,19 @@ function setCookAskOpen(rid, open) {
   })
 }
 
+// Close any inline panel (game plan, shop review, add to week, log) that is
+// currently swapped in for this recipe's body, so the recipe shows again.
+function closeCardPanels(recipeId) {
+  var rid = String(recipeId)
+  if (state.gamePlanModal && (String(state.gamePlanModal.recipeId) === rid || String(state.expandedRecipe) === rid)) {
+    gpSaveCurrent()
+    state.gamePlanModal = false
+  }
+  if (state.shopReview && String(state.shopReview.recipeId) === rid) state.shopReview = null
+  if (state.addToWeekModal && String(state.addToWeekModal.recipeId) === rid) state.addToWeekModal = null
+  if (state.logModal && String(state.logModal.recipeId) === rid) state.logModal = null
+}
+
 function openCookMode(recipeId) {
   const r = state.recipes.find(x => String(x.id) === String(recipeId))
   if (!r) return
@@ -4200,14 +4215,7 @@ function renderCookModeInline(r) {
     '</div>'
   }
 
-  return '<div style="border-top:0.5px solid #e8e8e5">' +
-    '<div style="background:#1a1a1a;padding:12px 14px;display:flex;align-items:center;gap:8px">' +
-      '<button id="cook-mode-close" style="width:28px;height:28px;background:rgba(255,255,255,0.12);border:none;cursor:pointer;font-size:16px;color:white;line-height:1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
-      '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:rgba(255,255,255,0.7)">Cooking</div>' +
-      '<button id="cook-mode-edit-toggle" style="background:' + (isEditing?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">' + (isEditing?'Done':'Edit') + '</button>' +
-      '<button class="ra-btn ra-plan" data-plan-recipe="' + r.id + '" style="background:rgba(255,255,255,0.08);color:white;border-color:rgba(255,255,255,0.25);font-size:10px;flex-shrink:0;padding:4px 8px;margin-left:2px">📋 Plan</button>' +
-      '<button id="cook-ask-toggle" data-rid="' + r.id + '" style="background:' + (state.cookAskOpen?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.08)') + ';color:white;border:1px solid rgba(255,255,255,0.2);border-radius:7px;padding:4px 9px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;margin-left:2px">Ask AI</button>' +
-    '</div>' +
+  return '<div class="rc-recipe-content">' +
     askHtml +
     '<div style="display:flex;border-bottom:0.5px solid #e8e8e5;background:white">' +
       tabBtn('ingredients', 'Ingredients') +
@@ -5159,20 +5167,21 @@ init()
 
 document.addEventListener('click', function gpDelegation(e) {
   var t = e.target
-  // Recipe card header quick buttons → Cook mode with Edit or Ask AI already open
+  // Recipe card Edit / AI buttons — toggle editing or the Ask AI chat in place.
   var cardEdit = t.closest('[data-card-edit]')
   var cardAi = t.closest('[data-card-ai]')
   if (cardEdit || cardAi) {
     e.stopPropagation()
     var qid = (cardEdit || cardAi).dataset[cardEdit ? 'cardEdit' : 'cardAi']
+    closeCardPanels(qid)
     var inCook = state.cookMode && String(state.cookMode.recipeId) === String(qid)
     if (!inCook) openCookMode(qid)
     if (!state.cookMode) return
     if (cardEdit) {
-      state.cookMode = { ...state.cookMode, editing: true }
+      state.cookMode = { ...state.cookMode, editing: !state.cookMode.editing }
       render()
     } else {
-      setCookAskOpen(state.cookMode.recipeId, true)
+      setCookAskOpen(state.cookMode.recipeId, !state.cookAskOpen)
     }
     return
   }
@@ -6119,8 +6128,8 @@ function bindEvents() {
 
   document.querySelectorAll('.recipe-card-header').forEach(el => {
     el.addEventListener('click', (e) => {
-      // Edit / AI quick buttons live in the header — handled by delegation, don't collapse
-      if (e.target.closest('[data-card-edit], [data-card-ai]')) return
+      // Header buttons (Edit / Tag / Archive / Del) must not collapse the card
+      if (e.target.closest('button')) return
       var rid = el.closest('.recipe-card').dataset.rid
       var isCollapsing = state.expandedRecipe === rid
       // Track last viewed time for "Recent" sort — only after 3s so quick taps don't count
@@ -6376,8 +6385,7 @@ function bindEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation()
       var rid = el.dataset.planRecipe
-      // This button lives in the cook-mode header; cook mode wins over the game
-      // plan in renderRecipeCard, so leave it or the plan never shows.
+      // Reset the recipe view state; the game plan panel takes over the card body.
       state.cookMode = null
       var today = new Date().toISOString().slice(0, 10)
       var plannedEntry = state.mealPlan.find(m => m.date === today && String(m.recipe_id) === String(rid))

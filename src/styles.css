@@ -989,3 +989,22 @@ html, body {
   cursor: pointer;
   font-family: inherit;
 }
+
+/* ── Recipe card: compact buttons + inline recipe (Oct 2026) ── */
+.recipe-card-header.rc-expanded { flex-wrap: wrap-reverse; align-items: flex-end; gap: 6px 8px; }
+.rc-title { flex: 1 1 auto; min-width: 0; }
+.recipe-tags-text { font-size: 11px; color: var(--text-3); margin-top: 3px; line-height: 1.3; }
+.rc-mini-row { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+.rc-header-btns { margin-left: auto; flex-shrink: 0; flex-wrap: nowrap; }
+.rc-header-btns .chevron { margin-left: 4px; }
+.rc-mini, .rc-mini.tag-picker-btn {
+  font-family: inherit; font-size: 10px; font-weight: 600; color: #3a3a38;
+  background: white; border: 1px solid #d4d4d0; border-radius: 6px;
+  padding: 3px 7px; line-height: 1.3; cursor: pointer; white-space: nowrap;
+}
+.rc-mini:hover, .rc-mini.tag-picker-btn:hover { border-color: #a8a8a3; background: white; color: #3a3a38; }
+.rc-mini:active { background: #f2f2f0; }
+.rc-mini.on { background: #f2f2f0; border-color: #a8a8a3; }
+.rc-mini.accent, .rc-mini.accent:hover { color: var(--accent); border-color: var(--accent); }
+.rc-mini.danger, .rc-mini.danger:hover { color: var(--danger); border-color: #e8c0c0; }
+.rc-recipe-content { margin-top: 4px; }
