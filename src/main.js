@@ -1280,8 +1280,10 @@ function render() {
   // Position active tag picker near its button
   const activePicker = document.getElementById('tag-picker-popover')
   if (activePicker && state.tagPickerPos) {
+    // Cap width so the "New tag… / Add" row never runs off the right edge on phones
+    activePicker.style.width = Math.min(260, window.innerWidth - 24) + 'px'
     activePicker.style.top = state.tagPickerPos.top + 'px'
-    activePicker.style.left = Math.min(state.tagPickerPos.left, window.innerWidth - 220) + 'px'
+    activePicker.style.left = Math.max(12, Math.min(state.tagPickerPos.left, window.innerWidth - activePicker.offsetWidth - 12)) + 'px'
     // Scroll into view if still off screen
     const rect = activePicker.getBoundingClientRect()
     if (rect.bottom > window.innerHeight) {
@@ -1660,7 +1662,7 @@ function renderRecipes() {
       ${state.pasteModal ? renderPasteModalInline() : ''}
       <div class="section-header">
         <div class="section-title">My Recipe Box</div>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-width:0">
           <button class="add-btn" id="scan-recipe-btn" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Scan</button>
           <button class="add-btn" id="clip-url-btn-recipes" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Clip</button>
           <button class="add-btn" id="paste-recipe-btn" style="background:var(--accent-light,#eef0fc);color:#3d52c4;border:1.5px solid #b4bdf0">Paste</button>
@@ -4148,6 +4150,7 @@ function renderTagOrganizerModal() {
         '<button class="tag-type-btn ' + (type === 'category' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="category" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='category'?'var(--forest)':'var(--border)') + ';background:' + (type==='category'?'var(--forest)':'white') + ';color:' + (type==='category'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Category</button>' +
         '<button class="tag-type-btn ' + (type === 'style' ? 'active' : '') + '" data-tag-id="' + t.id + '" data-tag-type="style" style="font-size:11px;padding:3px 9px;border-radius:6px;border:1.5px solid ' + (type==='style'?'var(--forest)':'var(--border)') + ';background:' + (type==='style'?'var(--forest)':'white') + ';color:' + (type==='style'?'white':'var(--ink3)') + ';cursor:pointer;font-family:inherit">Style</button>' +
       '</div>' +
+      '<button data-org-tag-del="' + esc(String(t.id)) + '" aria-label="Delete ' + esc(t.name) + '" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--ink3);padding:0 2px 0 4px;line-height:1">×</button>' +
     '</div>'
   }
   return '<div class="modal-bg" id="tag-organizer-bg">' +
@@ -4157,7 +4160,11 @@ function renderTagOrganizerModal() {
         '<button id="tag-organizer-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--ink3);padding:0;line-height:1">×</button>' +
       '</div>' +
       '<div style="font-size:12px;color:var(--ink3);margin-bottom:14px">Category = what the dish is (Pork, Pasta). Style = how it\'s made (Sous Vide, Weeknight). Filtering uses Category as OR, then Style to narrow.</div>' +
-      tags.sort((a, b) => a.name.localeCompare(b.name)).map(renderTagRow).join('') +
+      (tags.length ? tags.sort((a, b) => a.name.localeCompare(b.name)).map(renderTagRow).join('') : '<div style="font-size:12px;color:var(--ink4);font-style:italic;padding:8px 0">No recipe tags yet</div>') +
+      '<div style="display:flex;gap:6px;margin-top:12px">' +
+        '<input id="org-tag-new-input" placeholder="New tag..." autocomplete="off" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit" />' +
+        '<button class="add-btn" data-org-tag-add>+ Add</button>' +
+      '</div>' +
       '<div style="margin-top:16px">' +
         '<button class="modal-save" id="tag-organizer-save" style="width:100%">Save</button>' +
       '</div>' +
@@ -5442,6 +5449,54 @@ async function handlePhaseAction(action, btn) {
     render()
   }
 }
+
+// Recipe Box → Tags (Organize Tags) panel: add / delete recipe tags.
+async function addOrganizerTag() {
+  const m = state.tagOrganizerModal
+  const input = document.getElementById('org-tag-new-input')
+  const name = input?.value?.trim()
+  if (!m || m.loading || !name) return
+  const lower = name.toLowerCase()
+  if (!(m.tags || []).some(t => t.name.toLowerCase() === lower)) {
+    const saved = await db.saveTag(name, 'recipe', 'category')
+    if (saved) {
+      if (!saved.tag_type) saved.tag_type = 'category'
+      if (!state.allTags.find(t => t.namespace === 'recipe' && t.name === saved.name)) state.allTags.push(saved)
+      m.tags = [...(m.tags || []), { ...saved }]
+    }
+  }
+  render()
+  document.getElementById('org-tag-new-input')?.focus()
+}
+
+async function deleteOrganizerTag(id) {
+  const m = state.tagOrganizerModal
+  if (!m || m.loading) return
+  const tag = (m.tags || []).find(t => String(t.id) === String(id)) || state.allTags.find(t => String(t.id) === String(id))
+  if (!tag) return
+  const hits = state.recipes.filter(r => (r.tags || []).includes(tag.name))
+  if (!confirm('Delete tag "' + tag.name + '"?' + (hits.length ? ' It will be removed from ' + hits.length + ' recipe' + (hits.length !== 1 ? 's' : '') + '.' : ''))) return
+  m.tags = (m.tags || []).filter(t => String(t.id) !== String(id))
+  state.allTags = state.allTags.filter(t => String(t.id) !== String(id))
+  const filt = state.activeTagFilters['recipe']
+  if (filt && filt.has && filt.has(tag.name)) {
+    filt.delete(tag.name)
+    if (filt.size === 0) state.activeTagFilters['recipe'] = null
+  }
+  for (const r of hits) r.tags = r.tags.filter(t => t !== tag.name)
+  render()
+  await Promise.all([db.deleteTag(tag.id), ...hits.map(r => db.updateRecipeTags(r.id, r.tags))])
+}
+
+document.addEventListener('click', function tagOrganizerDelegation(e) {
+  if (!e.target.closest) return
+  var del = e.target.closest('[data-org-tag-del]')
+  if (del) { deleteOrganizerTag(del.dataset.orgTagDel); return }
+  if (e.target.closest('[data-org-tag-add]')) addOrganizerTag()
+})
+document.addEventListener('keydown', function tagOrganizerKeyDelegation(e) {
+  if (e.key === 'Enter' && e.target.id === 'org-tag-new-input') { e.preventDefault(); addOrganizerTag() }
+})
 
 document.addEventListener('click', function shopTagManagerDelegation(e) {
   if (!e.target.closest) return
@@ -6851,7 +6906,7 @@ function bindEvents() {
 
   document.getElementById('organize-tags-btn')?.addEventListener('click', async () => {
     var recipeTags = state.allTags.filter(t => t.namespace === 'recipe')
-    if (!recipeTags.length) return
+    if (!recipeTags.length) { state.tagOrganizerModal = { loading: false, tags: [] }; render(); return }
     // Open modal in loading state, ask AI to classify
     state.tagOrganizerModal = { loading: true, tags: recipeTags }
     render()

@@ -679,12 +679,13 @@ html, body {
 .tag-picker-option input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 .tag-picker-new { display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 0.5px solid var(--border); }
 .tag-picker-input {
-  flex: 1; padding: 6px 10px; border: 1.5px solid var(--border-strong);
+  flex: 1; min-width: 0; padding: 6px 10px; border: 1.5px solid var(--border-strong);
   border-radius: 8px; font-size: 12px; font-family: inherit;
   background: var(--gray-50); color: var(--text); outline: none;
 }
 .tag-picker-input:focus { border-color: var(--accent); background: var(--white); }
 .tag-picker-add {
+  flex-shrink: 0;
   padding: 6px 12px; background: var(--black); color: var(--white);
   border: none; border-radius: 8px; font-size: 12px; font-weight: 600;
   cursor: pointer; font-family: inherit;
