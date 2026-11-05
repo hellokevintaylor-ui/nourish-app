@@ -30,6 +30,7 @@ const state = {
   activeTagFilterNs: null,
   showTagFilter: false,
   tagPickerOpen: null,
+  shopTagManagerOpen: false, // List tab: inline panel to add/delete store (location) tags
   tagPickerPos: null,
   newRecipeTags: [],
   newRecipeTagPickerOpen: false,
@@ -1818,6 +1819,65 @@ function renderShopItems(items) {
   }).join('')
 }
 
+// Inline panel on the List tab for managing store/location tags (shared with Pantry).
+function renderShopTagManager() {
+  const tags = getTagsForNamespace('location').slice().sort((a, b) => a.name.localeCompare(b.name))
+  return '<div style="background:var(--cream2);border-radius:12px;padding:12px 14px;margin-bottom:10px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">' +
+      '<div style="font-size:13px;font-weight:700;color:var(--forest)">🏷 Store Tags</div>' +
+      '<button data-shop-tags-toggle style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--ink3);padding:0;line-height:1">×</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--ink3);margin-bottom:8px">Tap × to delete a tag. It\'s removed from every list and pantry item that uses it.</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px">' +
+      (tags.length ? tags.map(t =>
+        '<span class="tag-library-chip" style="display:inline-flex;align-items:center;gap:6px;margin:3px">' +
+          esc(t.name) +
+          '<button data-shop-tag-del="' + esc(String(t.id)) + '" aria-label="Delete ' + esc(t.name) + '" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--ink3);padding:0 2px;line-height:1">×</button>' +
+        '</span>'
+      ).join('') : '<span style="font-size:12px;color:var(--ink4);font-style:italic">No store tags yet</span>') +
+    '</div>' +
+    '<div style="display:flex;gap:6px">' +
+      '<input id="shop-tag-new-input" placeholder="New tag..." autocomplete="off" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" />' +
+      '<button class="add-btn" data-shop-tag-add>+ Add</button>' +
+    '</div>' +
+  '</div>'
+}
+
+async function addShopLibraryTag() {
+  const input = document.getElementById('shop-tag-new-input')
+  const name = input?.value?.trim()
+  if (!name) return
+  if (!state.allTags.find(t => t.namespace === 'location' && t.name.toLowerCase() === name.toLowerCase())) {
+    const saved = await db.saveTag(name, 'location', 'category')
+    if (saved) state.allTags.push(saved)
+  }
+  render()
+  document.getElementById('shop-tag-new-input')?.focus()
+}
+
+async function deleteShopLibraryTag(id) {
+  const tag = state.allTags.find(t => String(t.id) === String(id))
+  if (!tag) return
+  const shopHits = state.shopList.filter(i => (i.tags || []).includes(tag.name))
+  const pantryHits = state.pantry.filter(p => (p.tags || []).includes(tag.name))
+  const n = shopHits.length + pantryHits.length
+  if (!confirm('Delete tag "' + tag.name + '"?' + (n ? ' It will be removed from ' + n + ' item' + (n !== 1 ? 's' : '') + '.' : ''))) return
+  state.allTags = state.allTags.filter(t => String(t.id) !== String(id))
+  const filt = state.activeTagFilters['location']
+  if (filt && filt.has && filt.has(tag.name)) {
+    filt.delete(tag.name)
+    if (filt.size === 0) state.activeTagFilters['location'] = null
+  }
+  for (const i of shopHits) i.tags = i.tags.filter(t => t !== tag.name)
+  for (const p of pantryHits) p.tags = p.tags.filter(t => t !== tag.name)
+  render()
+  await Promise.all([
+    db.deleteTag(tag.id),
+    ...shopHits.map(i => db.updateShopItemTags(i.id, i.tags)),
+    ...pantryHits.map(p => db.updatePantryTags(p.id, p.tags)),
+  ])
+}
+
 function renderShop() {
   const tonightCard = renderTonightCard()
   const locationTags = state.activeTagFilters['location']
@@ -1842,8 +1902,10 @@ function renderShop() {
         (state.shopList.length > 0 ? '<button class="icon-btn" id="shop-copy-btn">📤 Share</button>' : '') +
         (done.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear-checked" style="background:var(--cream2);color:var(--ink2);border:1px solid var(--border)">Clear checked (' + done.length + ')</button>' : '') +
         (state.shopList.length > 0 ? '<button class="clear-pantry-btn" id="shop-clear">Clear all</button>' : '') +
+        '<button class="icon-btn" data-shop-tags-toggle style="' + (state.shopTagManagerOpen ? 'background:var(--forest);color:white;border-color:var(--forest)' : '') + '">🏷 Tags</button>' +
       '</div>' +
     '</div>' +
+    (state.shopTagManagerOpen ? renderShopTagManager() : '') +
     '<div class="shop-add-row">' +
       '<input id="shop-manual-input" placeholder="Add item manually..." />' +
       '<button class="add-btn" id="shop-manual-add">+ Add</button>' +
@@ -5380,6 +5442,21 @@ async function handlePhaseAction(action, btn) {
     render()
   }
 }
+
+document.addEventListener('click', function shopTagManagerDelegation(e) {
+  if (!e.target.closest) return
+  if (e.target.closest('[data-shop-tags-toggle]')) {
+    state.shopTagManagerOpen = !state.shopTagManagerOpen
+    render()
+    return
+  }
+  var del = e.target.closest('[data-shop-tag-del]')
+  if (del) { deleteShopLibraryTag(del.dataset.shopTagDel); return }
+  if (e.target.closest('[data-shop-tag-add]')) addShopLibraryTag()
+})
+document.addEventListener('keydown', function shopTagManagerKeyDelegation(e) {
+  if (e.key === 'Enter' && e.target.id === 'shop-tag-new-input') { e.preventDefault(); addShopLibraryTag() }
+})
 
 document.addEventListener('click', function tonightCookDelegation(e) {
   var btn = e.target.closest && e.target.closest('[data-tonight-cook]')
